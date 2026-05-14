@@ -1,10 +1,12 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class SceneListItem(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     id: int
     name: str | None
     model_key: str
@@ -39,6 +41,8 @@ class RenderItem(BaseModel):
 
 
 class SceneDetail(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     id: int
     name: str | None
     model_key: str
@@ -59,6 +63,8 @@ class SceneDetail(BaseModel):
 
 
 class ScenePatch(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     name: str | None = Field(default=None, max_length=255)
     material: str | None = Field(default=None, max_length=64)
     lighting: str | None = Field(default=None, max_length=64)

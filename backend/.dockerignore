@@ -1,0 +1,17 @@
+.studiovenv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+uploads/
+*.db
+*.db-journal
+.env
+.env.local
+.git/
+.gitignore
+README.md

@@ -39,3 +39,29 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# python backend
+backend/.studiovenv/
+backend/.venv/
+backend/uploads/
+backend/*.db
+backend/*.db-journal
+backend/**/__pycache__/
+backend/.pytest_cache/
+backend/.ruff_cache/
+backend/.mypy_cache/
+
+# editor / OS
+.idea/
+.vscode/
+*.swp
+*.swo
+Thumbs.db
+
+# logs
+*.log
+logs/
+
+# build artifacts
+dist/
+*.tgz

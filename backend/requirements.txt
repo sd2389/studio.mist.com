@@ -1,0 +1,14 @@
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+sqlalchemy>=2.0.36
+psycopg2-binary>=2.9.10
+alembic>=1.14.0
+python-multipart>=0.0.12
+boto3>=1.35.0
+celery>=5.4.0
+redis>=5.2.0
+pydantic-settings>=2.6.0
+Pillow>=10.4.0
+rhino3dm>=8.9.0
+# Optional SDXL inpaint (set AI_BACKGROUND_MODE=sdxl, CUDA recommended):
+# pip install torch diffusers accelerate transformers safetensors

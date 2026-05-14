@@ -1,0 +1,29 @@
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from app.config import get_settings
+from app.database import init_db
+from app.routers import api_router
+
+app = FastAPI(title="Gemora Studio API", version="0.1.0")
+
+_settings = get_settings()
+_cors_origins = [o.strip() for o in _settings.cors_origins.split(",") if o.strip()]
+
+_cors_kw: dict = {
+    "allow_origins": _cors_origins,
+    "allow_credentials": True,
+    "allow_methods": ["*"],
+    "allow_headers": ["*"],
+}
+if _settings.cors_origin_regex:
+    _cors_kw["allow_origin_regex"] = _settings.cors_origin_regex
+
+app.add_middleware(CORSMiddleware, **_cors_kw)
+
+app.include_router(api_router)
+
+
+@app.on_event("startup")
+def on_startup() -> None:
+    init_db()

@@ -12,9 +12,10 @@ type StoneTileProps = { cutId: CutId; label: string; description: string };
 
 export function StoneTile({ cutId, label, description }: StoneTileProps) {
   const cut = getCutById(cutId);
-  if (!cut) return null;
-  const geometry = useMemo(() => cut.build(), [cut]);
+  const geometry = useMemo(() => (cut ? cut.build() : null), [cut]);
   const material = useMemo(() => createGemMaterial("diamond"), []);
+
+  if (!cut || !geometry) return null;
 
   return (
     <Link

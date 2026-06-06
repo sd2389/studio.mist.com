@@ -9,15 +9,20 @@ class SceneListItem(BaseModel):
 
     id: int
     name: str | None
+    sku: str | None = None
+    category: str | None = None
+    note: str | None = None
     model_key: str
     material: str
     lighting: str
     model_config_data: dict[str, Any] = Field(
+        default_factory=dict,
         validation_alias="model_config",
         serialization_alias="model_config",
     )
-    slot_selections: dict[str, str]
-    scene_settings: dict[str, Any]
+    slot_selections: dict[str, str] = Field(default_factory=dict)
+    scene_settings: dict[str, Any] = Field(default_factory=dict)
+    variants: dict[str, Any] = Field(default_factory=dict)
     model_url: str | None
     thumbnail_key: str | None
     thumbnail_url: str | None
@@ -45,15 +50,20 @@ class SceneDetail(BaseModel):
 
     id: int
     name: str | None
+    sku: str | None = None
+    category: str | None = None
+    note: str | None = None
     model_key: str
     material: str
     lighting: str
     model_config_data: dict[str, Any] = Field(
+        default_factory=dict,
         validation_alias="model_config",
         serialization_alias="model_config",
     )
-    slot_selections: dict[str, str]
-    scene_settings: dict[str, Any]
+    slot_selections: dict[str, str] = Field(default_factory=dict)
+    scene_settings: dict[str, Any] = Field(default_factory=dict)
+    variants: dict[str, Any] = Field(default_factory=dict)
     model_url: str | None
     thumbnail_key: str | None
     thumbnail_url: str | None
@@ -66,6 +76,9 @@ class ScenePatch(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     name: str | None = Field(default=None, max_length=255)
+    sku: str | None = Field(default=None, max_length=128)
+    category: str | None = Field(default=None, max_length=128)
+    note: str | None = Field(default=None, max_length=4096)
     material: str | None = Field(default=None, max_length=64)
     lighting: str | None = Field(default=None, max_length=64)
     model_config_data: dict[str, Any] | None = Field(
@@ -75,3 +88,4 @@ class ScenePatch(BaseModel):
     )
     slot_selections: dict[str, str] | None = None
     scene_settings: dict[str, Any] | None = None
+    variants: dict[str, Any] | None = None

@@ -3,16 +3,21 @@ import type {
   PersistedModelConfig,
   SceneSettingsBuckets,
 } from "@/lib/slot-materials/model-config";
+import type { SceneVariantsState } from "@/lib/variants/types";
 
 export type Scene = {
   id: number;
   name: string | null;
+  sku: string | null;
+  category: string | null;
+  note: string | null;
   model_key: string;
   material: string;
   lighting: string;
   model_config: PersistedModelConfig;
   slot_selections: Record<string, string>;
   scene_settings: SceneSettingsBuckets;
+  variants?: SceneVariantsState;
   model_url: string | null;
   thumbnail_key: string | null;
   thumbnail_url: string | null;
@@ -39,11 +44,15 @@ export type SceneDetail = Omit<Scene, "render_count"> & { renders: Render[] };
 
 export type ScenePatch = Partial<{
   name: string;
+  sku: string;
+  category: string;
+  note: string;
   material: string;
   lighting: string;
   model_config: PersistedModelConfig;
   slot_selections: Record<string, string>;
   scene_settings: SceneSettingsBuckets;
+  variants?: SceneVariantsState;
 }>;
 
 export function listScenes(): Promise<Scene[]> {

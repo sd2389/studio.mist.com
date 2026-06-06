@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertTriangle, Loader2, Video, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -17,6 +17,7 @@ import {
   recordTurntable,
   ZIP_FALLBACK_MIME,
 } from "@/lib/video-capture";
+import { getRenderFidelity } from "@/stores/render-fidelity-store";
 import { getVideoCaptureRefs } from "@/stores/video-capture-store";
 
 type Video360ModalProps = {
@@ -87,36 +88,30 @@ export function Video360Modal({ open, onOpenChange, modelId }: Video360ModalProp
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
-  const [hasWebCodecs, setHasWebCodecs] = useState(true);
+  const [hasWebCodecs] = useState(() => isWebCodecsSupported());
+  const [etaLabel, setEtaLabel] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const startedAtRef = useRef<number>(0);
 
-  useEffect(() => {
-    setHasWebCodecs(isWebCodecsSupported());
-  }, []);
-
-  useEffect(() => {
-    if (!open) {
-      setProgress(0);
-      setError(null);
-      setStatus(null);
-      abortRef.current?.abort();
-      abortRef.current = null;
-    }
-  }, [open]);
+  const handleDialogOpenChange = useCallback(
+    (next: boolean) => {
+      if (!next) {
+        setProgress(0);
+        setError(null);
+        setStatus(null);
+        setEtaLabel(null);
+        abortRef.current?.abort();
+        abortRef.current = null;
+      }
+      onOpenChange(next);
+    },
+    [onOpenChange],
+  );
 
   const resolution = RESOLUTIONS.find((r) => r.id === resId) ?? RESOLUTIONS[1];
   const bitrate = BITRATES.find((b) => b.id === bitrateId) ?? BITRATES[1];
   const durationSec = frames / fps;
   const bps = bytesPerSecondEstimate(resolution.width, resolution.height, fps, bitrate.multiplier);
-
-  const estimatedTimeStr = useMemo(() => {
-    if (!busy || progress <= 0.01) return null;
-    const elapsed = (performance.now() - startedAtRef.current) / 1000;
-    const total = elapsed / progress;
-    const remaining = Math.max(0, total - elapsed);
-    return `~${Math.round(remaining)}s remaining`;
-  }, [busy, progress]);
 
   const fileSizeStr = useMemo(() => {
     const mb = (bps * durationSec) / 8 / 1024 / 1024;
@@ -128,6 +123,7 @@ export function Video360Modal({ open, onOpenChange, modelId }: Video360ModalProp
     setError(null);
     setStatus(null);
     setProgress(0);
+    setEtaLabel(null);
 
     const refs = getVideoCaptureRefs();
     if (!refs) {
@@ -141,6 +137,7 @@ export function Video360Modal({ open, onOpenChange, modelId }: Video360ModalProp
     setBusy(true);
 
     try {
+      const { exposure, postfxConfig } = getRenderFidelity();
       const blob = await recordTurntable({
         gl: refs.gl,
         scene: refs.scene,
@@ -150,7 +147,18 @@ export function Video360Modal({ open, onOpenChange, modelId }: Video360ModalProp
         frameCount: frames,
         fps,
         bitrate: bps,
-        onProgress: (p) => setProgress(p),
+        exposure,
+        postfxConfig,
+        onProgress: (p) => {
+          setProgress(p);
+          const start = startedAtRef.current;
+          if (p > 0.01 && start > 0) {
+            const elapsed = (performance.now() - start) / 1000;
+            const total = elapsed / p;
+            const remaining = Math.max(0, total - elapsed);
+            setEtaLabel(`~${Math.round(remaining)}s remaining`);
+          }
+        },
         signal: controller.signal,
       });
 
@@ -174,6 +182,7 @@ export function Video360Modal({ open, onOpenChange, modelId }: Video360ModalProp
       }
     } finally {
       setBusy(false);
+      setEtaLabel(null);
       abortRef.current = null;
     }
   }
@@ -183,7 +192,7 @@ export function Video360Modal({ open, onOpenChange, modelId }: Video360ModalProp
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleDialogOpenChange}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto border-border bg-card sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-xl text-foreground">
@@ -288,7 +297,7 @@ export function Video360Modal({ open, onOpenChange, modelId }: Video360ModalProp
               </div>
               <div className="flex items-center justify-between text-[11px] text-muted-foreground">
                 <span>{Math.round(progress * 100)}%</span>
-                {estimatedTimeStr ? <span>{estimatedTimeStr}</span> : null}
+                {etaLabel ? <span>{etaLabel}</span> : null}
               </div>
             </div>
           ) : null}
@@ -319,7 +328,7 @@ export function Video360Modal({ open, onOpenChange, modelId }: Video360ModalProp
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => onOpenChange(false)}
+                onClick={() => handleDialogOpenChange(false)}
                 className="border-border"
               >
                 Close

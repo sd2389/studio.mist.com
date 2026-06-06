@@ -1,8 +1,11 @@
+import { isCatalogMaterialRef, parseCatalogMaterialSlug } from "@/lib/catalog/catalog-material-ref";
 import { GEM_CONFIGS, isGemPresetId } from "@/lib/gem-gpu/gem-configs";
+import type { SlotMaterialRef } from "@/lib/library/custom-material-ref";
+import { useCatalogParamsStore } from "@/stores/catalog-params-store";
 import type { MaterialPresetId } from "@/stores/material-preset-store";
 
-/** Visible-on-chip colour (sRGB hex) for every preset. "original" is shown as a neutral graphite. */
-const METAL_HEX: Record<Exclude<MaterialPresetId, "original">, string> = {
+/** Visible-on-chip colour (sRGB hex) for core metal presets. Gems resolve via GEM_CONFIGS. */
+const METAL_HEX: Partial<Record<MaterialPresetId, string>> = {
   "gold-24k": "#FFC940",
   "gold-22k": "#FFC658",
   "gold-18k-yellow": "#F5D785",
@@ -52,13 +55,29 @@ const METAL_HEX: Record<Exclude<MaterialPresetId, "original">, string> = {
   pearl: "#F8F1E6",
 };
 
-export function getPresetSwatchColor(id: MaterialPresetId): string {
+export function getPresetSwatchColor(id: MaterialPresetId | SlotMaterialRef): string {
   if (id === "original") return "#52525B";
+  if (isCatalogMaterialRef(id)) {
+    const slug = parseCatalogMaterialSlug(id);
+    if (!slug) return "#9CA3AF";
+    const store = useCatalogParamsStore.getState();
+    const gem = store.getGemParams(slug);
+    if (gem && typeof gem.baseColor === "string") return gem.baseColor;
+    const metal = store.getMetalParams(slug);
+    if (metal && typeof metal.color === "string") return metal.color;
+    return "#9CA3AF";
+  }
   if (isGemPresetId(id) && GEM_CONFIGS[id]) return GEM_CONFIGS[id].baseColor;
   return METAL_HEX[id] ?? "#9CA3AF";
 }
 
 /** Whether the preset is transmissive (gem-shaped chip) or opaque (metal-shaped chip). */
-export function isTransmissive(id: MaterialPresetId): boolean {
-  return id !== "original" && isGemPresetId(id);
+export function isTransmissive(id: MaterialPresetId | SlotMaterialRef): boolean {
+  if (id === "original") return false;
+  if (isCatalogMaterialRef(id)) {
+    const slug = parseCatalogMaterialSlug(id);
+    if (!slug) return false;
+    return useCatalogParamsStore.getState().getGemParams(slug) !== null;
+  }
+  return isGemPresetId(id);
 }

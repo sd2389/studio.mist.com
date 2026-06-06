@@ -11,7 +11,7 @@ Browser-based jewelry rendering studio. CAD upload → photoreal renders → 360
 - **Dockerized** — one command starts everything
 
 ## Project docs
-Living docs in [`../vault/`](../vault/). Start with [`../vault/README.md`](../vault/README.md).
+See [`docs/`](docs/) — architecture, ownership, quality gates, and [DECISIONS.md](docs/DECISIONS.md).
 
 ---
 
@@ -65,7 +65,7 @@ The host dev server hot-reloads on save; backend + DB stay isolated.
 
 ## Run — bare metal (no Docker)
 
-Possible but more work. See `vault/` if you really want this path.
+Possible but more work. See `docs/ARCHITECTURE.md` for the hybrid dev layout.
 
 ---
 
@@ -89,6 +89,14 @@ docker compose down -v && docker compose up -d
 ### Production
 Set `DATABASE_URL=postgresql+psycopg2://user:pass@host:5432/dbname` and run `alembic upgrade head` on deploy. Compose-managed Postgres is dev-only — use managed Postgres (Neon, Supabase, RDS) in prod.
 
+### Production storage + CDN
+1. Create an S3 or Cloudflare R2 bucket; enable CORS for `PUT` from your app origin.
+2. Set `AWS_BUCKET`, credentials, and (for R2) `AWS_S3_ENDPOINT` + `AWS_S3_FORCE_PATH_STYLE=true` on **backend** and **web** (presign route).
+3. Point a CDN at the bucket; set `PUBLIC_CDN_ORIGIN` (backend) and `NEXT_PUBLIC_CDN_ORIGIN` (web build).
+4. Optional: serve catalog HDRIs from a dedicated static origin via `NEXT_PUBLIC_SOURCE_ASSET_ORIGIN`.
+5. Sync CC0 HDRIs after deploy: `docker compose exec backend python -m scripts.fetch_cc0_hdris`.
+6. Uploads set `Cache-Control` per key prefix (`models/` immutable 1y, `thumbnails/` 1d, `catalog/` 7d).
+
 ---
 
 ## Env vars
@@ -98,7 +106,11 @@ Set `DATABASE_URL=postgresql+psycopg2://user:pass@host:5432/dbname` and run `ale
 | `DATABASE_URL` | backend | `postgresql+psycopg2://studio:studio@postgres:5432/studio` | Postgres connection |
 | `NEXT_PUBLIC_API_URL` | web (build-time) | `http://localhost:8765` | Browser → FastAPI |
 | `API_URL` | web (runtime) | `http://backend:8765` | Server-side proxy → FastAPI over internal Docker network |
-| `AWS_BUCKET` / `AWS_REGION` | backend | — | S3 for model + render storage |
+| `AWS_BUCKET` / `AWS_REGION` | backend + web | — | S3 or R2 for GLB, thumbnails, renders |
+| `AWS_S3_ENDPOINT` / `AWS_S3_FORCE_PATH_STYLE` | backend + web | — | Cloudflare R2 (or other S3-compatible) |
+| `PUBLIC_CDN_ORIGIN` | backend | — | CDN base for `model_url` / `thumbnail_url` in API responses |
+| `NEXT_PUBLIC_CDN_ORIGIN` | web (build-time) | — | Browser loads GLB/thumbnails directly from CDN |
+| `NEXT_PUBLIC_SOURCE_ASSET_ORIGIN` | web (build-time) | — | Clean-room HDRIs/catalog assets (optional separate origin) |
 | `AI_BACKGROUND_MODE` | backend | `stub` | `off` / `stub` / `sdxl` (GPU host required) |
 | `PUBLIC_API_BASE` | backend | `http://localhost:8765` | Absolute base for `result_url` in AI BG responses |
 | `CORS_ORIGINS` | backend | `localhost:3000,127.0.0.1:3000` | Comma-separated CORS allowlist |

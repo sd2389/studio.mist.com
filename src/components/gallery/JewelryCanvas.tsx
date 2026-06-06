@@ -5,12 +5,15 @@ import { Center, ContactShadows, Environment, OrbitControls } from "@react-three
 import { Suspense, useEffect, useMemo } from "react";
 import * as THREE from "three";
 import { GemGpuDiamondShimmer } from "@/components/DiamondGem";
-import { HiresExportBridge } from "@/components/viewer/HiresExportBridge";
-import { OrbitControlsBridge } from "@/components/viewer/OrbitControlsBridge";
-import { ScreenshotBridge } from "@/components/viewer/ScreenshotBridge";
-import { TransparentCaptureBridge } from "@/components/viewer/TransparentCaptureBridge";
-import { VideoCaptureBridge } from "@/components/viewer/VideoCaptureBridge";
-import { ViewerPostFX } from "@/components/viewer/ViewerPostFX";
+import {
+  HiresExportBridge,
+  OrbitControlsBridge,
+  RenderFidelityBridge,
+  ScreenshotBridge,
+  TransparentCaptureBridge,
+  VideoCaptureBridge,
+} from "@/features/render";
+import { ViewerPostFX } from "@/features/viewer";
 import { createGemMaterial } from "@/lib/gem-gpu/gem-physical-material";
 import { isGemPresetId } from "@/lib/gem-gpu/gem-configs";
 import { getRole, type JewelryInfo } from "@/lib/jewelry/assembly";
@@ -107,6 +110,7 @@ export function JewelryCanvas({ piece, preset, autoRotate, lighting }: JewelryCa
           autoRotateSpeed={0.6}
         />
         <ViewerPostFX />
+        <RenderFidelityBridge exposure={exposure} />
         <ScreenshotBridge />
         <TransparentCaptureBridge />
         <HiresExportBridge />

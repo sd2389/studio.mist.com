@@ -60,3 +60,32 @@ export const ZOOM_PRESETS: { id: string; label: string; factor: number }[] = [
   { id: "50", label: "50%", factor: 2 },
   { id: "25", label: "25%", factor: MAX_FACTOR * 0.6 },
 ];
+
+export type CameraPose = {
+  cameraPosition: [number, number, number];
+  target: [number, number, number];
+};
+
+export function captureCurrentCameraPose(): CameraPose | null {
+  const c = useOrbitControlsStore.getState().controls;
+  if (!c) return null;
+  return {
+    cameraPosition: [c.object.position.x, c.object.position.y, c.object.position.z],
+    target: [c.target.x, c.target.y, c.target.z],
+  };
+}
+
+export function applyCameraPose(pose: CameraPose): void {
+  const c = useOrbitControlsStore.getState().controls;
+  if (!c) return;
+  c.object.position.set(...pose.cameraPosition);
+  c.target.set(...pose.target);
+  c.update();
+}
+
+export function resetCameraToDefault(): void {
+  applyCameraPose({
+    cameraPosition: [0, 0.35, 2.2],
+    target: [0, 0, 0],
+  });
+}

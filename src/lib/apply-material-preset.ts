@@ -6,8 +6,24 @@ import {
 } from "@/lib/gem-gpu/apply-split-diamond";
 import { createGemMaterial } from "@/lib/gem-gpu/gem-physical-material";
 import { isGemPresetId } from "@/lib/gem-gpu/gem-configs";
+import {
+  createGemMaterialFromParams,
+  createMetalMaterialFromParams,
+} from "@/lib/library/create-material-from-params";
+import {
+  isCatalogMaterialRef,
+  parseCatalogMaterialSlug,
+} from "@/lib/catalog/catalog-material-ref";
+import {
+  isCustomMaterialRef,
+  parseCustomMaterialId,
+  type SlotMaterialRef,
+} from "@/lib/library/custom-material-ref";
+import { useCatalogParamsStore } from "@/stores/catalog-params-store";
 import { detectSlots, type PersistedSlotTokens, type SlotId } from "@/lib/slot-materials/detect-slots";
+import { resolvePresetForSlot, sanitizeSlotSelections, type SlotSelectionMap } from "@/lib/slot-materials/material-rules";
 import type { FinishId, MaterialPresetId } from "@/stores/material-preset-store";
+import { useUserLibraryStore } from "@/stores/user-library-store";
 
 type JewelryRole = "metal" | "gem" | "accent-gem";
 const ROLE_KEY = "jewelryRole" as const;
@@ -103,22 +119,62 @@ export function applyMaterialPreset(
   });
 }
 
-type SlotSelectionMap = Record<string, MaterialPresetId>;
+type SlotSelectionMapLegacy = Record<string, MaterialPresetId>;
 
-function fallbackPresetForSlot(
-  slot: SlotId,
-  selections: SlotSelectionMap,
-  fallbackPreset: MaterialPresetId,
-): MaterialPresetId {
-  const direct = selections[slot];
-  if (direct) return direct;
-
-  if (slot === "Heads") return selections["Metal 01"] ?? fallbackPreset;
-  if (slot.startsWith("Metal")) return fallbackPreset;
-  if (slot.startsWith("Gem") || slot.startsWith("Accent")) {
-    return selections["Gem 01"] ?? "diamond";
+function buildCatalogTemplate(ref: SlotMaterialRef, role: JewelryRole | "any", finish: FinishId): THREE.Material | null {
+  if (!isCatalogMaterialRef(ref)) return null;
+  const slug = parseCatalogMaterialSlug(ref);
+  if (!slug) return null;
+  const store = useCatalogParamsStore.getState();
+  if (role === "gem" || role === "accent-gem") {
+    const params = store.getGemParams(slug);
+    if (params) return createGemMaterialFromParams(params);
+  } else {
+    const params = store.getMetalParams(slug);
+    if (params) return createMetalMaterialFromParams(params, finish);
   }
-  return fallbackPreset;
+  return null;
+}
+
+function buildCustomTemplate(ref: SlotMaterialRef): THREE.Material | null {
+  if (!isCustomMaterialRef(ref)) return null;
+  const id = parseCustomMaterialId(ref);
+  if (id === null) return null;
+  const item = useUserLibraryStore.getState().getMaterial(id);
+  if (!item) return null;
+  if (item.kind === "gem") return createGemMaterialFromParams(item.params);
+  const finish =
+    typeof item.params.finish === "string" ? (item.params.finish as FinishId) : "polished";
+  return createMetalMaterialFromParams(item.params, finish);
+}
+
+function buildTemplate(
+  preset: SlotMaterialRef,
+  role: JewelryRole | "any",
+  finish: FinishId,
+): THREE.Material {
+  const catalog = buildCatalogTemplate(preset, role, finish);
+  if (catalog) return catalog;
+
+  const custom = buildCustomTemplate(preset);
+  if (custom) return custom;
+
+  if (role === "metal" && isGemPresetId(preset as MaterialPresetId)) {
+    return createPresetMaterial("gold-14k-yellow", finish);
+  }
+  if (role === "gem" && !isGemPresetId(preset as MaterialPresetId) && preset !== "original") {
+    return createGemMaterial("diamond");
+  }
+  if (preset !== "original" && isGemPresetId(preset as MaterialPresetId)) {
+    return createGemMaterial(preset as Parameters<typeof createGemMaterial>[0]);
+  }
+  if (preset !== "original" && !isCustomMaterialRef(preset)) {
+    return createPresetMaterial(preset as Exclude<MaterialPresetId, "original">, finish);
+  }
+  if (role === "gem") {
+    return createGemMaterial("diamond");
+  }
+  return createPresetMaterial("gold-14k-yellow", finish);
 }
 
 function inferSlotRole(slot: SlotId): JewelryRole | "any" {
@@ -127,30 +183,14 @@ function inferSlotRole(slot: SlotId): JewelryRole | "any" {
   return "any";
 }
 
-function buildTemplate(
-  preset: MaterialPresetId,
-  role: JewelryRole | "any",
-  finish: FinishId,
-): THREE.Material {
-  if (preset !== "original" && isGemPresetId(preset)) {
-    return createGemMaterial(preset as Parameters<typeof createGemMaterial>[0]);
-  }
-  if (preset !== "original") {
-    return createPresetMaterial(preset, finish);
-  }
-  if (role === "gem") {
-    return createGemMaterial("diamond");
-  }
-  return createPresetMaterial("gold-14k-yellow", finish);
-}
-
 export function applyMaterialPresetBySlot(
   root: THREE.Object3D,
-  selections: SlotSelectionMap,
+  selections: SlotSelectionMap | SlotSelectionMapLegacy,
   fallbackPreset: MaterialPresetId,
   slotTokens?: PersistedSlotTokens,
   finish: FinishId = "polished",
 ): void {
+  const sanitizedSelections = sanitizeSlotSelections(selections as SlotSelectionMap);
   const slotMap = detectSlots(root, slotTokens);
   const realSlots = [...slotMap.keys()].filter((slot) => slot !== "default");
   if (realSlots.length === 0) {
@@ -158,7 +198,7 @@ export function applyMaterialPresetBySlot(
     return;
   }
 
-  if (fallbackPreset === "original" && Object.keys(selections).length === 0) {
+  if (fallbackPreset === "original" && Object.keys(sanitizedSelections).length === 0) {
     root.traverse((obj) => {
       if (!(obj instanceof THREE.Mesh)) return;
       applyShadowFlags(obj);
@@ -168,7 +208,7 @@ export function applyMaterialPresetBySlot(
   }
 
   for (const [slot, meshes] of slotMap.entries()) {
-    const resolvedPreset = fallbackPresetForSlot(slot, selections, fallbackPreset);
+    const resolvedPreset = resolvePresetForSlot(slot, sanitizedSelections, fallbackPreset, slotTokens);
     const role = inferSlotRole(slot);
     for (const mesh of meshes) {
       applyShadowFlags(mesh);

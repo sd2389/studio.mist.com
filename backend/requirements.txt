@@ -8,7 +8,13 @@ boto3>=1.35.0
 celery>=5.4.0
 redis>=5.2.0
 pydantic-settings>=2.6.0
+passlib[bcrypt]>=1.7.4
+bcrypt>=4.0,<5.0
+email-validator>=2.2.0
 Pillow>=10.4.0
 rhino3dm>=8.9.0
+sentry-sdk[fastapi]>=2.35.0
+stripe>=12.0.0
+pytest>=8.0.0
 # Optional SDXL inpaint (set AI_BACKGROUND_MODE=sdxl, CUDA recommended):
 # pip install torch diffusers accelerate transformers safetensors

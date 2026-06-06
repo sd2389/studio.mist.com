@@ -1,15 +1,10 @@
 "use client";
 
-import { Canvas, useLoader } from "@react-three/fiber";
+import { Canvas } from "@react-three/fiber";
 import { Center, Environment, OrbitControls, useGLTF } from "@react-three/drei";
 import { Suspense, useMemo } from "react";
 import * as THREE from "three";
-import { STLLoader } from "three-stdlib";
-import { Rhino3dmLoader } from "three/examples/jsm/loaders/3DMLoader.js";
 import { modelExtFromUrl } from "@/lib/model-key";
-import { smoothStlGeometry } from "@/lib/stl-smoothing";
-
-const RHINO3DM_LIBRARY_PATH = "https://cdn.jsdelivr.net/npm/rhino3dm@8.17.0/";
 
 type ScenePreviewCanvasProps = {
   modelUrl: string;
@@ -35,75 +30,36 @@ function GltfPreview({ url }: { url: string }) {
   return <primitive object={model} />;
 }
 
-function Rhino3dmPreview({ url }: { url: string }) {
-  const loaded = useLoader(Rhino3dmLoader, url, (loader) => {
-    (loader as Rhino3dmLoader).setLibraryPath(RHINO3DM_LIBRARY_PATH);
-  });
-  const node = useMemo(() => {
-    const cloned = loaded.clone(true);
-    cloned.traverse((o) => {
-      if (o instanceof THREE.Mesh && o.geometry) {
-        o.geometry.computeVertexNormals();
-      }
-    });
-    fitToUnit(cloned);
-    return cloned;
-  }, [loaded]);
-  return <primitive object={node} />;
-}
-
-function StlPreview({ url }: { url: string }) {
-  const geometry = useLoader(STLLoader, url) as THREE.BufferGeometry;
-  const node = useMemo(() => {
-    const geom = smoothStlGeometry(geometry);
-    const mesh = new THREE.Mesh(
-      geom,
-      new THREE.MeshPhysicalMaterial({
-        color: 0xd4d4d8,
-        metalness: 1,
-        roughness: 0.18,
-        clearcoat: 0.5,
-        clearcoatRoughness: 0.06,
-        envMapIntensity: 1.4,
-      }),
-    );
-    const group = new THREE.Group();
-    group.add(mesh);
-    fitToUnit(group);
-    return group;
-  }, [geometry]);
-  return <primitive object={node} />;
+function LegacyPreviewNotice() {
+  return (
+    <div className="flex h-full items-center justify-center px-4 text-center text-[11px] text-muted-foreground">
+      Legacy format — open in viewer after re-upload as GLB
+    </div>
+  );
 }
 
 export function ScenePreviewCanvas({ modelUrl }: ScenePreviewCanvasProps) {
   const ext = modelExtFromUrl(modelUrl);
+  const isGltf = ext === "glb" || ext === "gltf";
+
   return (
-    <Canvas
-      className="size-full"
-      camera={{ position: [1.5, 0.9, 1.5], fov: 38, near: 0.01, far: 50 }}
-      gl={{ alpha: true, antialias: true, toneMappingExposure: 0.95 }}
-      dpr={[1, 2]}
-    >
-      <ambientLight intensity={0.4} />
-      <Suspense fallback={null}>
-        <Environment files="/hdr/photo_studio_01_1k.hdr" background={false} />
-        <Center>
-          {ext === "stl" ? (
-            <StlPreview url={modelUrl} />
-          ) : ext === "3dm" ? (
-            <Rhino3dmPreview url={modelUrl} />
-          ) : (
-            <GltfPreview url={modelUrl} />
-          )}
-        </Center>
-        <OrbitControls
-          enableZoom={false}
-          enablePan={false}
-          enableRotate={false}
-          autoRotate
-          autoRotateSpeed={1.1}
-        />
-      </Suspense>
-    </Canvas>
+    <div className="aspect-[4/3] w-full overflow-hidden rounded-xl border border-border/60 bg-muted/20">
+      {isGltf ? (
+        <Canvas camera={{ position: [0, 0.2, 2.4], fov: 35 }} gl={{ antialias: true }}>
+          <Suspense fallback={null}>
+            <color attach="background" args={["#f4f1ea"]} />
+            <ambientLight intensity={0.55} />
+            <directionalLight position={[2, 3, 2]} intensity={1} />
+            <Environment preset="studio" />
+            <Center>
+              <GltfPreview url={modelUrl} />
+            </Center>
+            <OrbitControls enablePan={false} enableZoom={false} autoRotate autoRotateSpeed={0.8} />
+          </Suspense>
+        </Canvas>
+      ) : (
+        <LegacyPreviewNotice />
+      )}
+    </div>
   );
 }

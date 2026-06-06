@@ -4,6 +4,15 @@
 This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
 <!-- END:nextjs-agent-rules -->
 
+## Project conventions
+
+- Architecture: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+- Code standards (KISS / SRP): [`docs/CODE-STANDARDS.md`](docs/CODE-STANDARDS.md)
+- Feature ownership: [`docs/OWNERSHIP.md`](docs/OWNERSHIP.md)
+- PR checklist: [`docs/REVIEW-CHECKLIST.md`](docs/REVIEW-CHECKLIST.md)
+- Quality gates & smoke: [`docs/QUALITY-GATES.md`](docs/QUALITY-GATES.md)
+- How to add a feature: [`docs/ENGINEERING-PLAYBOOK.md`](docs/ENGINEERING-PLAYBOOK.md)
+
 ## Cursor Cloud specific instructions
 
 ### Services overview
@@ -31,4 +40,4 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - `AI_BACKGROUND_MODE` defaults to `stub` — no GPU or SDXL deps needed for dev.
 - AWS S3 is optional; without `AWS_BUCKET` set, uploads go to `backend/uploads/` on the local filesystem.
 - Lint: `npm run lint` (alias for `eslint`). Build: `npm run build`. See `package.json` scripts.
-- Backend has no dedicated test suite. Frontend has no test runner configured.
+- Backend tests: `cd backend && .venv/bin/python -m pytest`. Frontend has no test runner configured.

@@ -15,6 +15,7 @@ import { Switch } from "@/components/ui/switch";
 import { renderAtResolution } from "@/lib/offscreen-render";
 import { cn } from "@/lib/utils";
 import { getHiresRefs } from "@/stores/hires-export-store";
+import { getRenderFidelity } from "@/stores/render-fidelity-store";
 
 type ResolutionId = "1080p" | "4k" | "8k";
 type AspectId = "16:9" | "1:1" | "4:3";
@@ -75,6 +76,7 @@ export function HiResExportModal({ open, onOpenChange, modelId }: HiResExportMod
 
     setBusy(true);
     try {
+      const { exposure, postfxConfig } = getRenderFidelity();
       const blob = await renderAtResolution({
         gl: refs.gl,
         scene: refs.scene,
@@ -82,6 +84,8 @@ export function HiResExportModal({ open, onOpenChange, modelId }: HiResExportMod
         width,
         height,
         transparent,
+        exposure,
+        postfxConfig,
       });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -107,8 +111,8 @@ export function HiResExportModal({ open, onOpenChange, modelId }: HiResExportMod
             High-resolution export
           </DialogTitle>
           <DialogDescription className="text-muted-foreground">
-            Render the current view at production resolution. Uses the same lighting and materials
-            as the viewer.
+            Render the current view at production resolution with the same bloom, ambient
+            occlusion, and ACES color pipeline as the live viewport.
           </DialogDescription>
         </DialogHeader>
 

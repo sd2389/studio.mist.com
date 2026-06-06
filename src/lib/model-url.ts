@@ -1,23 +1,28 @@
-import { getPublicApiUrl } from "@/lib/api-url";
+import { resolvePublicAssetUrl } from "@/lib/public-asset-url";
 import { SUPPORTED_MODEL_EXTS } from "@/lib/model-key";
 
 const EXT_RE = new RegExp(`\\.(${SUPPORTED_MODEL_EXTS.join("|")})$`, "i");
 
-/** Resolve loader URL: static files under `/public` or FastAPI `/files/...` when `NEXT_PUBLIC_API_URL` is set. */
+/** Resolve loader URL from a stored model key (`models/uuid-name.glb`). */
+export function resolveModelUrlFromKey(modelKey: string): string {
+  const normalized = modelKey.replace(/^\/+/, "");
+  if (!normalized) return "";
+  if (normalized.startsWith("http://") || normalized.startsWith("https://")) return normalized;
+  return resolvePublicAssetUrl(normalized);
+}
+
+/** Resolve loader URL from viewer id or full model key. */
 export function resolveModelUrl(id: string): string {
   if (id === "clearcoat") {
     return "/models/clearcoat/ClearcoatRing.gltf";
   }
 
-  const hasExt = EXT_RE.test(id);
-  const filename = hasExt ? id : `${id}.glb`;
-
-  const base = getPublicApiUrl();
-  if (base) {
-    const key = filename.includes("/") ? filename : `models/${filename}`;
-    const path = key.split("/").map(encodeURIComponent).join("/");
-    return `${base}/files/${path}`;
+  const trimmed = id.replace(/^\/+/, "");
+  if (trimmed.startsWith("models/")) {
+    return resolveModelUrlFromKey(trimmed);
   }
 
-  return `/models/${filename}`;
+  const hasExt = EXT_RE.test(trimmed);
+  const filename = hasExt ? trimmed : `${trimmed}.glb`;
+  return resolveModelUrlFromKey(`models/${filename}`);
 }

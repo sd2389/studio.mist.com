@@ -2,13 +2,19 @@ import Link from "next/link";
 import { Gem } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { StonesGrid } from "@/components/stones/StonesGrid";
+import { FeatureDisabledPage } from "@/features/feature-flags";
+import { fetchFeatureFlagsServer, isFeatureEnabled } from "@/lib/feature-flags/server-fetch";
 import { cn } from "@/lib/utils";
 
 export const metadata = {
   title: "Diamond cuts · DevJewels Studio",
 };
 
-export default function StonesPage() {
+export default async function StonesPage() {
+  const flags = await fetchFeatureFlagsServer();
+  if (!isFeatureEnabled(flags, "stones")) {
+    return <FeatureDisabledPage title="Stone viewer unavailable" />;
+  }
   return (
     <div className="relative min-h-[100dvh] bg-app-canvas">
       <div className="relative z-10 mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:py-10">

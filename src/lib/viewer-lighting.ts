@@ -22,35 +22,35 @@ export const HDR_FILE_BY_LIGHTING: Record<LightingPresetId, string> = {
  * give the product something to contrast against without going dark.
  */
 export const BG_BY_LIGHTING: Record<LightingPresetId, string> = {
-  studio: "#E5E3DC",
-  soft: "#DDD9D1",
-  dark: "#3A3A3D",
+  studio: "#ECE7DD",
+  soft: "#E4DDD2",
+  dark: "#35353A",
 };
 
 /** Multiplied by the env HDRI contribution; lower = more contrasty product reads. */
 export const AMBIENT_BY_LIGHTING: Record<LightingPresetId, number> = {
-  studio: 0.4,
-  soft: 0.34,
-  dark: 0.22,
+  studio: 0.32,
+  soft: 0.28,
+  dark: 0.2,
 };
 
 /** Cast-shadow key light. */
 export const SPOT_BY_LIGHTING: Record<LightingPresetId, number> = {
-  studio: 0.95,
-  soft: 0.78,
-  dark: 0.6,
+  studio: 1.1,
+  soft: 0.9,
+  dark: 0.7,
 };
 
 /** Tone-mapping exposure for the renderer. <1 brings highlights down. */
 export const TONE_EXPOSURE_BY_LIGHTING: Record<LightingPresetId, number> = {
-  studio: 0.9,
-  soft: 0.85,
-  dark: 0.95,
+  studio: 0.86,
+  soft: 0.82,
+  dark: 0.9,
 };
 
 /** Contact-shadow opacity per lighting mode (used by drei `<ContactShadows>`). */
 export const CONTACT_SHADOW_OPACITY: Record<LightingPresetId, number> = {
-  studio: 0.28,
-  soft: 0.22,
-  dark: 0.4,
+  studio: 0.24,
+  soft: 0.2,
+  dark: 0.34,
 };

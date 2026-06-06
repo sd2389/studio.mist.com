@@ -14,12 +14,12 @@ type Props = { id: JewelryId; label: string; description: string };
 
 export function JewelryTile({ id, label, description }: Props) {
   const piece = getJewelryById(id);
-  if (!piece) return null;
-  const root = useMemo(() => piece.build(), [piece]);
+  const root = useMemo(() => (piece ? piece.build() : null), [piece]);
   const metal = useMemo(() => createPresetMaterial("gold-18k-yellow"), []);
   const gem = useMemo(() => createGemMaterial("diamond"), []);
 
   useEffect(() => {
+    if (!root) return;
     root.traverse((o) => {
       if (!(o instanceof THREE.Mesh)) return;
       const role = getRole(o);
@@ -27,6 +27,8 @@ export function JewelryTile({ id, label, description }: Props) {
       else if (role === "gem" || role === "accent-gem") o.material = gem;
     });
   }, [root, metal, gem]);
+
+  if (!piece || !root) return null;
 
   return (
     <Link

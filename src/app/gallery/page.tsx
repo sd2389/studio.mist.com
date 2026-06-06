@@ -2,13 +2,19 @@ import Link from "next/link";
 import { Gem } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { JewelryGrid } from "@/components/gallery/JewelryGrid";
+import { FeatureDisabledPage } from "@/features/feature-flags";
+import { fetchFeatureFlagsServer, isFeatureEnabled } from "@/lib/feature-flags/server-fetch";
 import { cn } from "@/lib/utils";
 
 export const metadata = {
   title: "Demo jewelry · DevJewels Studio",
 };
 
-export default function GalleryPage() {
+export default async function GalleryPage() {
+  const flags = await fetchFeatureFlagsServer();
+  if (!isFeatureEnabled(flags, "gallery")) {
+    return <FeatureDisabledPage title="Gallery unavailable" />;
+  }
   return (
     <div className="relative min-h-[100dvh] bg-app-canvas">
       <div className="relative z-10 mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:py-10">

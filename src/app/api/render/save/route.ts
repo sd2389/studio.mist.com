@@ -1,11 +1,15 @@
 import { NextResponse } from "next/server";
-import { getServerApiUrl } from "@/lib/api-url";
+import { readUpstreamJson, upstreamError, upstreamFetch } from "@/lib/auth/upstream";
 
 type SaveBody = {
   modelId?: string;
   material?: string;
   lighting?: string;
   image?: string;
+  scene_id?: number;
+  kind?: string;
+  width?: number;
+  height?: number;
 };
 
 export async function POST(request: Request) {
@@ -20,42 +24,31 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "Expected data URL image" }, { status: 400 });
   }
 
-  const api = getServerApiUrl();
-  if (!api) {
-    return NextResponse.json(
-      { ok: false, error: "Set API_URL or NEXT_PUBLIC_API_URL to reach the FastAPI /renders endpoint" },
-      { status: 503 },
-    );
-  }
-
-  const upstream = await fetch(`${api}/renders`, {
+  const upstream = await upstreamFetch("/renders", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       image: body.image,
       model_id: body.modelId ?? null,
+      scene_id: body.scene_id ?? null,
       material: body.material ?? null,
       lighting: body.lighting ?? null,
+      kind: body.kind ?? "still",
+      width: body.width ?? null,
+      height: body.height ?? null,
     }),
   });
 
-  const json = (await upstream.json()) as Record<string, unknown>;
+  const json = await readUpstreamJson(upstream);
   if (!upstream.ok) {
-    const detail =
-      typeof json.detail === "string"
-        ? json.detail
-        : Array.isArray(json.detail)
-          ? JSON.stringify(json.detail)
-          : typeof json.error === "string"
-            ? json.error
-            : "Upstream error";
-    return NextResponse.json({ ok: false, error: detail }, { status: upstream.status });
+    return NextResponse.json(
+      { ok: false, error: upstreamError(json, "Upstream error") },
+      { status: upstream.status },
+    );
   }
 
   return NextResponse.json({
     ok: true,
-    key: json.key,
-    bytes: json.bytes,
+    ...(json as Record<string, unknown>),
     modelId: body.modelId ?? null,
     material: body.material ?? null,
     lighting: body.lighting ?? null,

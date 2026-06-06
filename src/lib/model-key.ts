@@ -4,9 +4,11 @@ export type ModelExt = (typeof SUPPORTED_MODEL_EXTS)[number];
 
 const EXT_RE = new RegExp(`\\.(${SUPPORTED_MODEL_EXTS.join("|")})$`, "i");
 
-/** Derive viewer route id from stored model key — `models/abc-ring.stl` → `abc-ring.stl`. Keeps extension. */
+/** Derive viewer route id from stored model key. Keeps extension. */
 export function viewerIdFromModelKey(key: string): string {
   const trimmed = key.replace(/^\/+/, "");
+  const customerMatch = trimmed.match(/^customers\/\d+\/models\/(.+)$/);
+  if (customerMatch) return customerMatch[1];
   return trimmed.startsWith("models/") ? trimmed.slice("models/".length) : trimmed;
 }
 

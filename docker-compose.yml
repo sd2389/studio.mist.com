@@ -31,8 +31,16 @@ services:
       CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
       AI_BACKGROUND_MODE: stub
       PUBLIC_API_BASE: http://localhost:8765
+      APP_PUBLIC_URL: http://localhost:3000
+      EMAIL_FROM: studio@devjewels.com
+      CONTACT_NOTIFY_EMAIL: support@devjewels.com
+      ADMIN_EMAILS: sd2389@njit.edu
       # AWS_BUCKET: ${AWS_BUCKET-}
-      # AWS_REGION: ${AWS_REGION-}
+      # AWS_REGION: ${AWS_REGION:-auto}
+      # AWS_S3_ENDPOINT: ${AWS_S3_ENDPOINT-}
+      # AWS_S3_FORCE_PATH_STYLE: ${AWS_S3_FORCE_PATH_STYLE:-true}
+      # PUBLIC_CDN_ORIGIN: ${PUBLIC_CDN_ORIGIN-}
+      # PUBLIC_API_BASE: ${PUBLIC_API_BASE:-http://localhost:8765}
     volumes:
       - studio_uploads:/app/uploads
     healthcheck:
@@ -49,6 +57,8 @@ services:
       args:
         # Baked into the JS bundle. Browser uses this to hit the API directly.
         NEXT_PUBLIC_API_URL: http://localhost:8765
+        # NEXT_PUBLIC_CDN_ORIGIN: https://cdn.studio.devjewels.com
+        # NEXT_PUBLIC_SOURCE_ASSET_ORIGIN: https://assets.studio.devjewels.com
     restart: unless-stopped
     depends_on:
       backend:

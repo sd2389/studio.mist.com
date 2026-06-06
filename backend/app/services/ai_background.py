@@ -5,14 +5,12 @@ from __future__ import annotations
 import base64
 import io
 import re
-import uuid
 from typing import TYPE_CHECKING
 
-import boto3
-from botocore.exceptions import BotoCoreError, ClientError
 from PIL import Image
 
-from app.config import get_settings
+from app.core import storage
+from app.core import storage_keys as keys
 
 if TYPE_CHECKING:
     pass
@@ -90,29 +88,7 @@ def run_sdxl_inpaint(im_rgba: Image.Image, prompt: str) -> bytes:
     return buf.getvalue()
 
 
-def save_ai_png(data: bytes) -> str:
-    settings = get_settings()
-    key = f"ai-renders/{uuid.uuid4().hex}.png"
-    if settings.aws_bucket:
-        try:
-            client = boto3.client("s3", region_name=settings.aws_region or "us-east-1")
-            client.put_object(
-                Bucket=settings.aws_bucket,
-                Key=key,
-                Body=data,
-                ContentType="image/png",
-            )
-        except (BotoCoreError, ClientError) as exc:
-            raise RuntimeError(f"S3 upload failed: {exc}") from exc
-    else:
-        dest = settings.upload_dir / key
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_bytes(data)
+def save_ai_png(data: bytes, user_id: int) -> str:
+    key = keys.ai_render_key(user_id, "png")
+    storage.write_bytes(key, data, content_type="image/png")
     return key
-
-
-def public_file_url(key: str) -> str | None:
-    settings = get_settings()
-    if not settings.public_api_base:
-        return None
-    return f"{settings.public_api_base.rstrip('/')}/files/{key}"

@@ -7,6 +7,8 @@ export type SceneSettingBucketKey =
   | "BACKGROUND"
   | "VJSON";
 
+export type RenderQualityMode = "standard" | "photometric";
+
 export type SlotKind = "metal" | "gem" | "accent" | "default";
 
 export type SlotMaterialOption = {
@@ -22,7 +24,47 @@ export type SlotMaterialConfig = {
   materialOptions: SlotMaterialOption[];
 };
 
-export type SceneSettingsBuckets = Record<SceneSettingBucketKey, string | null>;
+export type SceneAdvancedSettings = {
+  metalEnvRotation?: number;
+  metalEnvIntensity?: number;
+  gemEnvRotation?: number;
+  gemEnvIntensity?: number;
+  exposure?: number;
+  bloom?: number;
+  ao?: boolean;
+};
+
+export type ModelTransform = {
+  position: { x: number; y: number; z: number };
+  rotation: { x: number; y: number; z: number };
+};
+
+export type SavedPose = {
+  id: string;
+  name: string;
+  cameraPosition: [number, number, number];
+  target: [number, number, number];
+  isDefault?: boolean;
+};
+
+export type EmbedSettings = {
+  showChrome?: boolean;
+  autoRotate?: boolean;
+  showTitle?: boolean;
+  brandingText?: string | null;
+  showZoomControls?: boolean;
+  showStudioLink?: boolean;
+};
+
+export type SceneSettingsBuckets = Record<SceneSettingBucketKey, string | null> & {
+  quality_mode?: RenderQualityMode | null;
+  advanced?: SceneAdvancedSettings;
+  modelTransform?: ModelTransform;
+  customBackground?: string | null;
+  poses?: SavedPose[];
+  activePoseId?: string | null;
+  embed?: EmbedSettings;
+};
 
 export type PersistedModelConfig = {
   source: "upload-ingest" | "manual";
@@ -30,6 +72,8 @@ export type PersistedModelConfig = {
   defaultMaterials: Record<string, MaterialPresetId>;
   materialOptionsBySlot: Record<string, SlotMaterialOption[]>;
   slotTokens?: Record<string, string[]>;
+  slotRenames?: Record<string, string>;
+  materialProps?: Record<string, { visible: boolean }>;
   sceneSettings: SceneSettingsBuckets;
 };
 
@@ -60,6 +104,7 @@ const DEFAULT_SCENE_SETTINGS: SceneSettingsBuckets = {
   GROUND: null,
   BACKGROUND: null,
   VJSON: null,
+  quality_mode: "standard",
 };
 
 function inferSlotKind(slotId: string): SlotKind {
@@ -112,11 +157,16 @@ export function buildModelConfigFromSlots(
     slotConfigs.map((slot) => [slot.slotId, slot.materialOptions]),
   );
 
+  const materialProps = Object.fromEntries(
+    slotConfigs.map((slot) => [slot.slotId, { visible: true }]),
+  );
+
   return {
     source: "upload-ingest",
     slots: slotConfigs,
     defaultMaterials,
     materialOptionsBySlot,
+    materialProps,
     sceneSettings: {
       ...DEFAULT_SCENE_SETTINGS,
       ...sceneSettings,
@@ -124,6 +174,18 @@ export function buildModelConfigFromSlots(
   };
 }
 
+export const DEFAULT_MODEL_TRANSFORM: ModelTransform = {
+  position: { x: 0, y: 0, z: 0 },
+  rotation: { x: 0, y: 0, z: 0 },
+};
+
 export function getDefaultSceneSettings(): SceneSettingsBuckets {
   return { ...DEFAULT_SCENE_SETTINGS };
+}
+
+export function getDefaultModelTransform(): ModelTransform {
+  return {
+    position: { ...DEFAULT_MODEL_TRANSFORM.position },
+    rotation: { ...DEFAULT_MODEL_TRANSFORM.rotation },
+  };
 }

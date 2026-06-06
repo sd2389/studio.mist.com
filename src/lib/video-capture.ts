@@ -6,6 +6,20 @@ import {
   Mp4OutputFormat,
   Output,
 } from "mediabunny";
+import { applyViewerColorManagement } from "@/lib/render-color-management";
+import {
+  DEFAULT_VIEWER_POSTFX,
+  type ViewerPostFXConfig,
+} from "@/lib/viewer-postfx-config";
+import {
+  createViewerPostFXComposer,
+  renderWithPostFX,
+} from "@/lib/viewer-postfx-pipeline";
+
+export type CameraPose = {
+  cameraPosition: [number, number, number];
+  target: [number, number, number];
+};
 
 export type RecordTurntableOpts = {
   gl: THREE.WebGLRenderer;
@@ -16,8 +30,14 @@ export type RecordTurntableOpts = {
   frameCount: number;
   fps: number;
   bitrate?: number;
+  exposure?: number;
+  postfxConfig?: ViewerPostFXConfig;
   onProgress?: (p: number) => void;
   signal?: AbortSignal;
+};
+
+export type RecordMultiAngleOpts = RecordTurntableOpts & {
+  poses: CameraPose[];
 };
 
 export const ZIP_FALLBACK_MIME = "application/zip+png-frames";
@@ -76,41 +96,6 @@ function restoreCamera(camera: THREE.PerspectiveCamera, s: ReturnType<typeof sna
   camera.near = s.near;
   camera.far = s.far;
   camera.updateProjectionMatrix();
-}
-
-function createOffscreenTarget(width: number, height: number) {
-  return new THREE.WebGLRenderTarget(width, height, {
-    samples: 4,
-    colorSpace: THREE.SRGBColorSpace,
-    type: THREE.UnsignedByteType,
-    format: THREE.RGBAFormat,
-    depthBuffer: true,
-    stencilBuffer: false,
-  });
-}
-
-function canvasFromTarget(
-  gl: THREE.WebGLRenderer,
-  target: THREE.WebGLRenderTarget,
-  width: number,
-  height: number,
-  workCanvas: HTMLCanvasElement,
-) {
-  const pixels = new Uint8Array(width * height * 4);
-  gl.readRenderTargetPixels(target, 0, 0, width, height, pixels);
-  workCanvas.width = width;
-  workCanvas.height = height;
-  const ctx = workCanvas.getContext("2d");
-  if (!ctx) throw new Error("2D context unavailable");
-  const img = ctx.createImageData(width, height);
-  const stride = width * 4;
-  for (let y = 0; y < height; y++) {
-    const src = (height - 1 - y) * stride;
-    const dst = y * stride;
-    img.data.set(pixels.subarray(src, src + stride), dst);
-  }
-  ctx.putImageData(img, 0, 0);
-  return workCanvas;
 }
 
 async function nextTick() {
@@ -222,43 +207,60 @@ async function encodeZip(
   return new Blob([ab], { type: ZIP_FALLBACK_MIME });
 }
 
-export async function recordTurntable(opts: RecordTurntableOpts): Promise<Blob> {
-  const { gl, scene, camera, width, height, frameCount } = opts;
+function applyPoseToCamera(camera: THREE.PerspectiveCamera, pose: CameraPose): void {
+  camera.position.set(...pose.cameraPosition);
+  camera.lookAt(...pose.target);
+  camera.updateMatrixWorld(true);
+}
+
+export async function recordMultiAngle(opts: RecordMultiAngleOpts): Promise<Blob> {
+  const poses = opts.poses.filter(Boolean);
+  if (poses.length === 0) throw new Error("At least one pose is required");
+
+  const {
+    gl,
+    scene,
+    camera,
+    width,
+    height,
+    frameCount,
+    exposure = gl.toneMappingExposure || 1,
+    postfxConfig = DEFAULT_VIEWER_POSTFX,
+  } = opts;
   if (frameCount < 1) throw new Error("frameCount must be >= 1");
   if (opts.fps < 1) throw new Error("fps must be >= 1");
 
   const camSnap = snapshotCamera(camera);
-  const prevTarget = gl.getRenderTarget();
-  const prevAutoClear = gl.autoClear;
-  const prevToneMapping = gl.toneMapping;
-  const prevToneMappingExposure = gl.toneMappingExposure;
-  const prevOutputColorSpace = gl.outputColorSpace;
+  const framesPerPose = Math.max(1, Math.floor(frameCount / poses.length));
 
-  const radius = Math.max(camera.position.length(), 1e-4);
-  const startY = camera.position.y;
-
-  const offscreenTarget = createOffscreenTarget(width, height);
-  const workCanvas = document.createElement("canvas");
-
-  gl.autoClear = true;
-  gl.toneMapping = THREE.ACESFilmicToneMapping;
-  gl.toneMappingExposure = prevToneMappingExposure || 1;
-  gl.outputColorSpace = THREE.SRGBColorSpace;
+  const canvas = document.createElement("canvas");
+  const renderer = new THREE.WebGLRenderer({
+    canvas,
+    antialias: true,
+    alpha: true,
+    preserveDrawingBuffer: true,
+  });
+  renderer.setSize(width, height, false);
+  applyViewerColorManagement(renderer, exposure);
 
   camera.aspect = width / height;
   camera.updateProjectionMatrix();
 
-  function renderFrameAt(i: number): HTMLCanvasElement {
-    const angle = (i / frameCount) * Math.PI * 2;
-    camera.position.set(Math.cos(angle) * radius, startY, Math.sin(angle) * radius);
-    camera.lookAt(0, 0, 0);
-    camera.updateMatrixWorld(true);
+  const { composer, dispose } = createViewerPostFXComposer(
+    renderer,
+    scene,
+    camera,
+    width,
+    height,
+    postfxConfig,
+    exposure,
+  );
 
-    gl.setRenderTarget(offscreenTarget);
-    gl.clear(true, true, true);
-    gl.render(scene, camera);
-    gl.setRenderTarget(null);
-    return canvasFromTarget(gl, offscreenTarget, width, height, workCanvas);
+  function renderFrameAt(i: number): HTMLCanvasElement {
+    const poseIndex = Math.min(Math.floor(i / framesPerPose), poses.length - 1);
+    applyPoseToCamera(camera, poses[poseIndex]!);
+    renderWithPostFX(composer, renderer);
+    return canvas;
   }
 
   try {
@@ -274,12 +276,79 @@ export async function recordTurntable(opts: RecordTurntableOpts): Promise<Blob> 
     if (!blob) blob = await encodeZip(opts, renderFrameAt);
     return blob;
   } finally {
-    offscreenTarget.dispose();
+    dispose();
     restoreCamera(camera, camSnap);
-    gl.setRenderTarget(prevTarget);
-    gl.autoClear = prevAutoClear;
-    gl.toneMapping = prevToneMapping;
-    gl.toneMappingExposure = prevToneMappingExposure;
-    gl.outputColorSpace = prevOutputColorSpace;
+    renderer.dispose();
+    renderer.forceContextLoss();
+  }
+}
+
+export async function recordTurntable(opts: RecordTurntableOpts): Promise<Blob> {
+  const {
+    gl,
+    scene,
+    camera,
+    width,
+    height,
+    frameCount,
+    exposure = gl.toneMappingExposure || 1,
+    postfxConfig = DEFAULT_VIEWER_POSTFX,
+  } = opts;
+  if (frameCount < 1) throw new Error("frameCount must be >= 1");
+  if (opts.fps < 1) throw new Error("fps must be >= 1");
+
+  const camSnap = snapshotCamera(camera);
+  const radius = Math.max(camera.position.length(), 1e-4);
+  const startY = camera.position.y;
+
+  const canvas = document.createElement("canvas");
+  const renderer = new THREE.WebGLRenderer({
+    canvas,
+    antialias: true,
+    alpha: true,
+    preserveDrawingBuffer: true,
+  });
+  renderer.setSize(width, height, false);
+  applyViewerColorManagement(renderer, exposure);
+
+  camera.aspect = width / height;
+  camera.updateProjectionMatrix();
+
+  const { composer, dispose } = createViewerPostFXComposer(
+    renderer,
+    scene,
+    camera,
+    width,
+    height,
+    postfxConfig,
+    exposure,
+  );
+
+  function renderFrameAt(i: number): HTMLCanvasElement {
+    const angle = (i / frameCount) * Math.PI * 2;
+    camera.position.set(Math.cos(angle) * radius, startY, Math.sin(angle) * radius);
+    camera.lookAt(0, 0, 0);
+    camera.updateMatrixWorld(true);
+    renderWithPostFX(composer, renderer);
+    return canvas;
+  }
+
+  try {
+    let blob: Blob | null = null;
+    if (isWebCodecsSupported()) {
+      try {
+        blob = await encodeMp4(opts, renderFrameAt);
+      } catch (e) {
+        console.warn("[video-capture] MP4 encode failed, falling back to ZIP:", e);
+        blob = null;
+      }
+    }
+    if (!blob) blob = await encodeZip(opts, renderFrameAt);
+    return blob;
+  } finally {
+    dispose();
+    restoreCamera(camera, camSnap);
+    renderer.dispose();
+    renderer.forceContextLoss();
   }
 }

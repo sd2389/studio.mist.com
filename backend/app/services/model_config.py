@@ -12,6 +12,7 @@ SceneSettingBucket = Literal[
     "GROUND",
     "BACKGROUND",
     "VJSON",
+    "quality_mode",
 ]
 
 
@@ -75,6 +76,7 @@ DEFAULT_SCENE_SETTINGS: dict[SceneSettingBucket, str] = {
     "GROUND": "",
     "BACKGROUND": "",
     "VJSON": "",
+    "quality_mode": "standard",
 }
 
 
@@ -89,8 +91,18 @@ def _normalize_slot_token(token: str) -> str | None:
     if not value:
         return None
 
-    if re.match(r"^heads?$", value, re.IGNORECASE) or re.match(r"^prongs?$", value, re.IGNORECASE):
+    if (
+        re.match(r"^heads?$", value, re.IGNORECASE)
+        or re.match(r"^head$", value, re.IGNORECASE)
+        or re.match(r"^prongs?$", value, re.IGNORECASE)
+    ):
         return "Heads"
+
+    if re.match(r"^(metal|band|shank|setting|bezel)$", value, re.IGNORECASE):
+        return "Metal 1"
+
+    if re.match(r"^(gem|stone|diamond)$", value, re.IGNORECASE):
+        return "Gem 1"
 
     metal = re.match(r"^metal\s*0*([1-9]\d*)$", value, re.IGNORECASE)
     if metal:
@@ -203,7 +215,8 @@ def _slot_signals_from_3dm(payload: bytes) -> list[SlotSignal]:
         return []
 
     try:
-        doc = rhino3dm.File3dm.FromByteArray(payload)
+        # rhino3dm expects a mutable byte array for FromByteArray.
+        doc = rhino3dm.File3dm.FromByteArray(bytearray(payload))
     except Exception:
         return []
 
@@ -211,6 +224,7 @@ def _slot_signals_from_3dm(payload: bytes) -> list[SlotSignal]:
         return []
 
     layers = doc.Layers
+    layer_count = len(layers)
     signals: list[SlotSignal] = []
     for obj in doc.Objects:
         attrs = obj.Attributes
@@ -218,8 +232,8 @@ def _slot_signals_from_3dm(payload: bytes) -> list[SlotSignal]:
         if attrs is not None:
             if attrs.Name:
                 candidates.append(str(attrs.Name))
-            if attrs.LayerIndex is not None and attrs.LayerIndex >= 0:
-                layer = layers.FindIndex(attrs.LayerIndex)
+            if attrs.LayerIndex is not None and 0 <= attrs.LayerIndex < layer_count:
+                layer = layers[attrs.LayerIndex]
                 if layer and layer.Name:
                     candidates.append(str(layer.Name))
 
@@ -250,6 +264,34 @@ def detect_slot_tokens(filename: str, payload: bytes) -> dict[str, list[str]]:
     return {slot: sorted(tokens) for slot, tokens in by_slot.items()}
 
 
+def _is_generic_gem_token(token: str) -> bool:
+    value = token.strip().lower()
+    return bool(re.match(r"^(gem|stone|diamond)(\s*0*[1-9]\d*)?$", value))
+
+
+def _collapse_generic_gem_slots(slot_tokens: dict[str, list[str]]) -> dict[str, list[str]]:
+    gem_slots = sorted(slot for slot in slot_tokens if slot.startswith("Gem "))
+    if len(gem_slots) <= 1:
+        return slot_tokens
+
+    # Only collapse if all gem slots are generic labels (gem 01, gem 02, diamond, ...)
+    # and there is no semantic distinction like "center", "side", "halo", etc.
+    for slot in gem_slots:
+        tokens = slot_tokens.get(slot, [])
+        if not tokens or any(not _is_generic_gem_token(token) for token in tokens):
+            return slot_tokens
+
+    primary = "Gem 1" if "Gem 1" in gem_slots else gem_slots[0]
+    merged = dict(slot_tokens)
+    merged_tokens: set[str] = set()
+    for slot in gem_slots:
+        merged_tokens.update(merged.get(slot, []))
+        if slot != primary:
+            merged.pop(slot, None)
+    merged[primary] = sorted(merged_tokens)
+    return merged
+
+
 def _slot_kind(slot: str) -> Literal["metal", "gem", "accent", "default"]:
     if slot == "Heads" or slot.startswith("Metal "):
         return "metal"
@@ -275,7 +317,7 @@ def _options_for_slot(slot: str) -> list[tuple[str, str]]:
 
 
 def build_slot_material_config(filename: str, payload: bytes) -> dict:
-    slot_tokens = detect_slot_tokens(filename, payload)
+    slot_tokens = _collapse_generic_gem_slots(detect_slot_tokens(filename, payload))
     slots = sorted(slot_tokens.keys())
 
     if not slots:
@@ -380,11 +422,18 @@ def merge_slot_material_config(inferred: dict, provided: dict | None) -> dict:
     return merged
 
 
+_SCENE_EXTENDED_KEYS = frozenset(
+    {"advanced", "modelTransform", "customBackground", "poses", "activePoseId"}
+)
+
+
 def merge_scene_settings(inferred: dict, provided: dict | None) -> dict:
     merged = dict(inferred)
     if not provided:
         return merged
     for key, value in provided.items():
         if key in DEFAULT_SCENE_SETTINGS and (value is None or isinstance(value, str)):
+            merged[key] = value
+        elif key in _SCENE_EXTENDED_KEYS and value is not None:
             merged[key] = value
     return merged

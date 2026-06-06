@@ -1,5 +1,13 @@
 import { create } from "zustand";
-import type { SceneSettingsBuckets } from "@/lib/slot-materials/model-config";
+import type { GemPresetId } from "@/lib/gem-gpu/gem-configs";
+import type {
+  EmbedSettings,
+  ModelTransform,
+  SavedPose,
+  SceneAdvancedSettings,
+  SceneSettingsBuckets,
+} from "@/lib/slot-materials/model-config";
+import type { SlotMaterialRef } from "@/lib/library/custom-material-ref";
 
 /**
  * Material library — all values are physically motivated (real F0 reflectance for metals,
@@ -32,34 +40,8 @@ export type MaterialPresetId =
   | "gold-grey"
   | "gold-sand"
   | "gold-warm"
-  // gems
-  | "diamond"
-  | "moissanite"
-  | "zircon"
-  | "ruby"
-  | "sapphire"
-  | "spinel"
-  | "tanzanite"
-  | "garnet-tsavorite"
-  | "garnet-almandine"
-  | "peridot"
-  | "topaz-blue"
-  | "tourmaline"
-  | "aquamarine"
-  | "emerald"
-  | "morganite"
-  | "amethyst"
-  | "citrine"
-  | "opal"
-  | "jade"
-  | "pearl"
-  // fancy diamonds (color variants of "diamond" — same IOR, different absorption)
-  | "diamond-canary"
-  | "diamond-pink"
-  | "diamond-blue"
-  | "diamond-cognac"
-  | "diamond-champagne"
-  | "diamond-black";
+  // gems — full Phase 1 catalog (see gem-configs.ts)
+  | GemPresetId;
 
 export type LightingPresetId = "studio" | "soft" | "dark";
 
@@ -73,9 +55,9 @@ export type FinishId = "polished" | "brushed" | "satin" | "hammered" | "sandblas
 type StudioState = {
   preset: MaterialPresetId;
   setPreset: (preset: MaterialPresetId) => void;
-  slotSelections: Record<string, MaterialPresetId>;
-  setSlotPreset: (slot: string, preset: MaterialPresetId) => void;
-  replaceSlotSelections: (selections: Record<string, MaterialPresetId>) => void;
+  slotSelections: Record<string, SlotMaterialRef>;
+  setSlotPreset: (slot: string, preset: SlotMaterialRef) => void;
+  replaceSlotSelections: (selections: Record<string, SlotMaterialRef>) => void;
   resetSlotPresets: () => void;
   autoRotate: boolean;
   setAutoRotate: (value: boolean) => void;
@@ -85,6 +67,12 @@ type StudioState = {
   setFinish: (finish: FinishId) => void;
   sceneSettings: SceneSettingsBuckets;
   setSceneSetting: (bucket: keyof SceneSettingsBuckets, value: string | null) => void;
+  setSceneAdvanced: (patch: Partial<SceneAdvancedSettings>) => void;
+  setModelTransform: (transform: ModelTransform) => void;
+  setCustomBackground: (url: string | null) => void;
+  setPoses: (poses: SavedPose[]) => void;
+  setActivePoseId: (poseId: string | null) => void;
+  setEmbedSettings: (patch: Partial<EmbedSettings>) => void;
   replaceSceneSettings: (settings: SceneSettingsBuckets) => void;
 };
 
@@ -114,6 +102,36 @@ export const useMaterialPresetStore = create<StudioState>((set) => ({
   setSceneSetting: (bucket, value) =>
     set((state) => ({
       sceneSettings: { ...state.sceneSettings, [bucket]: value },
+    })),
+  setSceneAdvanced: (patch) =>
+    set((state) => ({
+      sceneSettings: {
+        ...state.sceneSettings,
+        advanced: { ...state.sceneSettings.advanced, ...patch },
+      },
+    })),
+  setModelTransform: (modelTransform) =>
+    set((state) => ({
+      sceneSettings: { ...state.sceneSettings, modelTransform },
+    })),
+  setCustomBackground: (customBackground) =>
+    set((state) => ({
+      sceneSettings: { ...state.sceneSettings, customBackground },
+    })),
+  setPoses: (poses) =>
+    set((state) => ({
+      sceneSettings: { ...state.sceneSettings, poses },
+    })),
+  setActivePoseId: (activePoseId) =>
+    set((state) => ({
+      sceneSettings: { ...state.sceneSettings, activePoseId },
+    })),
+  setEmbedSettings: (patch) =>
+    set((state) => ({
+      sceneSettings: {
+        ...state.sceneSettings,
+        embed: { ...state.sceneSettings.embed, ...patch },
+      },
     })),
   replaceSceneSettings: (sceneSettings) => set({ sceneSettings }),
 }));

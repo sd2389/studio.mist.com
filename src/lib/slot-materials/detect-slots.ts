@@ -8,7 +8,10 @@ export function normalizeSlotToken(token: string): SlotId | null {
   const value = token.trim();
   if (!value) return null;
 
-  if (/^heads?$/i.test(value) || /^prongs?$/i.test(value)) return "Heads";
+  if (/^heads?$/i.test(value) || /^head$/i.test(value) || /^prongs?$/i.test(value)) return "Heads";
+
+  if (/^(metal|band|shank|setting|bezel)$/i.test(value)) return "Metal 1";
+  if (/^(gem|stone|diamond)$/i.test(value)) return "Gem 1";
 
   const metal = value.match(/^metal\s*0*([1-9]\d*)$/i);
   if (metal) return `Metal ${Number(metal[1])}` as const;

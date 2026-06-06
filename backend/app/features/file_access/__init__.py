@@ -1,0 +1,1 @@
+"""Public file HTTP adapter."""

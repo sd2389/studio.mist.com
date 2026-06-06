@@ -29,7 +29,7 @@ function setRole(o: THREE.Object3D, role: Role): void {
  * Use the proper Tolkowsky-ish round-brilliant LatheGeometry from cut-geometries.
  * Radius arg matches the old octahedron API — interpreted as the gem's girdle radius.
  */
-function gemOctahedron(radius: number, _squashY = 0.78): THREE.BufferGeometry {
+function gemOctahedron(radius: number): THREE.BufferGeometry {
   return diamondGeometry(radius);
 }
 
@@ -82,7 +82,7 @@ function halo(): THREE.Object3D {
   const count = 12;
   for (let i = 0; i < count; i++) {
     const angle = (i / count) * Math.PI * 2;
-    const s = makeGem(gemOctahedron(0.05, 0.85), "accent-gem");
+    const s = makeGem(gemOctahedron(0.05), "accent-gem");
     s.position.set(Math.cos(angle) * haloR, 0.6, Math.sin(angle) * haloR);
     halo.add(s);
   }
@@ -127,7 +127,7 @@ function eternity(): THREE.Object3D {
   const count = 18;
   for (let i = 0; i < count; i++) {
     const angle = (i / count) * Math.PI * 2;
-    const s = makeGem(gemOctahedron(0.075, 0.9), "accent-gem");
+    const s = makeGem(gemOctahedron(0.075), "accent-gem");
     s.position.set(Math.cos(angle) * 0.5, 0, Math.sin(angle) * 0.5);
     root.add(s);
   }
@@ -172,7 +172,7 @@ function tennis(): THREE.Object3D {
     bezel.rotation.z = angle;
     root.add(bezel);
 
-    const stone = makeGem(gemOctahedron(0.11, 0.85));
+    const stone = makeGem(gemOctahedron(0.11));
     stone.position.set(x, y, 0.05);
     stone.rotation.z = angle;
     root.add(stone);

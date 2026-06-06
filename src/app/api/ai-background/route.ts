@@ -1,19 +1,27 @@
 import { NextResponse } from "next/server";
-import { getPublicApiUrl, getServerApiUrl } from "@/lib/api-url";
+import { getPublicApiUrl } from "@/lib/api-url";
+import { requireSessionApi } from "@/lib/auth/require-api-access";
+import { readUpstreamJson, upstreamError, upstreamFetch } from "@/lib/auth/upstream";
+import { enforceApiRateLimit } from "@/lib/observability/api-rate-limit";
 
 type Body = {
   jewelry_b64?: string;
   prompt?: string | null;
+  sub_mode?: "shoot" | "model" | "custom";
+  preset_id?: string | null;
+  model_variant?: "hand" | "neck" | "ear" | null;
 };
 
 export async function POST(request: Request) {
-  const api = getServerApiUrl();
-  if (!api) {
-    return NextResponse.json(
-      { error: "Set API_URL or NEXT_PUBLIC_API_URL for the FastAPI server" },
-      { status: 503 },
-    );
-  }
+  const denied = await requireSessionApi();
+  if (denied) return denied;
+
+  const limited = await enforceApiRateLimit({
+    scope: "api.ai-background",
+    maxRequests: 60,
+    request,
+  });
+  if (limited) return limited;
 
   let body: Body;
   try {
@@ -29,30 +37,32 @@ export async function POST(request: Request) {
     );
   }
 
-  const upstream = await fetch(`${api}/ai-background`, {
+  const upstream = await upstreamFetch("/ai-background", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       jewelry_b64: body.jewelry_b64,
       prompt: body.prompt ?? null,
+      sub_mode: body.sub_mode ?? "custom",
+      preset_id: body.preset_id ?? null,
+      model_variant: body.model_variant ?? "hand",
     }),
   });
 
-  const json = (await upstream.json()) as {
+  const json = (await readUpstreamJson(upstream)) as {
     result_key?: string;
     result_url?: string | null;
     mode?: string;
+    sub_mode?: string;
+    prompt?: string;
     detail?: unknown;
+    error?: string;
   };
 
   if (!upstream.ok) {
-    const detail =
-      typeof json.detail === "string"
-        ? json.detail
-        : json.detail != null
-          ? JSON.stringify(json.detail)
-          : "Upstream error";
-    return NextResponse.json({ error: detail }, { status: upstream.status });
+    return NextResponse.json(
+      { error: upstreamError(json, "Upstream error") },
+      { status: upstream.status },
+    );
   }
 
   const publicBase = getPublicApiUrl();
@@ -64,5 +74,7 @@ export async function POST(request: Request) {
     result_key: json.result_key,
     result_url: resultUrl,
     mode: json.mode,
+    sub_mode: json.sub_mode,
+    prompt: json.prompt,
   });
 }

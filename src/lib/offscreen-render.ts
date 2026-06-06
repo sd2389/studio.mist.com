@@ -1,4 +1,15 @@
 import * as THREE from "three";
+import { applyViewerColorManagement } from "@/lib/render-color-management";
+import {
+  DEFAULT_VIEWER_POSTFX,
+  type ViewerPostFXConfig,
+} from "@/lib/viewer-postfx-config";
+import {
+  createViewerPostFXComposer,
+  renderWithPostFX,
+} from "@/lib/viewer-postfx-pipeline";
+
+export type ImageExportFormat = "png" | "jpeg";
 
 type RenderOpts = {
   gl: THREE.WebGLRenderer;
@@ -8,6 +19,10 @@ type RenderOpts = {
   height: number;
   transparent?: boolean;
   pixelRatio?: number;
+  exposure?: number;
+  postfxConfig?: ViewerPostFXConfig;
+  format?: ImageExportFormat;
+  jpegQuality?: number;
 };
 
 function makeCanvas(width: number, height: number): OffscreenCanvas | HTMLCanvasElement {
@@ -20,20 +35,40 @@ function makeCanvas(width: number, height: number): OffscreenCanvas | HTMLCanvas
   return canvas;
 }
 
-function toBlob(canvas: OffscreenCanvas | HTMLCanvasElement): Promise<Blob> {
+function toBlob(
+  canvas: OffscreenCanvas | HTMLCanvasElement,
+  mimeType: string,
+  quality?: number,
+): Promise<Blob> {
   if ("convertToBlob" in canvas) {
-    return canvas.convertToBlob({ type: "image/png" });
+    return canvas.convertToBlob({ type: mimeType, quality });
   }
   return new Promise((resolve, reject) => {
     canvas.toBlob(
       (blob) => (blob ? resolve(blob) : reject(new Error("toBlob returned null"))),
-      "image/png",
+      mimeType,
+      quality,
     );
   });
 }
 
 export async function renderAtResolution(opts: RenderOpts): Promise<Blob> {
-  const { gl, scene, camera, width, height, transparent = false, pixelRatio = 1 } = opts;
+  const {
+    gl,
+    scene,
+    camera,
+    width,
+    height,
+    transparent = false,
+    pixelRatio = 1,
+    exposure = gl.toneMappingExposure || 1,
+    postfxConfig = DEFAULT_VIEWER_POSTFX,
+    format = "png",
+    jpegQuality = 0.92,
+  } = opts;
+
+  const mimeType = format === "jpeg" ? "image/jpeg" : "image/png";
+  const blobQuality = format === "jpeg" ? jpegQuality : undefined;
 
   const canvas = makeCanvas(width, height);
   const renderer = new THREE.WebGLRenderer({
@@ -45,9 +80,7 @@ export async function renderAtResolution(opts: RenderOpts): Promise<Blob> {
 
   renderer.setPixelRatio(pixelRatio);
   renderer.setSize(width, height, false);
-  renderer.outputColorSpace = gl.outputColorSpace;
-  renderer.toneMapping = gl.toneMapping;
-  renderer.toneMappingExposure = gl.toneMappingExposure;
+  applyViewerColorManagement(renderer, exposure);
 
   let prevAspect: number | null = null;
   if (camera instanceof THREE.PerspectiveCamera) {
@@ -62,11 +95,22 @@ export async function renderAtResolution(opts: RenderOpts): Promise<Blob> {
     scene.background = null;
   }
 
+  const { composer, dispose } = createViewerPostFXComposer(
+    renderer,
+    scene,
+    camera,
+    width,
+    height,
+    postfxConfig,
+    exposure,
+  );
+
   try {
-    renderer.render(scene, camera);
-    const blob = await toBlob(canvas);
+    renderWithPostFX(composer, renderer);
+    const blob = await toBlob(canvas, mimeType, blobQuality);
     return blob;
   } finally {
+    dispose();
     if (transparent) {
       scene.background = prevBg;
     }

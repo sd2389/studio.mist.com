@@ -3,6 +3,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { Rhino3dmLoader } from "three/examples/jsm/loaders/3DMLoader.js";
+import { ensureRhinoLoaderPatched } from "@/lib/rhino-loader-patch";
 import { inferSlotFromCandidates, type SlotId } from "@/lib/slot-materials/detect-slots";
 
 const RHINO3DM_LIBRARY_PATH = "https://cdn.jsdelivr.net/npm/rhino3dm@8.17.0/";
@@ -72,6 +73,7 @@ async function detectFromGlb(file: File): Promise<string[]> {
 }
 
 async function detectFromRhino3dm(file: File): Promise<string[]> {
+  ensureRhinoLoaderPatched();
   const loader = new Rhino3dmLoader();
   loader.setLibraryPath(RHINO3DM_LIBRARY_PATH);
   const blobUrl = URL.createObjectURL(file);

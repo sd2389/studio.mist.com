@@ -63,6 +63,7 @@ Moat: browser-based jewelry-native pipeline (.3dm/.stl → GLB), gem/metal mater
 - Metal PBR presets with measured values: yellow/rose/white gold, platinum, silver.
 - 5 studio lighting presets built from curated HDRIs (existing `fetch_cc0_hdris` pipeline).
 - Tone mapping + postprocessing tuning.
+- Viewer quality selector: Auto (device-detected, default) / High / Balanced / Performance — user-overridable in the canvas. Affects preview only; exports always render server-side at full quality regardless of this setting.
 - **Server render service:** headless Three.js on serverless GPU, consuming the same scene/material definitions as the viewer; renders stills up to 8K. Queue + status endpoint + webhook back to the app; quota debit on completion.
 - Golden-image benchmark harness: 5 reference rings (real CAD from network) rendered through the server service, compared via SSIM threshold; wired into CI. Server-side rendering makes these deterministic.
 - **Hard gate:** G1 passes (2 jewelers judge side-by-sides comparable-or-better vs render-studio output).

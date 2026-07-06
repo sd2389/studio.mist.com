@@ -4,6 +4,7 @@ import { Bloom, EffectComposer, N8AO, SMAA, ToneMapping } from "@react-three/pos
 import { useThree } from "@react-three/fiber";
 import { BlendFunction, KernelSize, ToneMappingMode, type EffectComposer as EffectComposerImpl } from "postprocessing";
 import { useLayoutEffect, useMemo, useRef } from "react";
+import { useShallow } from "zustand/react/shallow";
 import type { SceneAdvancedSettings } from "@/lib/slot-materials/model-config";
 import { resolvePostFXConfig } from "@/lib/viewer-postfx-config";
 import { usePostFXComposerStore } from "@/stores/postfx-composer-store";
@@ -25,7 +26,7 @@ export function ViewerPostFX({ advanced }: ViewerPostFXProps) {
   const gl = useThree((state) => state.gl);
   const composerRef = useRef<EffectComposerImpl>(null);
   const setComposerRefs = usePostFXComposerStore((state) => state.setRefs);
-  const effective = useViewerQualityStore((s) => s.effective);
+  const effective = useViewerQualityStore(useShallow((s) => s.effective));
   const config = useMemo(() => applyQualityToPostFX(resolvePostFXConfig(advanced), effective), [advanced, effective]);
 
   useLayoutEffect(() => {

@@ -7,6 +7,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { sceneDisplayName } from "@/lib/scene-display-name";
 import { useMaterialPresetStore } from "@/stores/material-preset-store";
+import { QualityMenu } from "./QualityMenu";
 
 type StudioTopBarProps = {
   modelId: string;
@@ -52,6 +53,7 @@ export function StudioTopBar({ modelId }: StudioTopBarProps) {
           <LayoutDashboard className="size-4" aria-hidden />
           Dashboard
         </Link>
+        <QualityMenu />
         <Button
           type="button"
           variant="outline"

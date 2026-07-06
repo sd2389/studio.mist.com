@@ -1,6 +1,7 @@
 "use client";
 
 import { Gauge } from "lucide-react";
+import { startTransition, useEffect, useState } from "react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,8 +25,14 @@ export function QualityMenu() {
   const level = useViewerQualityStore((s) => s.level);
   const effective = useViewerQualityStore((s) => s.effective);
   const setLevel = useViewerQualityStore((s) => s.setLevel);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { startTransition(() => setMounted(true)); }, []);
 
-  const label = level === "auto" ? `Auto (${LABELS[effective.tier]})` : LABELS[level];
+  // Before mount, render a stable server-safe label to avoid React 19 hydration mismatch.
+  // After mount the device-detected tier is safe to show.
+  const label = !mounted
+    ? level === "auto" ? "Auto" : LABELS[level]
+    : level === "auto" ? `Auto (${LABELS[effective.tier]})` : LABELS[level];
 
   return (
     <DropdownMenu>

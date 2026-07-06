@@ -42,6 +42,7 @@ import type {
 } from "@/lib/slot-materials/model-config";
 import { isGemPresetId } from "@/lib/gem-gpu/gem-configs";
 import type { LightingPresetId, MaterialPresetId } from "@/stores/material-preset-store";
+import { useViewerQualityStore } from "@/stores/viewer-quality-store";
 
 type ViewerCanvasProps = {
   modelUrl: string;
@@ -83,6 +84,7 @@ export function ViewerCanvas({
     };
   }, []);
 
+  const dprCap = useViewerQualityStore((s) => s.effective.dprCap);
   const isGemView = isGemPresetId(preset);
   const activeEnvironment = isGemView
     ? gemEnvironment ?? metalEnvironment
@@ -135,7 +137,7 @@ export function ViewerCanvas({
     <Canvas
       className="h-full w-full touch-none"
       shadows={{ type: THREE.PCFShadowMap }}
-      dpr={[1, 2]}
+      dpr={[1, dprCap]}
       camera={{ position: [0, 0.35, 2.2], fov: 45, near: 0.01, far: 200 }}
       gl={{
         alpha: true,

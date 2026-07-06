@@ -7,6 +7,8 @@ import { useLayoutEffect, useMemo, useRef } from "react";
 import type { SceneAdvancedSettings } from "@/lib/slot-materials/model-config";
 import { resolvePostFXConfig } from "@/lib/viewer-postfx-config";
 import { usePostFXComposerStore } from "@/stores/postfx-composer-store";
+import { applyQualityToPostFX } from "@/lib/viewer-quality";
+import { useViewerQualityStore } from "@/stores/viewer-quality-store";
 
 type ViewerPostFXProps = {
   advanced?: SceneAdvancedSettings;
@@ -23,7 +25,8 @@ export function ViewerPostFX({ advanced }: ViewerPostFXProps) {
   const gl = useThree((state) => state.gl);
   const composerRef = useRef<EffectComposerImpl>(null);
   const setComposerRefs = usePostFXComposerStore((state) => state.setRefs);
-  const config = useMemo(() => resolvePostFXConfig(advanced), [advanced]);
+  const effective = useViewerQualityStore((s) => s.effective);
+  const config = useMemo(() => applyQualityToPostFX(resolvePostFXConfig(advanced), effective), [advanced, effective]);
 
   useLayoutEffect(() => {
     const composer = composerRef.current;

@@ -31,7 +31,10 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { getPresetSwatchColor, isTransmissive } from "@/lib/material-swatch";
+import { renderAtResolution } from "@/lib/offscreen-render";
 import { captureFrameToDataUrl } from "@/stores/screenshot-store";
+import { getHiresRefs } from "@/stores/hires-export-store";
+import { getRenderFidelity } from "@/stores/render-fidelity-store";
 import type { SlotMaterialRef } from "@/lib/library/custom-material-ref";
 import { isCustomMaterialRef, parseCustomMaterialId } from "@/lib/library/custom-material-ref";
 import { userMaterialPreviewColor } from "@/features/editor/ui/UserMaterialGrid";
@@ -412,17 +415,38 @@ export function StudioSidebar({
     }
   }
 
-  function downloadPng() {
-    const dataUrl = captureFrameToDataUrl();
-    if (!dataUrl) {
+  async function downloadPng() {
+    const refs = getHiresRefs();
+    if (!refs) {
       setStatus("Canvas not ready");
       return;
     }
-    const a = document.createElement("a");
-    a.href = dataUrl;
-    a.download = `${modelId}-render.png`;
-    a.click();
-    setStatus("PNG downloaded");
+    setStatus("Rendering…");
+    try {
+      const { exposure, postfxConfig } = getRenderFidelity();
+      const { width, height } = refs.gl.domElement;
+      const blob = await renderAtResolution({
+        gl: refs.gl,
+        scene: refs.scene,
+        camera: refs.camera,
+        width,
+        height,
+        pixelRatio: 2,
+        exposure,
+        postfxConfig,
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${modelId}-render.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setStatus("PNG downloaded");
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : "Export failed");
+    }
   }
 
   async function downloadSourceModel() {
@@ -977,12 +1001,12 @@ export function StudioSidebar({
               type="button"
               variant="outline"
               className="w-full justify-start gap-3 border-border/60 bg-card/60"
-              onClick={downloadPng}
+              onClick={() => void downloadPng()}
             >
               <Download className="size-4" aria-hidden />
               <span className="flex flex-col items-start leading-tight">
                 <span className="text-sm">Download PNG</span>
-                <span className="text-[10px] text-muted-foreground">Current frame · viewport size</span>
+                <span className="text-[10px] text-muted-foreground">Current frame · full fidelity</span>
               </span>
             </Button>
             <Button
@@ -1071,7 +1095,7 @@ export function StudioSidebar({
           Legacy export
         </DropdownMenuTrigger>
         <DropdownMenuContent>
-          <DropdownMenuItem onClick={downloadPng}>PNG (current frame)</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => void downloadPng()}>PNG (current frame)</DropdownMenuItem>
           <DropdownMenuItem onClick={onOpenHiResExport}>PNG (high-res)</DropdownMenuItem>
           <DropdownMenuItem onClick={onOpenVideo360}>360° video</DropdownMenuItem>
           <DropdownMenuSeparator />

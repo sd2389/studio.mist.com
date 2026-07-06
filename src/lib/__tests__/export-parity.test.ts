@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 /**
@@ -9,10 +9,14 @@ import path from "node:path";
 describe("export parity invariant", () => {
   it("render feature does not depend on viewer-quality", () => {
     const dir = path.join(process.cwd(), "src/features/render");
-    const files = ["ui/RenderFidelityBridge.tsx", "ui/HiresExportBridge.tsx", "ui/ScreenshotBridge.tsx"];
+    const files = readdirSync(dir, { recursive: true, withFileTypes: true })
+      .filter((e) => e.isFile() && /\.(ts|tsx)$/.test(e.name))
+      .map((e) => path.join((e as unknown as { parentPath: string }).parentPath, e.name));
+    expect(files.length).toBeGreaterThanOrEqual(6);
     for (const f of files) {
-      const src = readFileSync(path.join(dir, f), "utf8");
-      expect(src.includes("viewer-quality"), `${f} must not import viewer-quality`).toBe(false);
+      const src = readFileSync(f, "utf8");
+      const rel = path.relative(dir, f);
+      expect(src.includes("viewer-quality"), `${rel} must not import viewer-quality`).toBe(false);
     }
   });
 });

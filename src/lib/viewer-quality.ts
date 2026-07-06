@@ -56,6 +56,16 @@ export function applyQualityToPostFX(
   };
 }
 
+const VALID_LEVELS: readonly QualityLevel[] = ["auto", "high", "balanced", "performance"];
+
+/** Sanitise a value from untrusted storage (e.g. localStorage). Falls back to "auto". */
+export function normalizeQualityLevel(value: unknown): QualityLevel {
+  if (typeof value === "string" && (VALID_LEVELS as string[]).includes(value)) {
+    return value as QualityLevel;
+  }
+  return "auto";
+}
+
 /** Browser caps snapshot; SSR-safe. */
 export function readDeviceCaps(): DeviceCaps {
   if (typeof navigator === "undefined") return { isMobile: false };

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyQualityToPostFX,
   detectDeviceTier,
+  normalizeQualityLevel,
   resolveEffectiveQuality,
 } from "@/lib/viewer-quality";
 import { DEFAULT_VIEWER_POSTFX } from "@/lib/viewer-postfx-config";
@@ -42,6 +43,25 @@ describe("resolveEffectiveQuality", () => {
   it("performance tier: dpr 1, postfx off", () => {
     const q = resolveEffectiveQuality("performance", weak);
     expect(q).toEqual({ tier: "performance", dprCap: 1, postfxEnabled: false, aoQuality: "performance", aoHalfRes: true });
+  });
+});
+
+describe("normalizeQualityLevel", () => {
+  it("passes through valid levels unchanged", () => {
+    expect(normalizeQualityLevel("auto")).toBe("auto");
+    expect(normalizeQualityLevel("high")).toBe("high");
+    expect(normalizeQualityLevel("balanced")).toBe("balanced");
+    expect(normalizeQualityLevel("performance")).toBe("performance");
+  });
+  it("falls back to auto for corrupt/unknown string", () => {
+    expect(normalizeQualityLevel("ultra")).toBe("auto");
+    expect(normalizeQualityLevel("")).toBe("auto");
+  });
+  it("falls back to auto for non-string types", () => {
+    expect(normalizeQualityLevel(null)).toBe("auto");
+    expect(normalizeQualityLevel(undefined)).toBe("auto");
+    expect(normalizeQualityLevel(42)).toBe("auto");
+    expect(normalizeQualityLevel({ level: "high" })).toBe("auto");
   });
 });
 

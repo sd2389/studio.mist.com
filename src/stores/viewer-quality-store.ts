@@ -3,6 +3,7 @@ import { persist } from "zustand/middleware";
 import {
   type EffectiveQuality,
   type QualityLevel,
+  normalizeQualityLevel,
   readDeviceCaps,
   resolveEffectiveQuality,
 } from "@/lib/viewer-quality";
@@ -18,8 +19,10 @@ export const useViewerQualityStore = create<ViewerQualityState>()(
     (set) => ({
       level: "auto",
       effective: resolveEffectiveQuality("auto", readDeviceCaps()),
-      setLevel: (level) =>
-        set({ level, effective: resolveEffectiveQuality(level, readDeviceCaps()) }),
+      setLevel: (level) => {
+        const safe = normalizeQualityLevel(level);
+        set({ level: safe, effective: resolveEffectiveQuality(safe, readDeviceCaps()) });
+      },
     }),
     {
       name: "viewer-quality",

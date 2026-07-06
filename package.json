@@ -11,6 +11,7 @@
     "test": "vitest run",
     "test:upload-smoke": "bash scripts/verify-phase2-upload.sh",
     "golden:capture": "node scripts/golden/capture.mjs",
+    "golden:fixture": "node scripts/golden/export-fixture.mjs",
     "test:golden": "node scripts/golden/check.mjs"
   },
   "dependencies": {

@@ -24,12 +24,23 @@ export function RenderHarness() {
   const lighting: LightingPresetId = isLighting(params.get("lighting")) ? (params.get("lighting") as LightingPresetId) : "studio";
   const preset = (params.get("preset") ?? "gold-18k-yellow") as MaterialPresetId;
   const size = Number(params.get("size") ?? 512);
-  const modelPath = params.get("model") ?? "/test-fixtures/PDR-2413.3dm";
+  const modelPath = params.get("model") ?? "/test-fixtures/PDR-2413.glb";
+  const exportMode = params.get("export") === "1";
+  const isGlb = modelPath.endsWith(".glb") || modelPath.endsWith(".gltf");
   const [modelUrl, setModelUrl] = useState<string | null>(null);
 
   useEffect(() => {
     let objectUrl: string | null = null;
     window.__HARNESS_STATE__ = "loading";
+
+    // If the model is already a GLB/GLTF static asset, pass it directly — no conversion needed.
+    // This avoids the blob URL extension problem (JewelryModel rejects blob: URLs).
+    if (isGlb) {
+      setModelUrl(modelPath);
+      return;
+    }
+
+    // Non-GLB path: fetch + convert, then either export or mount canvas.
     (async () => {
       const res = await fetch(modelPath);
       if (!res.ok) throw new Error(`fetch ${modelPath}: ${res.status}`);
@@ -38,6 +49,16 @@ export function RenderHarness() {
       const converted = await convertUploadToGlb(file);
       // convertUploadToGlb returns ConvertToGlbResult where .glb is already a Blob
       const glbBlob = converted.glb;
+
+      if (exportMode) {
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(glbBlob);
+        a.download = "PDR-2413.glb";
+        a.click();
+        window.__HARNESS_STATE__ = "exported";
+        return;
+      }
+
       objectUrl = URL.createObjectURL(glbBlob);
       setModelUrl(objectUrl);
     })().catch((e: unknown) => {
@@ -46,7 +67,7 @@ export function RenderHarness() {
     return () => {
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [modelPath]);
+  }, [modelPath, isGlb, exportMode]);
 
   useEffect(() => {
     if (!modelUrl) return;

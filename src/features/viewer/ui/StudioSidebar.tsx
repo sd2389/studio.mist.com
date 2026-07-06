@@ -165,6 +165,8 @@ const LIGHTING: { id: LightingPresetId; label: string; icon: typeof Sun }[] = [
   { id: "studio", label: "Studio", icon: Sun },
   { id: "soft", label: "Soft", icon: SunDim },
   { id: "dark", label: "Low key", icon: Moon },
+  { id: "catalog", label: "Catalog", icon: Camera },
+  { id: "dramatic", label: "Dramatic", icon: Sparkles },
 ];
 
 const FINISHES: { id: FinishId; label: string; hint: string }[] = [

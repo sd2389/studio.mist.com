@@ -43,7 +43,7 @@ export type MaterialPresetId =
   // gems — full Phase 1 catalog (see gem-configs.ts)
   | GemPresetId;
 
-export type LightingPresetId = "studio" | "soft" | "dark";
+export type LightingPresetId = "studio" | "soft" | "dark" | "catalog" | "dramatic";
 
 /**
  * Surface finish applied on top of a metal preset. Mirrors Substance Source's

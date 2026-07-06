@@ -9,7 +9,9 @@
     "lint": "eslint",
     "check:boundaries": "node scripts/check-feature-imports.mjs",
     "test": "vitest run",
-    "test:upload-smoke": "bash scripts/verify-phase2-upload.sh"
+    "test:upload-smoke": "bash scripts/verify-phase2-upload.sh",
+    "golden:capture": "node scripts/golden/capture.mjs",
+    "test:golden": "node scripts/golden/check.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1035.0",
@@ -46,10 +48,14 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20.19.39",
+    "@types/pngjs": "^6.0.5",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.4",
+    "playwright": "^1.61.1",
+    "pngjs": "^7.0.0",
+    "ssim.js": "^3.5.0",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^4.1.10"

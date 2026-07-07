@@ -36,6 +36,7 @@ jobs:
             curl -sf http://localhost:3000/render-harness?lighting=studio > /dev/null && break
             sleep 2
           done
+          curl -sf "http://localhost:3000/render-harness?lighting=studio" > /dev/null || { echo "server never came up"; exit 1; }
       - run: npm run test:golden
       - name: Upload diffs on failure
         if: failure()

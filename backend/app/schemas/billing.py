@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 class QuotaBalances(BaseModel):
     model_credits: int
     ai_image_credits: int
+    render_credits: int
     custom_material_credits: int
     custom_asset_credits: int
     storage_bytes_used: int

@@ -24,6 +24,7 @@ class UserBilling(Base):
     period_end: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     model_credits_balance: Mapped[int] = mapped_column(Integer, default=0)
     ai_image_credits_balance: Mapped[int] = mapped_column(Integer, default=0)
+    render_credits_balance: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     custom_material_credits_balance: Mapped[int] = mapped_column(Integer, default=0)
     custom_asset_credits_balance: Mapped[int] = mapped_column(Integer, default=0)
     storage_bytes_used: Mapped[int] = mapped_column(BigInteger, default=0)

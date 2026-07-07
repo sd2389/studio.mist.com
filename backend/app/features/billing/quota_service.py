@@ -19,6 +19,7 @@ def _apply_allotment(billing: UserBilling, tier: PlanTier) -> None:
     billing.plan_tier = tier
     billing.model_credits_balance = quotas.model_credits
     billing.ai_image_credits_balance = quotas.ai_image_credits
+    billing.render_credits_balance = quotas.render_credits
     billing.custom_material_credits_balance = quotas.custom_material_credits
     billing.custom_asset_credits_balance = quotas.custom_asset_credits
     billing.updated_at = datetime.utcnow()
@@ -38,6 +39,7 @@ def get_or_create_billing(db: Session, user: User) -> UserBilling:
         plan_tier="free",
         model_credits_balance=quotas.model_credits,
         ai_image_credits_balance=quotas.ai_image_credits,
+        render_credits_balance=quotas.render_credits,
         custom_material_credits_balance=quotas.custom_material_credits,
         custom_asset_credits_balance=quotas.custom_asset_credits,
         storage_bytes_used=0,
@@ -74,6 +76,7 @@ def snapshot(db: Session, user: User) -> UserBillingSnapshot:
         balances=QuotaBalances(
             model_credits=billing.model_credits_balance,
             ai_image_credits=billing.ai_image_credits_balance,
+            render_credits=billing.render_credits_balance,
             custom_material_credits=billing.custom_material_credits_balance,
             custom_asset_credits=billing.custom_asset_credits_balance,
             storage_bytes_used=billing.storage_bytes_used,
@@ -82,6 +85,7 @@ def snapshot(db: Session, user: User) -> UserBillingSnapshot:
         allotments=QuotaBalances(
             model_credits=quotas.model_credits,
             ai_image_credits=quotas.ai_image_credits,
+            render_credits=quotas.render_credits,
             custom_material_credits=quotas.custom_material_credits,
             custom_asset_credits=quotas.custom_asset_credits,
             storage_bytes_used=0,
@@ -154,6 +158,24 @@ def consume_ai_image_credit(db: Session, billing: UserBilling) -> None:
     if billing.ai_image_credits_balance <= 0:
         raise HTTPException(status_code=402, detail="No AI image credits remaining.")
     billing.ai_image_credits_balance -= 1
+    billing.updated_at = datetime.utcnow()
+    db.commit()
+
+
+def assert_render_credit(db: Session, user: User) -> UserBilling:
+    billing = get_or_create_billing(db, user)
+    if billing.render_credits_balance <= 0:
+        raise HTTPException(
+            status_code=402,
+            detail="No render credits remaining. Upgrade your plan or buy a top-up.",
+        )
+    return billing
+
+
+def consume_render_credit(db: Session, billing: UserBilling) -> None:
+    if billing.render_credits_balance <= 0:
+        raise HTTPException(status_code=402, detail="No render credits remaining.")
+    billing.render_credits_balance -= 1
     billing.updated_at = datetime.utcnow()
     db.commit()
 
@@ -255,6 +277,8 @@ def _apply_credit_delta(billing: UserBilling, kind: CreditKind, delta: int) -> N
         billing.model_credits_balance = max(0, billing.model_credits_balance + delta)
     elif kind == "ai":
         billing.ai_image_credits_balance = max(0, billing.ai_image_credits_balance + delta)
+    elif kind == "render":
+        billing.render_credits_balance = max(0, billing.render_credits_balance + delta)
     elif kind == "custom_material":
         billing.custom_material_credits_balance = max(
             0, billing.custom_material_credits_balance + delta
@@ -282,7 +306,7 @@ def adjust_credits(
     """Apply a signed credit delta and persist an audit row."""
     if delta == 0:
         raise HTTPException(status_code=400, detail="Adjustment delta cannot be zero")
-    if kind not in {"model", "ai", "custom_material", "custom_asset", "storage"}:
+    if kind not in {"model", "ai", "render", "custom_material", "custom_asset", "storage"}:
         raise HTTPException(status_code=400, detail=f"Unknown credit kind: {kind}")
 
     _apply_credit_delta(billing, kind, delta)

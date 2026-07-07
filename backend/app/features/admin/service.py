@@ -120,6 +120,7 @@ def list_users(
                 plan_tier=normalize_tier(billing.plan_tier),
                 model_credits=billing.model_credits_balance,
                 ai_image_credits=billing.ai_image_credits_balance,
+                render_credits=billing.render_credits_balance,
                 storage_bytes_used=billing.storage_bytes_used,
                 scene_count=scene_counts.get(user.id, 0),
                 created_at=user.created_at,

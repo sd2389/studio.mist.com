@@ -29,6 +29,7 @@ def _quota_balances_for_tier(tier: PlanTier) -> QuotaBalances:
     return QuotaBalances(
         model_credits=quotas.model_credits,
         ai_image_credits=quotas.ai_image_credits,
+        render_credits=quotas.render_credits,
         custom_material_credits=quotas.custom_material_credits,
         custom_asset_credits=quotas.custom_asset_credits,
         storage_bytes_used=0,

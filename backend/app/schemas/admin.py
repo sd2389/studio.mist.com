@@ -16,6 +16,7 @@ class AdminUserRow(BaseModel):
     plan_tier: str
     model_credits: int
     ai_image_credits: int
+    render_credits: int
     storage_bytes_used: int
     scene_count: int
     created_at: datetime
@@ -72,7 +73,7 @@ class SetActiveRequest(BaseModel):
 
 
 class CreditAdjustRequest(BaseModel):
-    kind: Literal["model", "ai", "custom_material", "custom_asset", "storage"]
+    kind: Literal["model", "ai", "render", "custom_material", "custom_asset", "storage"]
     delta: int = Field(ge=-10_000, le=10_000)
     reason: str = Field(min_length=3, max_length=512)
 

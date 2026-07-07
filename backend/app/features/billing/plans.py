@@ -14,6 +14,7 @@ GB = 1024**3
 class PlanQuotas:
     model_credits: int
     ai_image_credits: int
+    render_credits: int
     custom_material_credits: int
     custom_asset_credits: int
     storage_bytes: int
@@ -26,6 +27,7 @@ PLAN_QUOTAS: dict[PlanTier, PlanQuotas] = {
     "free": PlanQuotas(
         model_credits=50,
         ai_image_credits=150,
+        render_credits=25,
         custom_material_credits=5,
         custom_asset_credits=5,
         storage_bytes=5 * GB,
@@ -36,6 +38,7 @@ PLAN_QUOTAS: dict[PlanTier, PlanQuotas] = {
     "grow": PlanQuotas(
         model_credits=75,
         ai_image_credits=150,
+        render_credits=300,
         custom_material_credits=25,
         custom_asset_credits=25,
         storage_bytes=150 * GB,
@@ -46,6 +49,7 @@ PLAN_QUOTAS: dict[PlanTier, PlanQuotas] = {
     "studio": PlanQuotas(
         model_credits=500,
         ai_image_credits=500,
+        render_credits=1500,
         custom_material_credits=100,
         custom_asset_credits=100,
         storage_bytes=500 * GB,

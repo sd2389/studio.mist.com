@@ -1,6 +1,0 @@
-# Local development overrides — not committed with secrets in CI.
-# Adds RENDER_WORKER_TOKEN so the worker can claim jobs against the local backend.
-services:
-  backend:
-    environment:
-      RENDER_WORKER_TOKEN: smoketoken

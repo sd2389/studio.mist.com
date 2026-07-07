@@ -1,3 +1,5 @@
+# Local worker smoke testing: copy docker-compose.override.example.yml to
+# docker-compose.override.yml (git-ignored; auto-merged by `docker compose up`).
 services:
   postgres:
     image: postgres:16-alpine

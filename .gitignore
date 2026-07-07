@@ -72,3 +72,6 @@ dist/
 /samples/*.3dm
 /samples/*.stl
 /samples/*.glb
+
+# local compose overrides (auto-merged by docker compose — never commit; see docker-compose.override.example.yml)
+docker-compose.override.yml

@@ -1,0 +1,7 @@
+# Copy to docker-compose.override.yml for local smoke testing.
+# docker compose auto-merges docker-compose.override.yml, which arms the
+# render-worker endpoints — that file is git-ignored and must never be committed.
+services:
+  backend:
+    environment:
+      RENDER_WORKER_TOKEN: smoketoken

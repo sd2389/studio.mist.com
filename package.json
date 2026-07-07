@@ -12,7 +12,8 @@
     "test:upload-smoke": "bash scripts/verify-phase2-upload.sh",
     "golden:capture": "node scripts/golden/capture.mjs",
     "golden:fixture": "node scripts/golden/export-fixture.mjs",
-    "test:golden": "node scripts/golden/check.mjs"
+    "test:golden": "node scripts/golden/check.mjs",
+    "worker:render": "node scripts/render-worker/worker.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1035.0",

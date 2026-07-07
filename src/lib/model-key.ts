@@ -12,8 +12,11 @@ export function viewerIdFromModelKey(key: string): string {
   return trimmed.startsWith("models/") ? trimmed.slice("models/".length) : trimmed;
 }
 
-/** Sniff extension from a URL or filename. Returns null if unsupported. */
+/** Sniff extension from a URL or filename. Returns null if unsupported.
+ *  Ignores query strings and hash fragments (presigned S3/R2 URLs carry both).
+ */
 export function modelExtFromUrl(url: string): ModelExt | null {
-  const m = url.match(EXT_RE);
+  const path = url.split(/[?#]/, 1)[0];
+  const m = path.match(EXT_RE);
   return m ? (m[1].toLowerCase() as ModelExt) : null;
 }

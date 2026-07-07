@@ -52,7 +52,14 @@ export function RenderHarness() {
 
     window.__JOB_STATE__ = "rendering";
 
-    const endpoints = jobEndpoints(getPublicApiUrl(), jobId!, jobToken!);
+    const apiBase = getPublicApiUrl();
+    if (!apiBase) {
+      // Without an API base every fetch below would go relative to the Next.js
+      // origin and hang the worker until its 15-minute timeout. Fail fast.
+      window.__JOB_STATE__ = "error:API base URL not configured (set NEXT_PUBLIC_API_URL)";
+      return;
+    }
+    const endpoints = jobEndpoints(apiBase, jobId!, jobToken!);
 
     async function runJob() {
       // 1. Fetch and validate payload
@@ -61,9 +68,11 @@ export function RenderHarness() {
       const raw: unknown = await payloadRes.json();
       if (!isValidPayload(raw)) throw new Error("invalid payload shape");
 
-      // 2. Validate model URL extension
-      if (!raw.model_url.endsWith(".glb") && !raw.model_url.endsWith(".gltf")) {
-        throw new Error("model_url must end .glb or .gltf");
+      // 2. Validate model URL extension on the pathname only — presigned
+      // S3/R2 URLs carry query strings, so the raw string never ends in .glb.
+      const modelPathname = new URL(raw.model_url, window.location.origin).pathname;
+      if (!modelPathname.endsWith(".glb") && !modelPathname.endsWith(".gltf")) {
+        throw new Error("model_url pathname must end .glb or .gltf");
       }
 
       // 3. Set up canvas with payload settings

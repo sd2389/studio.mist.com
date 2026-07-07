@@ -30,7 +30,6 @@ export function RenderHarness() {
   const [modelUrl, setModelUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    let objectUrl: string | null = null;
     window.__HARNESS_STATE__ = "loading";
 
     // If the model is already a GLB/GLTF static asset, pass it directly — no conversion needed.
@@ -40,7 +39,8 @@ export function RenderHarness() {
       return;
     }
 
-    // Non-GLB path: fetch + convert, then either export or mount canvas.
+    // Non-GLB path: fetch + convert. Only export mode can consume the result —
+    // view mode cannot mount a converted blob URL (see below).
     (async () => {
       const res = await fetch(modelPath);
       if (!res.ok) throw new Error(`fetch ${modelPath}: ${res.status}`);
@@ -59,14 +59,15 @@ export function RenderHarness() {
         return;
       }
 
-      objectUrl = URL.createObjectURL(glbBlob);
-      setModelUrl(objectUrl);
+      // View mode with a converted model: JewelryModel rejects blob: URLs
+      // (they lack a file extension), so mounting the canvas would render an
+      // error card while the frame counter still flagged "ready". Fail
+      // explicitly instead and leave the canvas unmounted (modelUrl stays null).
+      window.__HARNESS_STATE__ =
+        "error:non-glb model cannot be viewed (blob URLs lack extensions); use a .glb model or export=1";
     })().catch((e: unknown) => {
       window.__HARNESS_STATE__ = `error:${e instanceof Error ? e.message : String(e)}`;
     });
-    return () => {
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
   }, [modelPath, isGlb, exportMode]);
 
   useEffect(() => {

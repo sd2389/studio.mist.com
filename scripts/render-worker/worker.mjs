@@ -19,13 +19,22 @@ async function runJob(browser, { job_id, page_token }) {
   const context = await browser.newContext({ viewport: { width: 1024, height: 1024 }, deviceScaleFactor: 1 });
   const page = await context.newPage();
   try {
-    await page.goto(`${BASE_URL}/render-harness?job=${job_id}&token=${encodeURIComponent(page_token)}`, { waitUntil: "domcontentloaded" });
-    await page.waitForFunction(
-      () => window.__JOB_STATE__ === "done" || String(window.__JOB_STATE__).startsWith("error"),
-      { timeout: JOB_TIMEOUT_MS },
-    );
-    const state = await page.evaluate(() => window.__JOB_STATE__);
-    console.log(`job ${job_id}: ${state}`);
+    try {
+      await page.goto(`${BASE_URL}/render-harness?job=${job_id}&token=${encodeURIComponent(page_token)}`, { waitUntil: "domcontentloaded" });
+      await page.waitForFunction(
+        () => window.__JOB_STATE__ === "done" || String(window.__JOB_STATE__).startsWith("error"),
+        { timeout: JOB_TIMEOUT_MS },
+      );
+      const state = await page.evaluate(() => window.__JOB_STATE__);
+      console.log(`job ${job_id}: ${state}`);
+    } catch (err) {
+      await fetch(`${API}/render-jobs/${job_id}/fail?token=${encodeURIComponent(page_token)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ error: `worker: ${err.message ?? String(err)}` }),
+      }).catch(() => {});
+      throw err;
+    }
   } finally {
     await context.close();
   }
@@ -37,9 +46,8 @@ async function main() {
     for (;;) {
       const job = await claim().catch((e) => { console.error(e.message); return null; });
       if (job) await runJob(browser, job).catch((e) => console.error(`job ${job.job_id}: ${e.message}`));
-      else if (ONCE) break;
-      if (ONCE && job) break;
-      if (!job) await new Promise((r) => setTimeout(r, POLL_MS));
+      else if (!job) await new Promise((r) => setTimeout(r, POLL_MS));
+      if (ONCE) break;
     }
   } finally {
     await browser.close();

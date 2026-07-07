@@ -75,6 +75,7 @@ class Settings(BaseSettings):
         default=None, validation_alias="STRIPE_PRICE_TOPUP_AI_150"
     )
     admin_emails: str = Field(default="", validation_alias="ADMIN_EMAILS")
+    render_worker_token: str | None = Field(default=None, validation_alias="RENDER_WORKER_TOKEN")
 
     @model_validator(mode="after")
     def validate_production_settings(self) -> Self:

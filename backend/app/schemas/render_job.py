@@ -14,8 +14,8 @@ class RenderJobCreate(BaseModel):
 class RenderJobStatus(BaseModel):
     id: int
     status: str
-    result_url: str | None
-    error: str | None
+    result_url: str | None = None
+    error: str | None = None
     attempts: int
     created_at: datetime
 

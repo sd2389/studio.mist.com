@@ -10,6 +10,7 @@ from app.routers import (
     files,
     health,
     library,
+    render_jobs,
     renders,
     scenes,
     upload,
@@ -28,3 +29,4 @@ api_router.include_router(library.router, prefix="/library", tags=["library"])
 api_router.include_router(billing.router, prefix="/billing", tags=["billing"])
 api_router.include_router(admin.router, prefix="/admin", tags=["admin"])
 api_router.include_router(feature_flags.router, prefix="/features", tags=["features"])
+api_router.include_router(render_jobs.router, prefix="/render-jobs", tags=["render-jobs"])

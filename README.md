@@ -99,6 +99,87 @@ Set `DATABASE_URL=postgresql+psycopg2://user:pass@host:5432/dbname` and run `ale
 
 ---
 
+## Server renders (render-job service)
+
+Full-fidelity server-side renders are produced by a Node worker that drives a
+headless Playwright browser through the same Three.js pipeline used in the live
+viewer.  The browser renders 60 warm-up frames then captures the scene at the
+requested resolution via `renderAtResolution`.
+
+### Credits model
+
+Each successful render consumes exactly **1 render credit** from the job owner's
+`UserBilling.render_credits_balance`.  Credits are debited only on success — a
+failed or retried job never touches the balance.  Plans ship with a default
+allotment; top-up packs are a Phase 3 item.
+
+**Caveat (v1 accepted):** The completion path commits the credit debit and the
+job-state update in a single DB transaction, but the PNG is written to storage
+*before* that commit.  A crash between the storage write and the commit would
+leave the credit consumed but the job still marked "running" — the operator
+would need to manually reset or re-run.  A single-worker deployment makes this
+window very small and was accepted for v1.
+
+### Running the worker locally
+
+Prerequisites: `docker compose up -d postgres backend` (with `RENDER_WORKER_TOKEN`
+set in the backend — see `docker-compose.override.yml` below) and
+`npm run dev` running on the host.
+
+```bash
+# 1. Add RENDER_WORKER_TOKEN to the backend (docker-compose.override.yml):
+#    services:
+#      backend:
+#        environment:
+#          RENDER_WORKER_TOKEN: smoketoken
+
+# 2. Seed a smoke job (creates or reuses smoke@devjewels.test with 5 render credits):
+docker compose exec backend python -m scripts.seed_smoke_job
+
+# 3. Run the worker (one job then exit):
+RENDER_WORKER_TOKEN=smoketoken RENDER_API_URL=http://localhost:8765 \
+  npm run worker:render -- --once
+
+# 4. Verify: check job status + balance in the container:
+docker compose exec backend python -c "
+from app.database import SessionLocal
+from sqlalchemy import select, text
+with SessionLocal() as db:
+    rows = db.execute(text('SELECT id,status,result_key,attempts FROM render_jobs ORDER BY id DESC LIMIT 3')).fetchall()
+    for r in rows: print(r)
+"
+```
+
+To test the failure path (bogus model URL → 3 retries → failed, no credit charge):
+
+```bash
+docker compose exec backend python -m scripts.seed_smoke_job --bogus
+# Then run worker --once three times; last run shows status=failed, credits unchanged.
+```
+
+### Worker env vars
+
+| Var | Default | Purpose |
+|---|---|---|
+| `RENDER_WORKER_TOKEN` | — | **Required** — shared secret; must match backend `RENDER_WORKER_TOKEN` |
+| `RENDER_API_URL` | `http://localhost:8765` | Backend base URL |
+| `HARNESS_BASE_URL` | `http://localhost:3000` | Next.js app URL (set via `BASE_URL` in `browser.mjs`) |
+
+**Security caveat (v1 accepted):** Per-job page tokens (`worker_token`) appear in
+access logs as query-string parameters on the `/payload`, `/complete`, and `/fail`
+endpoints.  Tokens are single-use UUID hex values (128 bits) and expire with the
+job, so log exposure is low risk.  A header-based token scheme is the Phase 2
+hardening path.
+
+### GPU / serverless deploy
+
+Cloud GPU and serverless deployment (Runpod, Modal, Vast.ai) land in **Phase 3**.
+The worker is a plain Node process — it only needs `playwright` and a Chromium
+install.  Point `RENDER_API_URL` at the production backend and set
+`HARNESS_BASE_URL` to the production app URL.
+
+---
+
 ## Env vars
 
 | Var | Where | Default | Purpose |
@@ -114,3 +195,4 @@ Set `DATABASE_URL=postgresql+psycopg2://user:pass@host:5432/dbname` and run `ale
 | `AI_BACKGROUND_MODE` | backend | `stub` | `off` / `stub` / `sdxl` (GPU host required) |
 | `PUBLIC_API_BASE` | backend | `http://localhost:8765` | Absolute base for `result_url` in AI BG responses |
 | `CORS_ORIGINS` | backend | `localhost:3000,127.0.0.1:3000` | Comma-separated CORS allowlist |
+| `RENDER_WORKER_TOKEN` | backend | — | Shared secret for render worker auth (`POST /render-jobs/claim`) |

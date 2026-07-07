@@ -98,9 +98,14 @@ def get_job_payload(
     job_id: int,
     token: str,
     db: Session = Depends(get_db),
-    _: None = Depends(_worker_auth),
 ) -> RenderJobPayload:
-    """Return render parameters. Requires matching per-job token query param."""
+    """Return render parameters. Secured by per-job token query param only.
+
+    X-Worker-Token is NOT required here: the browser harness page (running inside
+    the worker's Playwright browser) calls this endpoint and can only pass the
+    per-job token as a query param.  The per-job token is a UUID hex issued at
+    claim time and serves as the sole credential for payload/complete/fail.
+    """
     return render_job_service.get_job_payload(db, job_id, token=token)
 
 
@@ -110,9 +115,11 @@ async def complete_render_job(
     token: str,
     file: UploadFile,
     db: Session = Depends(get_db),
-    _: None = Depends(_worker_auth),
 ):
-    """Mark job completed; accepts multipart PNG upload; consumes 1 render credit."""
+    """Mark job completed; accepts multipart PNG upload; consumes 1 render credit.
+
+    Secured by per-job token only (see get_job_payload docstring).
+    """
     data = await file.read()
     job = render_job_service.complete_job(db, job_id, token=token, data=data)
     return _to_status(job)
@@ -124,9 +131,11 @@ def fail_render_job(
     token: str,
     body: dict,
     db: Session = Depends(get_db),
-    _: None = Depends(_worker_auth),
 ):
-    """Mark job failed or requeue for retry. Body: {error: str}."""
+    """Mark job failed or requeue for retry. Body: {error: str}.
+
+    Secured by per-job token only (see get_job_payload docstring).
+    """
     error = body.get("error", "unknown error")
     job = render_job_service.fail_job(db, job_id, token=token, error=error)
     return _to_status(job)

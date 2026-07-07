@@ -23,7 +23,8 @@ async function runJob(browser, { job_id, page_token }) {
       await page.goto(`${BASE_URL}/render-harness?job=${job_id}&token=${encodeURIComponent(page_token)}`, { waitUntil: "domcontentloaded" });
       await page.waitForFunction(
         () => window.__JOB_STATE__ === "done" || String(window.__JOB_STATE__).startsWith("error"),
-        { timeout: JOB_TIMEOUT_MS },
+        null,             // arg (unused by the predicate)
+        { timeout: JOB_TIMEOUT_MS },  // options
       );
       const state = await page.evaluate(() => window.__JOB_STATE__);
       console.log(`job ${job_id}: ${state}`);

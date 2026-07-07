@@ -19,6 +19,7 @@ RUN pip install -r requirements.txt
 COPY app ./app
 COPY alembic ./alembic
 COPY alembic.ini ./
+COPY scripts ./scripts
 
 RUN groupadd -r studio && useradd -r -g studio studio \
     && mkdir -p /app/uploads \

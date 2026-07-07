@@ -370,6 +370,33 @@ class TestCompleteJob:
         db.refresh(billing)
         assert billing.render_credits_balance == balance_before - 1
 
+    def test_zero_balance_at_completion_fails_job_402_no_write(self, db, user):
+        """Zero balance at completion → 402, job failed, no bytes written.
+
+        Prevents the orphan-PNG loop: without the precheck the PNG uploads,
+        the charge fails, and the worker retries a render nobody can pay for.
+        """
+        from app.features.billing.quota_service import get_or_create_billing
+        from app.features.render_jobs.service import complete_job
+
+        job = _make_job(db, user.id)
+        job.status = "running"
+        job.attempts = 1
+        billing = get_or_create_billing(db, user)
+        billing.render_credits_balance = 0
+        db.commit()
+
+        with patch("app.features.render_jobs.service.write_bytes") as mock_write:
+            with pytest.raises(HTTPException) as exc:
+                complete_job(db, job.id, token=job.worker_token, data=b"PNG-BYTES")
+
+        assert exc.value.status_code == 402
+        mock_write.assert_not_called()
+
+        db.refresh(job)
+        assert job.status == "failed"
+        assert job.error == "no credits at completion"
+
     def test_second_complete_call_is_409_no_double_charge(self, db, user):
         """Second complete call returns 409 and does NOT decrement credit again."""
         from app.features.billing.quota_service import get_or_create_billing

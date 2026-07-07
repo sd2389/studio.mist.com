@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
@@ -24,11 +24,25 @@ from app.schemas.render_job import RenderJobCreate, RenderJobPayload
 # User-facing service
 # ---------------------------------------------------------------------------
 
+MAX_ACTIVE_JOBS_PER_USER = 10
+
 
 def create_job(db: Session, user: User, body: RenderJobCreate) -> RenderJob:
-    """Assert credit (no consume), resolve owned scene, clamp dims, enqueue."""
+    """Assert credit (no consume), cap active jobs, resolve owned scene, clamp dims, enqueue."""
     # 402 guard — does NOT consume
     assert_render_credit(db, user)
+
+    # Flood guard — cap concurrent queued/running jobs per user
+    active = db.execute(
+        select(func.count())
+        .select_from(RenderJob)
+        .where(
+            RenderJob.user_id == user.id,
+            RenderJob.status.in_(("queued", "running")),
+        )
+    ).scalar_one()
+    if active >= MAX_ACTIVE_JOBS_PER_USER:
+        raise HTTPException(status_code=429, detail="Too many active render jobs")
 
     # Owner check on scene — 404 if not found or not owned
     scene: Scene = require_owned_scene(db.get(Scene, body.scene_id), user.id)
@@ -193,15 +207,24 @@ def complete_job(db: Session, job_id: int, token: str, data: bytes) -> RenderJob
     if job.status != "running":
         raise HTTPException(status_code=409, detail=f"Job is in state '{job.status}', expected 'running'")
 
-    # Store the rendered PNG
-    key = render_key(job.user_id, "png")
-    write_bytes(key, data, content_type="image/png")
-
     # Load the job owner to fetch billing
     owner = db.get(User, job.user_id)
     if owner is None:
         raise HTTPException(status_code=404, detail="Job owner not found")
     billing = get_or_create_billing(db, owner)
+
+    # Credit precheck BEFORE storing bytes — otherwise the PNG uploads as an
+    # orphan the user is never charged for and the worker retry-loops on it.
+    if billing.render_credits_balance <= 0:
+        job.status = "failed"
+        job.error = "no credits at completion"
+        job.updated_at = datetime.utcnow()
+        db.commit()
+        raise HTTPException(status_code=402, detail="No render credits at completion")
+
+    # Store the rendered PNG
+    key = render_key(job.user_id, "png")
+    write_bytes(key, data, content_type="image/png")
 
     # Update job state
     job.result_key = key

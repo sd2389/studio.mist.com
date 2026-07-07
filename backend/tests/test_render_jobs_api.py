@@ -124,6 +124,22 @@ def test_create_job_enqueues_and_does_not_charge(db, user, scene):
     assert job.model_ref == scene.model_key
 
 
+def test_create_job_caps_active_jobs_at_10(db, user, scene):
+    """11th create while 10 jobs are queued/running raises 429."""
+    from app.features.render_jobs.service import create_job
+    from app.schemas.render_job import RenderJobCreate
+
+    body = RenderJobCreate(scene_id=scene.id, width=512, height=512)
+    for _ in range(10):
+        create_job(db, user, body)
+
+    with pytest.raises(HTTPException) as exc_info:
+        create_job(db, user, body)
+
+    assert exc_info.value.status_code == 429
+    assert "Too many active render jobs" in exc_info.value.detail
+
+
 def test_status_owner_only(db, user, other_user, scene):
     """get_job_for_user raises 404 when the requesting user does not own the job."""
     from app.features.render_jobs.service import create_job, get_job_for_user

@@ -8,6 +8,7 @@ from app.models.catalog import (
 )
 from app.models.project import Project
 from app.models.render import Render
+from app.models.render_job import RenderJob
 from app.models.scene import Base, Scene
 from app.models.billing import BillingEvent, CreditAdjustment, UserBilling
 from app.models.feature_flag import FeatureFlag
@@ -18,6 +19,7 @@ __all__ = [
     "Base",
     "Scene",
     "Render",
+    "RenderJob",
     "Project",
     "User",
     "Session",

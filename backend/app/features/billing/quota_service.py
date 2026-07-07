@@ -269,7 +269,7 @@ def add_topup_credits(
     db.commit()
 
 
-CreditKind = str  # model | ai | custom_material | custom_asset | storage
+CreditKind = str  # model | ai | render | custom_material | custom_asset | storage
 
 
 def _apply_credit_delta(billing: UserBilling, kind: CreditKind, delta: int) -> None:

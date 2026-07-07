@@ -122,28 +122,20 @@ def claim_job(db: Session) -> RenderJob | None:
     Sets status='running', increments attempts.
     Returns None when the queue is empty (router should respond 204).
 
-    Uses SELECT ... FOR UPDATE SKIP LOCKED for safe concurrent claiming;
-    falls back transparently on SQLite (which doesn't support this clause
-    but is used only in tests where concurrency is irrelevant).
+    Uses SELECT ... FOR UPDATE SKIP LOCKED for safe concurrent claiming.
+    SQLite (tests only, concurrency irrelevant) doesn't support the clause,
+    so it takes an explicit no-lock path gated on the dialect — real errors
+    on other databases propagate.
     """
-    try:
-        stmt = (
-            select(RenderJob)
-            .where(RenderJob.status == "queued")
-            .order_by(RenderJob.created_at)
-            .with_for_update(skip_locked=True)
-            .limit(1)
-        )
-        job = db.execute(stmt).scalars().first()
-    except Exception:
-        # SQLite in tests doesn't support FOR UPDATE — fall back without lock
-        stmt = (
-            select(RenderJob)
-            .where(RenderJob.status == "queued")
-            .order_by(RenderJob.created_at)
-            .limit(1)
-        )
-        job = db.execute(stmt).scalars().first()
+    stmt = (
+        select(RenderJob)
+        .where(RenderJob.status == "queued")
+        .order_by(RenderJob.created_at)
+        .limit(1)
+    )
+    if db.get_bind().dialect.name != "sqlite":
+        stmt = stmt.with_for_update(skip_locked=True)
+    job = db.execute(stmt).scalars().first()
 
     if job is None:
         return None

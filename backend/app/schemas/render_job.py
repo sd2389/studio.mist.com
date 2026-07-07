@@ -28,3 +28,7 @@ class RenderJobPayload(BaseModel):
     preset: str
     width: int
     height: int
+
+
+class RenderJobFailRequest(BaseModel):
+    error: str = Field(..., max_length=1024)

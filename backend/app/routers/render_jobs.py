@@ -11,7 +11,12 @@ from app.core.public_urls import public_file_url
 from app.database import get_db
 from app.features.render_jobs import service as render_job_service
 from app.models.user import User
-from app.schemas.render_job import RenderJobCreate, RenderJobPayload, RenderJobStatus
+from app.schemas.render_job import (
+    RenderJobCreate,
+    RenderJobFailRequest,
+    RenderJobPayload,
+    RenderJobStatus,
+)
 
 router = APIRouter()
 
@@ -129,13 +134,12 @@ async def complete_render_job(
 def fail_render_job(
     job_id: int,
     token: str,
-    body: dict,
+    body: RenderJobFailRequest,
     db: Session = Depends(get_db),
 ):
     """Mark job failed or requeue for retry. Body: {error: str}.
 
     Secured by per-job token only (see get_job_payload docstring).
     """
-    error = body.get("error", "unknown error")
-    job = render_job_service.fail_job(db, job_id, token=token, error=error)
+    job = render_job_service.fail_job(db, job_id, token=token, error=body.error)
     return _to_status(job)

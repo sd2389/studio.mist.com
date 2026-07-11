@@ -22,6 +22,7 @@ import { renderAtResolution } from "@/lib/offscreen-render";
 import {
   batchFilenamePrefix,
   buildBatchExportJobs,
+  estimateBatchJobCount,
   runBatchExportJobs,
   type BatchExportContext,
 } from "@/lib/variants/batch-export";
@@ -35,6 +36,10 @@ import { getRenderFidelity } from "@/stores/render-fidelity-store";
 import * as THREE from "three";
 
 type ExportMode = "single" | "multiple";
+
+type BatchTileResult =
+  | { ok: true; label: string }
+  | { ok: false; label: string; message: string };
 
 type EditorImageTabProps = {
   sceneId: number;
@@ -76,9 +81,20 @@ export function EditorImageTab({
   }, []);
 
   const allows8k = (planFeatures?.max_image_resolution ?? 4096) >= 8192;
+  const batchExportEnabled = planFeatures?.batch_export_enabled !== false;
 
   const { width, height } = useMemo(() => computeImageSize(resolution, aspect), [resolution, aspect]);
   const estimateBytes = useMemo(() => width * height * (format === "jpeg" ? 2 : 4), [width, height, format]);
+
+  const estimatedJobCount = useMemo(
+    () =>
+      estimateBatchJobCount({
+        selectedVariantCount: selectedVariantIds.length,
+        variantsStateItemCount: variantItems.length,
+        extraSelectedSceneCount: selectedSceneIds.length,
+      }),
+    [selectedSceneIds.length, selectedVariantIds.length, variantItems.length],
+  );
 
   const batchContext: BatchExportContext = useMemo(
     () => ({
@@ -132,6 +148,11 @@ export function EditorImageTab({
         return;
       }
 
+      if (!batchExportEnabled) {
+        setError("Batch export requires a plan upgrade.");
+        return;
+      }
+
       const jobs = await buildBatchExportJobs({
         currentSceneId: sceneId,
         currentViewerId: viewerId,
@@ -147,22 +168,42 @@ export function EditorImageTab({
         return;
       }
 
+      const tileResults: BatchTileResult[] = [];
+      let completed = 0;
+
       await runBatchExportJobs(jobs, batchContext, async (job) => {
-        const prefix = batchFilenamePrefix(job);
-        await renderCurrentView(`${prefix}-${IMAGE_RESOLUTIONS[resolution].label}`);
+        const label = batchFilenamePrefix(job);
+        try {
+          await renderCurrentView(`${label}-${IMAGE_RESOLUTIONS[resolution].label}`);
+          tileResults.push({ ok: true, label });
+        } catch (e) {
+          tileResults.push({
+            ok: false,
+            label,
+            message: e instanceof Error ? e.message : "Render failed",
+          });
+        } finally {
+          completed += 1;
+          setStatus(`Batch ${completed}/${jobs.length}`);
+        }
+        return tileResults[tileResults.length - 1]!;
       });
 
-      setStatus(`Downloaded ${jobs.length} image${jobs.length === 1 ? "" : "s"}`);
+      const failed = tileResults.filter((t) => !t.ok);
+      setStatus(
+        failed.length === 0
+          ? `Downloaded ${tileResults.length} images`
+          : `Finished ${tileResults.length} jobs — ${failed.length} failed`,
+      );
+      if (failed.length > 0) {
+        setError(failed.map((f) => `${f.label}: ${f.message}`).join("; "));
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Render failed");
     } finally {
       setBusy(false);
     }
   }
-
-  const multipleCount =
-    (selectedVariantIds.length || variantItems.length || 1) *
-    (1 + selectedSceneIds.length);
 
   return (
     <div className="flex h-full flex-col">
@@ -340,10 +381,27 @@ export function EditorImageTab({
           </div>
         ) : null}
 
+        {mode === "multiple" ? (
+          <div className="space-y-1 text-xs text-muted-foreground">
+            <p>
+              Estimated jobs:{" "}
+              <span className="font-medium text-foreground">{estimatedJobCount}</span>
+            </p>
+            {!batchExportEnabled ? (
+              <p className="text-destructive">
+                Batch export requires a plan upgrade.{" "}
+                <Link href="/pricing" className="text-primary hover:underline">
+                  Upgrade
+                </Link>
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+
         <Button
           type="button"
           className="w-full gap-2"
-          disabled={busy}
+          disabled={busy || (mode === "multiple" && !batchExportEnabled)}
           onClick={() => void handleExport()}
         >
           {busy ? (
@@ -354,7 +412,7 @@ export function EditorImageTab({
           ) : (
             <>
               <Download className="size-4" aria-hidden />
-              {mode === "single" ? "Render & download" : `Render ${multipleCount} images`}
+              {mode === "single" ? "Render & download" : `Render ${estimatedJobCount} images`}
             </>
           )}
         </Button>

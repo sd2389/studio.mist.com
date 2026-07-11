@@ -1,7 +1,8 @@
 "use client";
 
 import { AlertTriangle, Loader2, Video, X } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,6 +17,7 @@ import {
 import {
   batchFilenamePrefix,
   buildBatchExportJobs,
+  estimateBatchJobCount,
   runBatchExportJobs,
   type BatchExportContext,
 } from "@/lib/variants/batch-export";
@@ -29,12 +31,18 @@ import {
 import type { ModelVariant, SceneVariantsState } from "@/lib/variants/types";
 import type { PersistedModelConfig } from "@/lib/slot-materials/model-config";
 import { mergePoses } from "@/lib/viewer-scene";
+import { fetchBillingAccount } from "@/lib/billing/client";
+import type { PlanFeatures } from "@/lib/billing/types";
 import { cn } from "@/lib/utils";
 import { getRenderFidelity } from "@/stores/render-fidelity-store";
 import { getVideoCaptureRefs } from "@/stores/video-capture-store";
 import { useMaterialPresetStore } from "@/stores/material-preset-store";
 
 type VideoMode = "simple" | "multi-angle" | "multiple";
+
+type BatchTileResult =
+  | { ok: true; label: string }
+  | { ok: false; label: string; message: string };
 
 type EditorVideoTabProps = {
   sceneId: number;
@@ -109,13 +117,31 @@ export function EditorVideoTab({
   const [status, setStatus] = useState<string | null>(null);
   const [hasWebCodecs] = useState(() => isWebCodecsSupported());
   const [etaLabel, setEtaLabel] = useState<string | null>(null);
+  const [planFeatures, setPlanFeatures] = useState<PlanFeatures | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const startedAtRef = useRef<number>(0);
 
+  useEffect(() => {
+    fetchBillingAccount()
+      .then((account) => setPlanFeatures(account.features))
+      .catch(() => {});
+  }, []);
+
+  const batchExportEnabled = planFeatures?.batch_export_enabled !== false;
   const resolution = VIDEO_RESOLUTIONS.find((r) => r.id === resId) ?? VIDEO_RESOLUTIONS[1];
   const duration = Math.max(1, Number.parseFloat(durationSec) || 4);
   const frameCount = Math.max(1, Math.round(duration * fps));
   const bps = Math.round(resolution.width * resolution.height * fps * 0.12);
+
+  const estimatedJobCount = useMemo(
+    () =>
+      estimateBatchJobCount({
+        selectedVariantCount: selectedVariantIds.length,
+        variantsStateItemCount: variantItems.length,
+        extraSelectedSceneCount: selectedSceneIds.length,
+      }),
+    [selectedSceneIds.length, selectedVariantIds.length, variantItems.length],
+  );
 
   const batchContext: BatchExportContext = useMemo(
     () => ({
@@ -210,6 +236,11 @@ export function EditorVideoTab({
       };
 
       if (mode === "multiple") {
+        if (!batchExportEnabled) {
+          setError("Batch export requires a plan upgrade.");
+          return;
+        }
+
         const jobs = await buildBatchExportJobs({
           currentSceneId: sceneId,
           currentViewerId: viewerId,
@@ -225,18 +256,41 @@ export function EditorVideoTab({
           return;
         }
 
+        const tileResults: BatchTileResult[] = [];
         let completed = 0;
+
         await runBatchExportJobs(jobs, batchContext, async (job) => {
-          const blob = await renderTurntableBlob(controller.signal);
-          const isZip = blob.type === ZIP_FALLBACK_MIME;
-          const ext = isZip ? "zip" : "mp4";
-          const prefix = batchFilenamePrefix(job);
-          downloadBlob(blob, `${prefix}-360.${ext}`);
-          completed += 1;
-          setProgress(completed / jobs.length);
+          const label = batchFilenamePrefix(job);
+          try {
+            const blob = await renderTurntableBlob(controller.signal);
+            const isZip = blob.type === ZIP_FALLBACK_MIME;
+            const ext = isZip ? "zip" : "mp4";
+            downloadBlob(blob, `${label}-360.${ext}`);
+            tileResults.push({ ok: true, label });
+          } catch (e) {
+            if ((e as { name?: string })?.name === "AbortError") throw e;
+            tileResults.push({
+              ok: false,
+              label,
+              message: e instanceof Error ? e.message : "Render failed",
+            });
+          } finally {
+            completed += 1;
+            setProgress(completed / jobs.length);
+            setStatus(`Batch ${completed}/${jobs.length}`);
+          }
+          return tileResults[tileResults.length - 1]!;
         });
 
-        setStatus(`Downloaded ${completed} video${completed === 1 ? "" : "s"}`);
+        const failed = tileResults.filter((t) => !t.ok);
+        setStatus(
+          failed.length === 0
+            ? `Downloaded ${tileResults.length} videos`
+            : `Finished ${tileResults.length} jobs — ${failed.length} failed`,
+        );
+        if (failed.length > 0) {
+          setError(failed.map((f) => `${f.label}: ${f.message}`).join("; "));
+        }
         return;
       }
 
@@ -270,10 +324,6 @@ export function EditorVideoTab({
   function handleCancel() {
     abortRef.current?.abort();
   }
-
-  const multipleCount =
-    (selectedVariantIds.length || variantItems.length || 1) *
-    (1 + selectedSceneIds.length);
 
   return (
     <div className="flex h-full flex-col">
@@ -439,6 +489,22 @@ export function EditorVideoTab({
         ) : null}
 
         <div className="flex flex-col gap-2">
+          {mode === "multiple" ? (
+            <div className="space-y-1 text-xs text-muted-foreground">
+              <p>
+                Estimated jobs:{" "}
+                <span className="font-medium text-foreground">{estimatedJobCount}</span>
+              </p>
+              {!batchExportEnabled ? (
+                <p className="text-destructive">
+                  Batch export requires a plan upgrade.{" "}
+                  <Link href="/pricing" className="text-primary hover:underline">
+                    Upgrade
+                  </Link>
+                </p>
+              ) : null}
+            </div>
+          ) : null}
           {busy ? (
             <Button type="button" variant="outline" onClick={handleCancel} className="gap-2">
               <X className="size-4" aria-hidden />
@@ -448,7 +514,7 @@ export function EditorVideoTab({
           <Button
             type="button"
             onClick={() => void handleRender()}
-            disabled={busy}
+            disabled={busy || (mode === "multiple" && !batchExportEnabled)}
             className="gap-2"
           >
             {busy ? (
@@ -459,7 +525,7 @@ export function EditorVideoTab({
             ) : (
               <>
                 <Video className="size-4" aria-hidden />
-                {mode === "multiple" ? `Render ${multipleCount} videos` : "Render video"}
+                {mode === "multiple" ? `Render ${estimatedJobCount} videos` : "Render video"}
               </>
             )}
           </Button>

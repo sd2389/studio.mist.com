@@ -50,6 +50,24 @@ type BuildJobsInput = {
   includeCurrentScene?: boolean;
 };
 
+/**
+ * UI estimate matching buildBatchExportJobs expansion:
+ * - selectedVariantIds.length > 0 → that count; else variantsStateItemCount (0 means 1 live snapshot)
+ * - scenes = 1 (current) + extraSelectedSceneCount
+ */
+export function estimateBatchJobCount(input: {
+  selectedVariantCount: number;
+  variantsStateItemCount: number;
+  extraSelectedSceneCount: number;
+}): number {
+  const variantCount =
+    input.selectedVariantCount > 0
+      ? input.selectedVariantCount
+      : Math.max(1, input.variantsStateItemCount);
+  const scenes = 1 + Math.max(0, input.extraSelectedSceneCount);
+  return scenes * variantCount;
+}
+
 export async function buildBatchExportJobs(input: BuildJobsInput): Promise<BatchExportJob[]> {
   const jobs: BatchExportJob[] = [];
   const variantIds =

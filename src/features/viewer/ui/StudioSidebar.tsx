@@ -1,19 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { RotateCcw } from "lucide-react";
-import { buttonVariants } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { renderAtResolution } from "@/lib/offscreen-render";
-import { getHiresRefs } from "@/stores/hires-export-store";
-import { getRenderFidelity } from "@/stores/render-fidelity-store";
 import type { SlotMaterialRef } from "@/lib/library/custom-material-ref";
 import { isCustomMaterialRef, parseCustomMaterialId } from "@/lib/library/custom-material-ref";
 import type { MaterialPresetId } from "@/stores/material-preset-store";
@@ -21,22 +10,19 @@ import { useMaterialPresetStore } from "@/stores/material-preset-store";
 import { useUserLibraryStore } from "@/stores/user-library-store";
 import type { PersistedModelConfig } from "@/lib/slot-materials/model-config";
 import { buildModelConfigFromSlots } from "@/lib/slot-materials/model-config";
-import { resolvePresetForSlot, sanitizeSlotSelections } from "@/lib/slot-materials/material-rules";
 import {
   buildSlotBadge,
   groupOf,
   prettyName,
-  resolveGroupedPreset,
   slotKind,
   type SlotId,
 } from "@/features/viewer/ui/studio-material-groups";
 import {
-  buildSlotAliasMap,
   filterSlotsByKind,
   resolveSelectionIsGem,
   resolveSelectionSwatchColor,
-  shouldCollapseGemSlots,
 } from "@/features/viewer/ui/studio-selection-utils";
+import { useStudioSlotContext } from "@/features/viewer/ui/useStudioSlotContext";
 import {
   StudioPrimaryBar,
   type StudioPrimaryPanel,
@@ -69,80 +55,29 @@ export function StudioSidebar({
   const [panel, setPanel] = useState<StudioPrimaryPanel>("metal");
   const [activeSlot, setActiveSlot] = useState<SlotId>("Metal 1");
 
-  const preset = useMaterialPresetStore((s) => s.preset);
   const setPreset = useMaterialPresetStore((s) => s.setPreset);
-  const slotSelections = useMaterialPresetStore((s) => s.slotSelections);
   const setSlotPreset = useMaterialPresetStore((s) => s.setSlotPreset);
 
-  const collapseGemSlots = useMemo(() => shouldCollapseGemSlots(modelConfig), [modelConfig]);
-  const slotAliasMap = useMemo(
-    () => buildSlotAliasMap(modelConfig, slotSelections, collapseGemSlots),
-    [modelConfig, slotSelections, collapseGemSlots],
-  );
-  const slotIds = useMemo(() => Object.keys(slotAliasMap), [slotAliasMap]);
+  const {
+    allSlotIds,
+    resolvedActiveSlot,
+    activePhysicalSlots,
+    selectedPresetForActiveSlot,
+  } = useStudioSlotContext({ modelConfig, activeSlot });
 
   function handlePanelChange(next: StudioPrimaryPanel) {
     setPanel(next);
     if (next === "metal") {
-      const metals = filterSlotsByKind(slotIds, "metal");
+      const metals = filterSlotsByKind(allSlotIds, "metal");
       if (metals.length && slotKind(activeSlot) !== "metal") setActiveSlot(metals[0]);
     } else if (next === "gem") {
-      const gems = filterSlotsByKind(slotIds, "gem");
+      const gems = filterSlotsByKind(allSlotIds, "gem");
       if (gems.length && slotKind(activeSlot) !== "gem") setActiveSlot(gems[0]);
     }
   }
 
-  const resolvedActiveSlot = slotIds.includes(activeSlot) ? activeSlot : (slotIds[0] ?? "Metal 1");
-  const activePhysicalSlots = useMemo(
-    () => slotAliasMap[resolvedActiveSlot] ?? [resolvedActiveSlot],
-    [slotAliasMap, resolvedActiveSlot],
-  );
-  const safeSlotSelections = useMemo(
-    () => sanitizeSlotSelections(slotSelections, modelConfig),
-    [slotSelections, modelConfig],
-  );
-  const selectedPresetForActiveSlot = useMemo(() => {
-    const selected = resolveGroupedPreset(activePhysicalSlots, safeSlotSelections);
-    if (selected) return selected;
-    return resolvePresetForSlot(
-      resolvedActiveSlot,
-      safeSlotSelections,
-      preset,
-      modelConfig.slotTokens,
-    );
-  }, [activePhysicalSlots, safeSlotSelections, resolvedActiveSlot, preset, modelConfig.slotTokens]);
-
   const currentColor = resolveSelectionSwatchColor(selectedPresetForActiveSlot);
   const currentIsGem = resolveSelectionIsGem(selectedPresetForActiveSlot);
-
-  async function downloadPng() {
-    const refs = getHiresRefs();
-    if (!refs) return;
-    try {
-      const { exposure, postfxConfig } = getRenderFidelity();
-      const { width, height } = refs.gl.domElement;
-      const blob = await renderAtResolution({
-        gl: refs.gl,
-        scene: refs.scene,
-        camera: refs.camera,
-        width,
-        height,
-        pixelRatio: 2,
-        exposure,
-        postfxConfig,
-      });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${modelId}-render.png`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch {
-      // Legacy menu path — ExportSharePanel surfaces status for the primary UI.
-    }
-  }
 
   return (
     <div className={cn("flex h-full flex-col overflow-hidden", className)}>
@@ -200,22 +135,6 @@ export function StudioSidebar({
           onActiveSlotChange={setActiveSlot}
         />
       ) : null}
-
-      {/* Hidden dropdown carrying legacy menu items so any direct callers still work. */}
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "sr-only")}
-        >
-          Legacy export
-        </DropdownMenuTrigger>
-        <DropdownMenuContent>
-          <DropdownMenuItem onClick={() => void downloadPng()}>PNG (current frame)</DropdownMenuItem>
-          <DropdownMenuItem onClick={onOpenHiResExport}>PNG (high-res)</DropdownMenuItem>
-          <DropdownMenuItem onClick={onOpenVideo360}>360° video</DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={onOpenExport}>Embed code</DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
     </div>
   );
 }

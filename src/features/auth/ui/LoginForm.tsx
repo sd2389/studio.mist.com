@@ -41,23 +41,32 @@ export function LoginForm() {
         <>
           <p>
             No account?{" "}
-            <Link href="/signup" className="font-medium text-primary hover:underline">
+            <Link
+              href="/signup"
+              className="font-semibold text-[#876d45] hover:underline"
+            >
               Sign up
             </Link>
           </p>
           <p className="mt-2">
-            <Link href="/forgot-password" className="hover:text-foreground hover:underline">
+            <Link
+              href="/forgot-password"
+              className="hover:text-foreground hover:underline"
+            >
               Forgot password
             </Link>
             {" · "}
-            <Link href="/contact" className="hover:text-foreground hover:underline">
+            <Link
+              href="/contact"
+              className="hover:text-foreground hover:underline"
+            >
               Contact us
             </Link>
           </p>
         </>
       }
     >
-      <form onSubmit={onSubmit} className="space-y-4">
+      <form onSubmit={onSubmit} className="space-y-5">
         <div className="space-y-2">
           <Label htmlFor="email">Email</Label>
           <Input
@@ -81,7 +90,12 @@ export function LoginForm() {
           />
         </div>
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
-        <Button type="submit" className="w-full" disabled={pending}>
+        <Button
+          type="submit"
+          size="lg"
+          className="mt-2 w-full"
+          disabled={pending}
+        >
           {pending ? "Signing in…" : "Sign in"}
         </Button>
       </form>

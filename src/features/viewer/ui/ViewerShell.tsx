@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import { SlidersHorizontal } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { modelExtFromUrl } from "@/lib/model-key";
-import { AiBgModal } from "@/components/modals/AiBgModal";
+import { AiVisualsModal } from "@/components/modals/AiVisualsModal";
 import { ExportModal } from "@/components/modals/ExportModal";
 import { HiResExportModal } from "@/components/modals/HiResExportModal";
 import { Video360Modal } from "@/components/modals/Video360Modal";
@@ -310,7 +310,7 @@ export function ViewerShell({
         </SheetContent>
       </Sheet>
 
-      <AiBgModal open={aiOpen} onOpenChange={setAiOpen} modelId={modelId} />
+      <AiVisualsModal open={aiOpen} onOpenChange={setAiOpen} modelId={modelId} />
       <ExportModal open={exportOpen} onOpenChange={setExportOpen} modelId={modelId} sku={sceneSku} />
       <HiResExportModal open={hiResOpen} onOpenChange={setHiResOpen} modelId={modelId} />
       <Video360Modal open={video360Open} onOpenChange={setVideo360Open} modelId={modelId} />

@@ -118,7 +118,7 @@ const TAB_ITEMS: { id: EditorTabId; label: string; icon: typeof Settings }[] = [
   { id: "pose", label: "Pose", icon: ScanLine },
   { id: "layers", label: "Layers", icon: Layers },
   { id: "image", label: "Image", icon: Download },
-  { id: "ai-image", label: "AI Image", icon: Sparkles },
+  { id: "ai-image", label: "AI Visuals", icon: Sparkles },
   { id: "video", label: "Video", icon: Video },
   { id: "embed", label: "Embed", icon: Code2 },
 ];
@@ -292,8 +292,8 @@ export function EditorTabRail({
           </TabPanel>
         </TabsContent>
         <TabsContent value="ai-image" className="m-0 h-full min-h-0 overflow-hidden">
-          <TabPanel label="AI Image">
-          <EditorAiImageTab viewerId={viewerId} />
+          <TabPanel label="AI Visuals">
+            <EditorAiImageTab viewerId={viewerId} />
           </TabPanel>
         </TabsContent>
         <TabsContent value="video" className="m-0 h-full min-h-0 overflow-hidden">

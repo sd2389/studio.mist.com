@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import Link from "next/link";
 import { ArrowLeft, SlidersHorizontal } from "lucide-react";
 import { useState } from "react";
-import { AiBgModal } from "@/components/modals/AiBgModal";
+import { AiVisualsModal } from "@/components/modals/AiVisualsModal";
 import { ExportModal } from "@/components/modals/ExportModal";
 import { HiResExportModal } from "@/components/modals/HiResExportModal";
 import { Video360Modal } from "@/components/modals/Video360Modal";
@@ -116,7 +116,7 @@ export function StoneViewer({ cutId }: { cutId: CutId }) {
         </SheetContent>
       </Sheet>
 
-      <AiBgModal open={aiOpen} onOpenChange={setAiOpen} modelId={modelId} />
+      <AiVisualsModal open={aiOpen} onOpenChange={setAiOpen} modelId={modelId} />
       <ExportModal open={exportOpen} onOpenChange={setExportOpen} modelId={modelId} sku={null} />
       <HiResExportModal open={hiResOpen} onOpenChange={setHiResOpen} modelId={modelId} />
       <Video360Modal open={video360Open} onOpenChange={setVideo360Open} modelId={modelId} />

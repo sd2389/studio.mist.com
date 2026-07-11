@@ -1,6 +1,6 @@
 "use client";
 
-import { FeatureGate } from "@/features/feature-flags";
+import { FeatureGate, isFeatureEnabled, useFeatureFlags } from "@/features/feature-flags";
 import { cn } from "@/lib/utils";
 
 export type AiVisualsEntry = "background" | "model";
@@ -16,12 +16,16 @@ export function AiVisualsEntryPicker({
   onSelectBackground,
   onSelectModel,
 }: AiVisualsEntryPickerProps) {
+  const { snapshot, loading } = useFeatureFlags();
+  const modelEnabled =
+    !(loading && !snapshot) && isFeatureEnabled(snapshot, "ai_on_model");
+
   return (
     <div className="space-y-2">
       <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
         Entry
       </p>
-      <div className="grid grid-cols-2 gap-2">
+      <div className={cn("grid gap-2", modelEnabled ? "grid-cols-2" : "grid-cols-1")}>
         <button
           type="button"
           onClick={onSelectBackground}

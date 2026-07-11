@@ -43,7 +43,7 @@ export function LoginForm() {
             No account?{" "}
             <Link
               href="/signup"
-              className="font-semibold text-[#876d45] hover:underline"
+              className="font-semibold text-[#ef5b2a] hover:underline"
             >
               Sign up
             </Link>

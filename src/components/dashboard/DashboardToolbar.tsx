@@ -20,7 +20,12 @@ type DashboardToolbarProps = {
   pageCount: number;
 };
 
-export function DashboardToolbar({ filters, total, page, pageCount }: DashboardToolbarProps) {
+export function DashboardToolbar({
+  filters,
+  total,
+  page,
+  pageCount,
+}: DashboardToolbarProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [searchDraft, setSearchDraft] = useState(filters.q);
@@ -49,11 +54,17 @@ export function DashboardToolbar({ filters, total, page, pageCount }: DashboardT
   }, [searchDraft, filters.q, pushFilters]);
 
   return (
-    <div className="mb-6 space-y-4" aria-busy={pending}>
+    <div
+      className="mb-8 space-y-4 rounded-2xl border border-foreground/[0.08] bg-card/55 p-4 shadow-sm backdrop-blur-sm sm:p-5"
+      aria-busy={pending}
+    >
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="grid flex-1 gap-4 sm:grid-cols-2 lg:max-w-2xl">
           <div className="space-y-2">
-            <Label htmlFor="dashboard-search" className="text-xs font-medium text-muted-foreground">
+            <Label
+              htmlFor="dashboard-search"
+              className="text-xs font-medium text-muted-foreground"
+            >
               Search name or SKU
             </Label>
             <div className="relative">
@@ -66,19 +77,24 @@ export function DashboardToolbar({ filters, total, page, pageCount }: DashboardT
                 value={searchDraft}
                 onChange={(e) => setSearchDraft(e.target.value)}
                 placeholder="Search models…"
-                className="h-10 pl-9"
+                className="h-11 rounded-xl bg-background/65 pl-9"
               />
             </div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="dashboard-category" className="text-xs font-medium text-muted-foreground">
+            <Label
+              htmlFor="dashboard-category"
+              className="text-xs font-medium text-muted-foreground"
+            >
               Category
             </Label>
             <select
               id="dashboard-category"
               value={filters.category}
-              onChange={(e) => pushFilters({ category: e.target.value, page: 1 })}
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onChange={(e) =>
+                pushFilters({ category: e.target.value, page: 1 })
+              }
+              className="flex h-11 w-full rounded-xl border border-input bg-background/65 px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <option value="">All categories</option>
               {JEWELRY_CATEGORIES.map((category) => (
@@ -92,14 +108,19 @@ export function DashboardToolbar({ filters, total, page, pageCount }: DashboardT
 
         <div className="flex flex-wrap items-center gap-3">
           <div className="space-y-2">
-            <Label htmlFor="dashboard-rows" className="text-xs font-medium text-muted-foreground">
+            <Label
+              htmlFor="dashboard-rows"
+              className="text-xs font-medium text-muted-foreground"
+            >
               Rows per page
             </Label>
             <select
               id="dashboard-rows"
               value={String(filters.limit)}
-              onChange={(e) => pushFilters({ limit: Number(e.target.value), page: 1 })}
-              className="flex h-10 min-w-[5.5rem] rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onChange={(e) =>
+                pushFilters({ limit: Number(e.target.value), page: 1 })
+              }
+              className="flex h-11 min-w-[5.5rem] rounded-xl border border-input bg-background/65 px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               {DASHBOARD_ROWS_OPTIONS.map((n) => (
                 <option key={n} value={n}>
@@ -109,7 +130,9 @@ export function DashboardToolbar({ filters, total, page, pageCount }: DashboardT
             </select>
           </div>
           <p className="pt-6 text-sm text-muted-foreground">
-            <span className="font-medium tabular-nums text-foreground">{total}</span>{" "}
+            <span className="font-medium tabular-nums text-foreground">
+              {total}
+            </span>{" "}
             {total === 1 ? "model" : "models"}
           </p>
         </div>
@@ -118,8 +141,11 @@ export function DashboardToolbar({ filters, total, page, pageCount }: DashboardT
       {pageCount > 1 ? (
         <div className="flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-card/60 px-4 py-2">
           <p className="text-sm text-muted-foreground">
-            Page <span className="font-medium tabular-nums text-foreground">{page}</span> of{" "}
-            <span className="tabular-nums">{pageCount}</span>
+            Page{" "}
+            <span className="font-medium tabular-nums text-foreground">
+              {page}
+            </span>{" "}
+            of <span className="tabular-nums">{pageCount}</span>
           </p>
           <div className="flex items-center gap-2">
             <Button

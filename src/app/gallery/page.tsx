@@ -1,9 +1,12 @@
 import Link from "next/link";
-import { Gem } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { JewelryGrid } from "@/components/gallery/JewelryGrid";
 import { FeatureDisabledPage } from "@/features/feature-flags";
-import { fetchFeatureFlagsServer, isFeatureEnabled } from "@/lib/feature-flags/server-fetch";
+import {
+  fetchFeatureFlagsServer,
+  isFeatureEnabled,
+} from "@/lib/feature-flags/server-fetch";
 import { cn } from "@/lib/utils";
 
 export const metadata = {
@@ -16,28 +19,34 @@ export default async function GalleryPage() {
     return <FeatureDisabledPage title="Gallery unavailable" />;
   }
   return (
-    <div className="relative min-h-[100dvh] bg-app-canvas">
-      <div className="relative z-10 mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:py-10">
-        <header className="mb-10 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+    <div className="relative min-h-[100dvh] overflow-hidden bg-app-canvas">
+      <div
+        aria-hidden
+        className="absolute -right-32 -top-32 size-[520px] rounded-full bg-[#b89960]/10 blur-[110px]"
+      />
+      <div className="relative z-10 mx-auto max-w-7xl px-5 py-8 sm:px-8 lg:py-12">
+        <header className="mb-14 flex flex-col gap-8 border-b border-foreground/10 pb-10 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <Link
               href="/"
-              className="text-xs font-medium uppercase tracking-[0.15em] text-muted-foreground"
+              className="mb-8 inline-flex items-center gap-2 text-kicker text-muted-foreground transition-colors hover:text-foreground"
             >
-              DevJewels Studio
+              <ArrowLeft className="size-3.5" aria-hidden /> DevJewels Studio
             </Link>
-            <h1 className="mt-2 flex items-center gap-3 text-3xl font-semibold text-foreground sm:text-4xl">
-              <Gem className="size-7 text-primary" aria-hidden />
-              Demo jewelry
+            <h1 className="font-display text-5xl font-normal italic tracking-[-0.04em] text-foreground sm:text-7xl">
+              Jewelry <span className="text-[#9a7d4d]">showcase.</span>
             </h1>
-            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-              Procedural CAD assemblies pre-set with diamonds. Tap to open in studio — swap
-              metals (gold karats, platinum, silver) or pick a fancy diamond color.
+            <p className="mt-5 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">
+              Explore jewelry-native material and lighting studies. Every piece
+              opens as an editable real-time scene in the studio.
             </p>
           </div>
           <Link
             href="/dashboard"
-            className={cn(buttonVariants({ variant: "outline" }), "border-border")}
+            className={cn(
+              buttonVariants({ variant: "outline", size: "lg" }),
+              "border-foreground/15 bg-card/70",
+            )}
           >
             Dashboard
           </Link>

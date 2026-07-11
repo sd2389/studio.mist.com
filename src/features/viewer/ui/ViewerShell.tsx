@@ -10,7 +10,12 @@ import { ExportModal } from "@/components/modals/ExportModal";
 import { HiResExportModal } from "@/components/modals/HiResExportModal";
 import { Video360Modal } from "@/components/modals/Video360Modal";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { ViewerCanvas } from "./ViewerCanvas";
 import { EmbedChrome } from "./EmbedChrome";
 import { StudioSidebar } from "./StudioSidebar";
@@ -20,9 +25,15 @@ import type { EmbedSettings } from "@/lib/embed-settings";
 import { resolveModelUrl } from "@/lib/model-url";
 import { getSceneByViewerId, updateSceneByViewerId } from "@/features/scene";
 import type { SceneDetail } from "@/lib/api/scenes";
-import { fetchSourceCatalog, type SourceCatalogPayload } from "@/lib/source-catalog";
+import {
+  fetchSourceCatalog,
+  type SourceCatalogPayload,
+} from "@/lib/source-catalog";
 import { sanitizeSlotSelections } from "@/lib/slot-materials/material-rules";
-import { buildModelConfigFromSlots, getDefaultSceneSettings } from "@/lib/slot-materials/model-config";
+import {
+  buildModelConfigFromSlots,
+  getDefaultSceneSettings,
+} from "@/lib/slot-materials/model-config";
 import {
   useMaterialPresetStore,
   type LightingPresetId,
@@ -51,12 +62,20 @@ export function ViewerShell({
   const lighting = useMaterialPresetStore((s) => s.lighting);
   const setLighting = useMaterialPresetStore((s) => s.setLighting);
   const slotSelections = useMaterialPresetStore((s) => s.slotSelections);
-  const replaceSlotSelections = useMaterialPresetStore((s) => s.replaceSlotSelections);
+  const replaceSlotSelections = useMaterialPresetStore(
+    (s) => s.replaceSlotSelections,
+  );
   const sceneSettings = useMaterialPresetStore((s) => s.sceneSettings);
-  const replaceSceneSettings = useMaterialPresetStore((s) => s.replaceSceneSettings);
+  const replaceSceneSettings = useMaterialPresetStore(
+    (s) => s.replaceSceneSettings,
+  );
 
-  const [modelConfig, setModelConfig] = useState(() => buildModelConfigFromSlots([]));
-  const [sceneSku, setSceneSku] = useState<string | null>(initialScene?.sku ?? null);
+  const [modelConfig, setModelConfig] = useState(() =>
+    buildModelConfigFromSlots([]),
+  );
+  const [sceneSku, setSceneSku] = useState<string | null>(
+    initialScene?.sku ?? null,
+  );
   const [catalog, setCatalog] = useState<SourceCatalogPayload | null>(null);
   const [sceneLoaded, setSceneLoaded] = useState(false);
   const applyingPersistedState = useRef(false);
@@ -95,10 +114,9 @@ export function ViewerShell({
     if (initialScene) {
       applyingPersistedState.current = true;
       const scene = initialScene;
-      const resolvedModelConfig =
-        scene.model_config?.slots?.length
-          ? scene.model_config
-          : buildModelConfigFromSlots(Object.keys(scene.slot_selections ?? {}));
+      const resolvedModelConfig = scene.model_config?.slots?.length
+        ? scene.model_config
+        : buildModelConfigFromSlots(Object.keys(scene.slot_selections ?? {}));
       const safeSelections = sanitizeSlotSelections(
         (scene.slot_selections ?? {}) as Record<string, MaterialPresetId>,
         resolvedModelConfig,
@@ -123,10 +141,9 @@ export function ViewerShell({
     void getSceneByViewerId(modelId)
       .then((scene) => {
         if (cancelled) return;
-        const resolvedModelConfig =
-          scene.model_config?.slots?.length
-            ? scene.model_config
-            : buildModelConfigFromSlots(Object.keys(scene.slot_selections ?? {}));
+        const resolvedModelConfig = scene.model_config?.slots?.length
+          ? scene.model_config
+          : buildModelConfigFromSlots(Object.keys(scene.slot_selections ?? {}));
         const safeSelections = sanitizeSlotSelections(
           (scene.slot_selections ?? {}) as Record<string, MaterialPresetId>,
           resolvedModelConfig,
@@ -158,7 +175,14 @@ export function ViewerShell({
         window.clearTimeout(persistTimer.current);
       }
     };
-  }, [initialScene, modelId, replaceSceneSettings, replaceSlotSelections, setLighting, setPreset]);
+  }, [
+    initialScene,
+    modelId,
+    replaceSceneSettings,
+    replaceSlotSelections,
+    setLighting,
+    setPreset,
+  ]);
 
   const persistPayload = useMemo(
     () => ({
@@ -173,7 +197,9 @@ export function ViewerShell({
 
   const resolvedSceneSettings = useMemo(() => {
     if (!catalog?.scenes) return sceneSettings;
-    const indexById = new Map(catalog.scenes.map((item) => [item._id, item.value ?? ""]));
+    const indexById = new Map(
+      catalog.scenes.map((item) => [item._id, item.value ?? ""]),
+    );
     const resolveValue = (value: string | null) => {
       if (!value) return null;
       if (value.includes("/") || value.includes(".")) return value;
@@ -192,9 +218,12 @@ export function ViewerShell({
 
   useEffect(() => {
     if (!sceneLoaded || applyingPersistedState.current) return;
-    if (persistTimer.current !== null) window.clearTimeout(persistTimer.current);
+    if (persistTimer.current !== null)
+      window.clearTimeout(persistTimer.current);
     persistTimer.current = window.setTimeout(() => {
-      void updateSceneByViewerId(modelId, persistPayload).catch(() => undefined);
+      void updateSceneByViewerId(modelId, persistPayload).catch(
+        () => undefined,
+      );
     }, 350);
   }, [modelId, persistPayload, sceneLoaded]);
 
@@ -209,7 +238,9 @@ export function ViewerShell({
         {showChrome ? (
           <EmbedChrome
             modelId={modelId}
-            editorHref={initialScene?.id ? `/model/${initialScene.id}` : undefined}
+            editorHref={
+              initialScene?.id ? `/model/${initialScene.id}` : undefined
+            }
             displayName={displayName}
             brandingText={embedSettings?.brandingText}
             showTitle={embedSettings?.showTitle ?? true}
@@ -233,8 +264,8 @@ export function ViewerShell({
 
   return (
     <>
-      <div className="flex h-[100dvh] flex-col overflow-hidden bg-muted/30 lg:flex-row">
-        <aside className="hidden h-full w-80 shrink-0 flex-col border-r border-border bg-card lg:flex xl:w-[360px] 2xl:w-[400px]">
+      <div className="dark flex h-[100dvh] flex-col overflow-hidden bg-[#12110f] text-foreground lg:flex-row">
+        <aside className="hidden h-full w-80 shrink-0 flex-col border-r border-white/[0.08] bg-[#181714] lg:flex xl:w-[360px] 2xl:w-[400px]">
           <StudioSidebar
             modelId={modelId}
             sku={sceneSku}
@@ -246,7 +277,7 @@ export function ViewerShell({
           />
         </aside>
 
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-white">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-studio-canvas">
           <StudioTopBar modelId={modelId} sku={sceneSku} />
           <motion.div
             className="relative min-h-0 flex-1"
@@ -270,7 +301,7 @@ export function ViewerShell({
       <Button
         type="button"
         size="lg"
-        className="fixed bottom-5 left-4 z-50 gap-2 rounded-full border border-border bg-card text-foreground shadow-sm backdrop-blur-sm lg:hidden"
+        className="dark fixed bottom-5 left-4 z-50 gap-2 rounded-full border border-white/10 bg-[#211f1b]/90 text-white shadow-2xl backdrop-blur-xl lg:hidden"
         onClick={() => setMobileControlsOpen(true)}
       >
         <SlidersHorizontal className="size-4" aria-hidden />
@@ -280,10 +311,12 @@ export function ViewerShell({
       <Sheet open={mobileControlsOpen} onOpenChange={setMobileControlsOpen}>
         <SheetContent
           side="bottom"
-          className="h-[min(85dvh,640px)] border-border bg-card p-0 sm:h-[min(80dvh,720px)]"
+          className="dark h-[min(85dvh,640px)] border-white/10 bg-[#181714] p-0 text-white sm:h-[min(80dvh,720px)]"
         >
           <SheetHeader className="border-b border-border px-4 py-3 text-left">
-            <SheetTitle className="text-base font-semibold text-foreground">Studio controls</SheetTitle>
+            <SheetTitle className="text-base font-semibold text-foreground">
+              Studio controls
+            </SheetTitle>
           </SheetHeader>
           <StudioSidebar
             className="max-h-[calc(min(85dvh,640px)-56px)] sm:max-h-[calc(min(80dvh,720px)-56px)]"
@@ -310,10 +343,27 @@ export function ViewerShell({
         </SheetContent>
       </Sheet>
 
-      <AiVisualsModal open={aiOpen} onOpenChange={setAiOpen} modelId={modelId} />
-      <ExportModal open={exportOpen} onOpenChange={setExportOpen} modelId={modelId} sku={sceneSku} />
-      <HiResExportModal open={hiResOpen} onOpenChange={setHiResOpen} modelId={modelId} />
-      <Video360Modal open={video360Open} onOpenChange={setVideo360Open} modelId={modelId} />
+      <AiVisualsModal
+        open={aiOpen}
+        onOpenChange={setAiOpen}
+        modelId={modelId}
+      />
+      <ExportModal
+        open={exportOpen}
+        onOpenChange={setExportOpen}
+        modelId={modelId}
+        sku={sceneSku}
+      />
+      <HiResExportModal
+        open={hiResOpen}
+        onOpenChange={setHiResOpen}
+        modelId={modelId}
+      />
+      <Video360Modal
+        open={video360Open}
+        onOpenChange={setVideo360Open}
+        modelId={modelId}
+      />
     </>
   );
 }

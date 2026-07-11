@@ -7,7 +7,10 @@ import { AppHeader } from "@/components/layout/AppHeader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatStorageGb } from "@/lib/billing/format";
-import { startSubscriptionCheckout, startTopUpCheckout } from "@/lib/billing/client";
+import {
+  startSubscriptionCheckout,
+  startTopUpCheckout,
+} from "@/lib/billing/client";
 import type { PricingCatalog } from "@/lib/billing/types";
 
 type PricingPageProps = {
@@ -15,7 +18,10 @@ type PricingPageProps = {
   isAuthenticated: boolean;
 };
 
-export function PricingPageClient({ catalog, isAuthenticated }: PricingPageProps) {
+export function PricingPageClient({
+  catalog,
+  isAuthenticated,
+}: PricingPageProps) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -62,13 +68,15 @@ export function PricingPageClient({ catalog, isAuthenticated }: PricingPageProps
   return (
     <div className="min-h-[100dvh] bg-app-canvas">
       {isAuthenticated ? <AppHeader /> : null}
-      <main className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
-        <header className="mb-12 text-center">
-          <h1 className="font-display text-4xl font-normal italic tracking-tight text-foreground sm:text-5xl">
-            Plans & pricing
+      <main className="mx-auto max-w-7xl px-5 py-16 sm:px-8 lg:py-24">
+        <header className="mb-14 text-center">
+          <p className="text-kicker text-[#92784e]">Simple, scalable access</p>
+          <h1 className="mt-5 font-display text-5xl font-normal italic tracking-[-0.04em] text-foreground sm:text-7xl">
+            Plans for every atelier.
           </h1>
-          <p className="mx-auto mt-3 max-w-xl text-muted-foreground">
-            Model credits, AI generations, custom materials, and storage — metered per plan.
+          <p className="mx-auto mt-5 max-w-xl leading-7 text-muted-foreground">
+            Model credits, AI generations, custom materials, and storage —
+            metered per plan.
           </p>
         </header>
 
@@ -78,17 +86,23 @@ export function PricingPageClient({ catalog, isAuthenticated }: PricingPageProps
           </p>
         ) : null}
 
-        <div className="grid gap-6 lg:grid-cols-3">
+        <div className="grid gap-5 lg:grid-cols-3">
           {catalog.plans.map((plan) => (
             <Card
               key={plan.tier}
-              className={plan.tier === "grow" ? "border-primary/40 ring-1 ring-primary/20" : ""}
+              className={
+                plan.tier === "grow"
+                  ? "border-[#9a7d4d]/45 bg-[#211f1b] text-white ring-1 ring-[#9a7d4d]/20"
+                  : ""
+              }
             >
               <CardHeader>
                 <p className="text-xs font-semibold uppercase tracking-[0.15em] text-muted-foreground">
                   {plan.label}
                 </p>
-                <CardTitle className="text-3xl">{plan.monthly_price_label}</CardTitle>
+                <CardTitle className="font-display text-4xl italic">
+                  {plan.monthly_price_label}
+                </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <ul className="space-y-2 text-sm text-muted-foreground">
@@ -110,7 +124,8 @@ export function PricingPageClient({ catalog, isAuthenticated }: PricingPageProps
                   </li>
                   <li className="flex items-center gap-2">
                     <Check className="size-4 text-primary" />
-                    Up to {plan.features.max_variants_per_model} variants / model
+                    Up to {plan.features.max_variants_per_model} variants /
+                    model
                   </li>
                   <li className="flex items-center gap-2">
                     <Check className="size-4 text-primary" />
@@ -118,13 +133,18 @@ export function PricingPageClient({ catalog, isAuthenticated }: PricingPageProps
                   </li>
                 </ul>
                 <Button
+                  size="lg"
                   className="w-full"
                   variant={plan.tier === "grow" ? "default" : "outline"}
                   onClick={() => subscribe(plan.stripe_price_id, plan.tier)}
                   disabled={busy === plan.tier}
                 >
-                  {busy === plan.tier ? <Loader2 className="size-4 animate-spin" /> : null}
-                  {plan.tier === "free" ? "Get started" : `Choose ${plan.label}`}
+                  {busy === plan.tier ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : null}
+                  {plan.tier === "free"
+                    ? "Get started"
+                    : `Choose ${plan.label}`}
                 </Button>
               </CardContent>
             </Card>
@@ -132,7 +152,9 @@ export function PricingPageClient({ catalog, isAuthenticated }: PricingPageProps
         </div>
 
         <section className="mt-16 space-y-6">
-          <h2 className="text-center text-2xl font-semibold text-foreground">Credit top-ups</h2>
+          <h2 className="text-center text-2xl font-semibold text-foreground">
+            Credit top-ups
+          </h2>
           <p className="text-center text-sm text-muted-foreground">
             One-time purchases — credits apply immediately after payment.
           </p>
@@ -147,7 +169,9 @@ export function PricingPageClient({ catalog, isAuthenticated }: PricingPageProps
                     onClick={() => buyTopUp(pack.id)}
                     disabled={!pack.stripe_price_id || busy === pack.id}
                   >
-                    {busy === pack.id ? <Loader2 className="size-4 animate-spin" /> : null}
+                    {busy === pack.id ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : null}
                     {pack.stripe_price_id ? "Buy now" : "Coming soon"}
                   </Button>
                 </CardContent>
@@ -160,10 +184,16 @@ export function PricingPageClient({ catalog, isAuthenticated }: PricingPageProps
           <Link href="/terms" className="hover:text-foreground hover:underline">
             Terms of Service
           </Link>
-          <Link href="/privacy" className="hover:text-foreground hover:underline">
+          <Link
+            href="/privacy"
+            className="hover:text-foreground hover:underline"
+          >
             Privacy Policy
           </Link>
-          <Link href="/refund" className="hover:text-foreground hover:underline">
+          <Link
+            href="/refund"
+            className="hover:text-foreground hover:underline"
+          >
             Refund Policy
           </Link>
         </footer>

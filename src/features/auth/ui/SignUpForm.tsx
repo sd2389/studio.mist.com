@@ -39,13 +39,16 @@ export function SignUpForm() {
       footer={
         <p>
           Already have an account?{" "}
-          <Link href="/login" className="font-medium text-primary hover:underline">
+          <Link
+            href="/login"
+            className="font-semibold text-[#876d45] hover:underline"
+          >
             Sign in
           </Link>
         </p>
       }
     >
-      <form onSubmit={onSubmit} className="space-y-4">
+      <form onSubmit={onSubmit} className="space-y-5">
         <div className="space-y-2">
           <Label htmlFor="name">Name (optional)</Label>
           <Input
@@ -77,10 +80,17 @@ export function SignUpForm() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
-          <p className="text-xs text-muted-foreground">At least 8 characters.</p>
+          <p className="text-xs text-muted-foreground">
+            At least 8 characters.
+          </p>
         </div>
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
-        <Button type="submit" className="w-full" disabled={pending}>
+        <Button
+          type="submit"
+          size="lg"
+          className="mt-2 w-full"
+          disabled={pending}
+        >
           {pending ? "Creating account…" : "Sign up"}
         </Button>
       </form>

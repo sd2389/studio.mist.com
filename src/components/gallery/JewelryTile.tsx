@@ -8,7 +8,11 @@ import * as THREE from "three";
 import { Card, CardContent } from "@/components/ui/card";
 import { createGemMaterial } from "@/lib/gem-gpu/gem-physical-material";
 import { createPresetMaterial } from "@/lib/material-presets";
-import { getJewelryById, getRole, type JewelryId } from "@/lib/jewelry/assembly";
+import {
+  getJewelryById,
+  getRole,
+  type JewelryId,
+} from "@/lib/jewelry/assembly";
 
 type Props = { id: JewelryId; label: string; description: string };
 
@@ -33,11 +37,14 @@ export function JewelryTile({ id, label, description }: Props) {
   return (
     <Link
       href={`/gallery/${id}`}
-      className="group block focus:outline-none"
+      className="group block rounded-[1.4rem] focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       aria-label={`Open ${label} in studio`}
     >
-      <Card className="overflow-hidden border-border bg-card shadow-sm transition group-hover:shadow-md">
-        <div className="relative aspect-square bg-gradient-to-br from-stone-100 via-neutral-50 to-stone-200">
+      <Card className="overflow-hidden border-0 bg-[#211f1b] p-0 text-white transition duration-500 group-hover:-translate-y-1 group-hover:shadow-[0_30px_70px_-35px_rgba(30,22,12,0.7)]">
+        <div className="relative aspect-square overflow-hidden bg-[radial-gradient(circle_at_50%_42%,#5a554c_0%,#2a2722_48%,#1b1916_100%)]">
+          <span className="absolute left-4 top-4 z-10 rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-[9px] uppercase tracking-[0.14em] text-white/45 backdrop-blur">
+            Live 3D
+          </span>
           <Canvas
             className="h-full w-full"
             camera={{ position: [1.6, 0.9, 1.6], fov: 38, near: 0.01, far: 50 }}
@@ -46,17 +53,27 @@ export function JewelryTile({ id, label, description }: Props) {
           >
             <ambientLight intensity={0.4} />
             <Suspense fallback={null}>
-              <Environment files="/hdr/photo_studio_01_1k.hdr" background={false} />
+              <Environment
+                files="/hdr/photo_studio_01_1k.hdr"
+                background={false}
+              />
               <Center>
                 <primitive object={root} />
               </Center>
-              <OrbitControls enableZoom={false} enablePan={false} autoRotate autoRotateSpeed={1.1} />
+              <OrbitControls
+                enableZoom={false}
+                enablePan={false}
+                autoRotate
+                autoRotateSpeed={1.1}
+              />
             </Suspense>
           </Canvas>
         </div>
-        <CardContent className="space-y-1 p-4">
-          <p className="font-medium text-foreground">{label}</p>
-          <p className="line-clamp-2 text-xs text-muted-foreground">{description}</p>
+        <CardContent className="space-y-2 p-5">
+          <p className="font-display text-xl italic text-white">{label}</p>
+          <p className="line-clamp-2 text-xs leading-5 text-white/42">
+            {description}
+          </p>
         </CardContent>
       </Card>
     </Link>

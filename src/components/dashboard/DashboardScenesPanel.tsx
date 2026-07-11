@@ -1,7 +1,14 @@
 "use client";
 
 import { motion, useReducedMotion } from "framer-motion";
-import { Gem, MoreHorizontal, Plus, Settings2, Trash2, UploadCloud } from "lucide-react";
+import {
+  Gem,
+  MoreHorizontal,
+  Plus,
+  Settings2,
+  Trash2,
+  UploadCloud,
+} from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import type { Scene } from "@/features/scene";
@@ -72,7 +79,8 @@ export function DashboardScenesPanel({
             Your scenes
           </h2>
           <p className="max-w-md text-sm text-muted-foreground">
-            Open in the editor, share embeds, or remove drafts you don&apos;t need.
+            Open in the editor, share embeds, or remove drafts you don&apos;t
+            need.
           </p>
         </div>
         <nav
@@ -115,9 +123,16 @@ export function DashboardScenesPanel({
       </div>
 
       {loading && !scenes ? (
-        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3" aria-busy="true" aria-label="Loading scenes">
+        <div
+          className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3"
+          aria-busy="true"
+          aria-label="Loading scenes"
+        >
           {[0, 1, 2].map((i) => (
-            <Card key={i} className="overflow-hidden rounded-2xl border-border/60 bg-card/80 shadow-sm">
+            <Card
+              key={i}
+              className="overflow-hidden rounded-2xl border-border/60 bg-card/80 shadow-sm"
+            >
               <div className="aspect-[4/3] animate-pulse bg-gradient-to-br from-muted to-muted/40" />
               <CardContent className="space-y-3 p-5">
                 <div className="h-5 w-2/3 animate-pulse rounded-md bg-muted" />
@@ -129,9 +144,17 @@ export function DashboardScenesPanel({
       ) : error ? (
         <Card className="rounded-2xl border-destructive/25 bg-card shadow-sm ring-1 ring-destructive/10">
           <CardContent className="flex flex-col items-center gap-4 p-10 text-center">
-            <p className="text-base font-semibold text-foreground">Couldn&apos;t load your scenes</p>
-            <p className="max-w-sm text-sm leading-relaxed text-muted-foreground">{error}</p>
-            <Button type="button" className="min-h-11 rounded-xl px-6" onClick={() => void onRetry()}>
+            <p className="text-base font-semibold text-foreground">
+              Couldn&apos;t load your scenes
+            </p>
+            <p className="max-w-sm text-sm leading-relaxed text-muted-foreground">
+              {error}
+            </p>
+            <Button
+              type="button"
+              className="min-h-11 rounded-xl px-6"
+              onClick={() => void onRetry()}
+            >
               Try again
             </Button>
           </CardContent>
@@ -139,7 +162,9 @@ export function DashboardScenesPanel({
       ) : showEmptyFiltered ? (
         <Card className="rounded-2xl border-dashed border-border/80 bg-muted/20 shadow-sm ring-1 ring-black/[0.03] dark:ring-white/[0.05]">
           <CardContent className="flex flex-col items-center gap-4 p-10 text-center sm:p-14">
-            <p className="font-display text-xl italic text-foreground">No models match your filters</p>
+            <p className="font-display text-xl italic text-foreground">
+              No models match your filters
+            </p>
             <p className="max-w-md text-sm leading-relaxed text-muted-foreground">
               Try a different search term or category, or upload a new model.
             </p>
@@ -155,14 +180,20 @@ export function DashboardScenesPanel({
               <Gem className="size-7" strokeWidth={1.25} />
             </div>
             <div className="max-w-md space-y-2">
-              <p className="font-display text-xl italic text-foreground">Start with a model</p>
+              <p className="font-display text-xl italic text-foreground">
+                Start with a model
+              </p>
               <p className="text-sm leading-relaxed text-muted-foreground">
-                Upload GLB, STL, or Rhino 3DM — parsed in your browser, then saved with layer controls.
+                Upload GLB, STL, or Rhino 3DM — parsed in your browser, then
+                saved with layer controls.
               </p>
             </div>
             <Link
               href="/upload-model"
-              className={cn(buttonVariants({ size: "lg" }), "h-11 gap-2 rounded-xl px-6 shadow-md")}
+              className={cn(
+                buttonVariants({ size: "lg" }),
+                "h-11 gap-2 rounded-xl px-6 shadow-md",
+              )}
             >
               <UploadCloud className="size-4 shrink-0" aria-hidden />
               Upload New Model
@@ -179,15 +210,19 @@ export function DashboardScenesPanel({
               transition={
                 reduceMotion
                   ? { duration: 0 }
-                  : { delay: Math.min(i, 8) * 0.045, duration: 0.28, ease: [0.22, 1, 0.36, 1] }
+                  : {
+                      delay: Math.min(i, 8) * 0.045,
+                      duration: 0.28,
+                      ease: [0.22, 1, 0.36, 1],
+                    }
               }
             >
-              <Card className="group/card overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm ring-1 ring-black/[0.03] transition-[box-shadow,border-color] duration-200 hover:border-primary/30 hover:shadow-lg dark:ring-white/[0.06] dark:hover:border-primary/40">
-                <div className="relative aspect-[4/3] bg-gradient-to-br from-stone-100 via-neutral-50 to-stone-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] dark:from-stone-900/40 dark:via-neutral-900/30 dark:to-stone-950/50 dark:shadow-none">
+              <Card className="group/card overflow-hidden rounded-2xl border border-border/70 bg-card p-0 shadow-sm ring-1 ring-black/[0.03] transition duration-300 hover:-translate-y-1 hover:border-[#9a7d4d]/35 hover:shadow-xl dark:ring-white/[0.06]">
+                <div className="relative aspect-[4/3] bg-[radial-gradient(circle_at_50%_42%,#5a554c_0%,#2b2823_48%,#1c1a17_100%)]">
                   <div className="absolute inset-0">
                     <SceneCardPreview scene={scene} />
                   </div>
-                  <Badge className="pointer-events-none absolute left-3 top-3 border-0 bg-card/95 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-foreground shadow-md backdrop-blur-sm dark:bg-card/90">
+                  <Badge className="pointer-events-none absolute left-3 top-3 border border-white/10 bg-black/30 px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-white/70 shadow-md backdrop-blur-sm">
                     {scene.category?.trim() || sceneLabel(scene)}
                   </Badge>
                   <Button
@@ -204,13 +239,19 @@ export function DashboardScenesPanel({
                 <CardContent className="space-y-4 p-5">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 space-y-0.5">
-                      <p className="truncate font-semibold leading-tight text-foreground">{sceneTitle(scene)}</p>
+                      <p className="truncate font-semibold leading-tight text-foreground">
+                        {sceneTitle(scene)}
+                      </p>
                       {scene.sku?.trim() ? (
-                        <p className="truncate text-xs text-muted-foreground">SKU · {scene.sku.trim()}</p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          SKU · {scene.sku.trim()}
+                        </p>
                       ) : null}
                       <p className="text-xs text-muted-foreground">
                         Updated{" "}
-                        <time className="tabular-nums">{relativeTime(scene.updated_at)}</time>
+                        <time className="tabular-nums">
+                          {relativeTime(scene.updated_at)}
+                        </time>
                       </p>
                     </div>
                     <DropdownMenu>
@@ -223,7 +264,10 @@ export function DashboardScenesPanel({
                       >
                         <MoreHorizontal className="size-4" aria-hidden />
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent className="border-border bg-popover text-popover-foreground" align="end">
+                      <DropdownMenuContent
+                        className="border-border bg-popover text-popover-foreground"
+                        align="end"
+                      >
                         <DropdownMenuItem className="p-0">
                           <Link
                             href={viewerHref(scene)}
@@ -249,7 +293,9 @@ export function DashboardScenesPanel({
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           className="gap-2 text-destructive focus:text-destructive"
-                          onClick={() => void onDelete(scene.id, sceneTitle(scene))}
+                          onClick={() =>
+                            void onDelete(scene.id, sceneTitle(scene))
+                          }
                         >
                           <Trash2 className="size-3.5" aria-hidden />
                           Delete

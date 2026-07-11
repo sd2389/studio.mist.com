@@ -24,11 +24,21 @@ export function AppHeader({ userEmail, showAdminLink }: AppHeaderProps) {
   const router = useRouter();
 
   return (
-    <header className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur-md">
-      <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
-        <Link href="/dashboard" className="flex items-center gap-2 text-foreground">
-          <Gem className="size-6 text-primary" aria-hidden />
-          <span className="text-sm font-semibold tracking-tight">DevJewels Studio</span>
+    <header className="sticky top-0 z-40 border-b border-foreground/[0.08] bg-background/78 backdrop-blur-xl">
+      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-5 sm:px-8">
+        <Link
+          href="/dashboard"
+          className="flex items-center gap-2 text-foreground"
+        >
+          <span className="grid size-8 place-items-center rounded-full border border-[#9a7d4d]/30 bg-[#9a7d4d]/10">
+            <Gem className="size-3.5 text-[#9a7d4d]" aria-hidden />
+          </span>
+          <span className="text-sm font-semibold tracking-[-0.01em]">
+            DEVJEWELS
+          </span>
+          <span className="hidden border-l border-foreground/10 pl-2.5 text-[9px] uppercase tracking-[0.18em] text-muted-foreground sm:inline">
+            Studio
+          </span>
         </Link>
 
         <nav className="flex items-center gap-2">
@@ -55,7 +65,11 @@ export function AppHeader({ userEmail, showAdminLink }: AppHeaderProps) {
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2 rounded-full bg-card/70"
+              >
                 <User className="size-4" />
                 <span className="hidden max-w-[140px] truncate sm:inline">
                   {userEmail ?? "Account"}

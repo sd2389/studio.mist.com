@@ -1,16 +1,23 @@
 "use client";
 
+import { CircleEllipsis, Diamond, Gem, Lightbulb, Send } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export type StudioPrimaryPanel = "metal" | "gem" | "light" | "export" | "more" | null;
+export type StudioPrimaryPanel =
+  | "metal"
+  | "gem"
+  | "light"
+  | "export"
+  | "more"
+  | null;
 
-const CONTROLS: { id: Exclude<StudioPrimaryPanel, null>; label: string }[] = [
-  { id: "metal", label: "Metal" },
-  { id: "gem", label: "Gem" },
-  { id: "light", label: "Light" },
-  { id: "export", label: "Export" },
-  { id: "more", label: "More" },
-];
+const CONTROLS = [
+  { id: "metal", label: "Metal", icon: CircleEllipsis },
+  { id: "gem", label: "Gem", icon: Diamond },
+  { id: "light", label: "Light", icon: Lightbulb },
+  { id: "export", label: "Export", icon: Send },
+  { id: "more", label: "More", icon: Gem },
+] as const;
 
 type StudioPrimaryBarProps = {
   active: StudioPrimaryPanel;
@@ -18,11 +25,15 @@ type StudioPrimaryBarProps = {
   className?: string;
 };
 
-export function StudioPrimaryBar({ active, onChange, className }: StudioPrimaryBarProps) {
+export function StudioPrimaryBar({
+  active,
+  onChange,
+  className,
+}: StudioPrimaryBarProps) {
   return (
     <div
       className={cn(
-        "mx-5 flex h-auto shrink-0 justify-start gap-1 self-start border-b border-border/60 bg-transparent p-0",
+        "mx-4 mt-4 grid h-auto shrink-0 grid-cols-5 gap-1 rounded-2xl border border-white/[0.08] bg-black/15 p-1.5",
         className,
       )}
       role="tablist"
@@ -30,6 +41,7 @@ export function StudioPrimaryBar({ active, onChange, className }: StudioPrimaryB
     >
       {CONTROLS.map((control) => {
         const isActive = active === control.id;
+        const Icon = control.icon;
         return (
           <button
             key={control.id}
@@ -38,12 +50,13 @@ export function StudioPrimaryBar({ active, onChange, className }: StudioPrimaryB
             aria-selected={isActive}
             onClick={() => onChange(isActive ? null : control.id)}
             className={cn(
-              "rounded-none border-b-2 px-1.5 pb-2 pt-1 text-[11px] font-medium uppercase tracking-[0.16em] transition-colors",
+              "flex min-w-0 flex-col items-center gap-1.5 rounded-xl border px-1 py-2 text-[9px] font-medium uppercase tracking-[0.11em] transition-all",
               isActive
-                ? "border-foreground text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground/80",
+                ? "border-[#d7c195]/25 bg-[#d7c195]/10 text-[#e6d5b1] shadow-sm"
+                : "border-transparent text-white/35 hover:bg-white/[0.05] hover:text-white/70",
             )}
           >
+            <Icon className="size-3.5" strokeWidth={1.6} aria-hidden />
             {control.label}
           </button>
         );

@@ -21,16 +21,16 @@ describe("export parity invariant", () => {
   });
 
   it("downloadPng uses full-fidelity offscreen path, not live canvas toDataURL", () => {
-    const sidebarPath = path.join(
+    const exportPanelPath = path.join(
       process.cwd(),
-      "src/features/viewer/ui/StudioSidebar.tsx",
+      "src/features/viewer/ui/ExportSharePanel.tsx",
     );
-    const src = readFileSync(sidebarPath, "utf8");
+    const src = readFileSync(exportPanelPath, "utf8");
 
     // Extract the downloadPng function body by slicing between its declaration
     // and the next top-level "async function" / "function" declaration.
     const start = src.indexOf("async function downloadPng()");
-    expect(start, "downloadPng function must exist in StudioSidebar").toBeGreaterThan(-1);
+    expect(start, "downloadPng function must exist in ExportSharePanel").toBeGreaterThan(-1);
 
     // Find the closing brace by scanning for the next peer function declaration.
     const afterStart = src.indexOf("\n  async function ", start + 1);

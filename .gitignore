@@ -75,3 +75,6 @@ dist/
 
 # local compose overrides (auto-merged by docker compose — never commit; see docker-compose.override.example.yml)
 docker-compose.override.yml
+
+# Superpowers visual companion / local agent artifacts
+.superpowers/

@@ -70,15 +70,15 @@ export function DashboardScenesPanel({
 
   return (
     <section aria-labelledby="scenes-heading">
-      <div className="mb-6 flex flex-col gap-4 sm:mb-8 sm:flex-row sm:items-center sm:justify-between">
+      <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="space-y-1">
           <h2
             id="scenes-heading"
-            className="font-display text-2xl font-normal italic tracking-tight text-foreground sm:text-3xl"
+            className="text-[10px] font-black uppercase tracking-[0.2em] text-[#ef5b2a]"
           >
-            Your scenes
+            Production archive
           </h2>
-          <p className="max-w-md text-sm text-muted-foreground">
+          <p className="max-w-md text-xs text-black/60">
             Open in the editor, share embeds, or remove drafts you don&apos;t
             need.
           </p>
@@ -92,7 +92,7 @@ export function DashboardScenesPanel({
               href="/gallery"
               className={cn(
                 buttonVariants({ variant: "ghost", size: "sm" }),
-                "h-10 min-h-11 rounded-full px-4 text-muted-foreground hover:bg-muted hover:text-foreground",
+                "h-10 rounded-none px-4 text-[9px] font-bold uppercase tracking-[0.14em] text-black/60 hover:bg-transparent hover:text-black",
               )}
             >
               Gallery
@@ -103,7 +103,7 @@ export function DashboardScenesPanel({
               href="/stones"
               className={cn(
                 buttonVariants({ variant: "ghost", size: "sm" }),
-                "h-10 min-h-11 rounded-full px-4 text-muted-foreground hover:bg-muted hover:text-foreground",
+                "h-10 rounded-none px-4 text-[9px] font-bold uppercase tracking-[0.14em] text-black/60 hover:bg-transparent hover:text-black",
               )}
             >
               Cuts
@@ -113,7 +113,7 @@ export function DashboardScenesPanel({
             href="/viewer/clearcoat"
             className={cn(
               buttonVariants({ variant: "outline", size: "sm" }),
-              "h-10 min-h-11 gap-2 rounded-full border-border/80 bg-card/60 px-4 shadow-sm backdrop-blur-sm hover:bg-card",
+              "h-10 gap-2 rounded-none border-black bg-transparent px-4 text-[9px] font-bold uppercase tracking-[0.12em]",
             )}
           >
             <Plus className="size-4 shrink-0" aria-hidden />
@@ -201,7 +201,7 @@ export function DashboardScenesPanel({
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-0">
           {(scenes ?? []).map((scene, i) => (
             <motion.div
               key={scene.id}
@@ -217,8 +217,8 @@ export function DashboardScenesPanel({
                     }
               }
             >
-              <Card className="group/card overflow-hidden rounded-2xl border border-border/70 bg-card p-0 shadow-sm ring-1 ring-black/[0.03] transition duration-300 hover:-translate-y-1 hover:border-[#9a7d4d]/35 hover:shadow-xl dark:ring-white/[0.06]">
-                <div className="relative aspect-[4/3] bg-[radial-gradient(circle_at_50%_42%,#5a554c_0%,#2b2823_48%,#1c1a17_100%)]">
+              <Card className="group/card grid overflow-hidden rounded-none border-0 border-b border-black bg-transparent p-0 shadow-none ring-0 transition-colors hover:bg-[#ebe9e2] md:grid-cols-[1fr_310px]">
+                <div className="relative aspect-[16/9] bg-[radial-gradient(circle_at_50%_42%,#5a554c_0%,#2b2823_48%,#1c1a17_100%)] md:order-2 md:my-5">
                   <div className="absolute inset-0">
                     <SceneCardPreview scene={scene} />
                   </div>
@@ -236,10 +236,10 @@ export function DashboardScenesPanel({
                     <Trash2 className="size-4" aria-hidden />
                   </Button>
                 </div>
-                <CardContent className="space-y-4 p-5">
+                <CardContent className="space-y-5 p-5 md:order-1 md:flex md:flex-col md:justify-center md:px-8">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 space-y-0.5">
-                      <p className="truncate font-semibold leading-tight text-foreground">
+                      <p className="truncate text-3xl font-black uppercase leading-none tracking-[-0.055em] text-black sm:text-5xl">
                         {sceneTitle(scene)}
                       </p>
                       {scene.sku?.trim() ? (

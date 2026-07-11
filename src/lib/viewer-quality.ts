@@ -76,3 +76,8 @@ export function readDeviceCaps(): DeviceCaps {
     isMobile: /Android|iPhone|iPad|Mobile/i.test(nav.userAgent),
   };
 }
+
+/** Jewelry gem shader: Performance tier reduces sparkle taps / internal lobe. */
+export function gemShaderQualityReduce(tier: QualityTier): boolean {
+  return tier === "performance";
+}

@@ -1,10 +1,18 @@
 import * as THREE from "three";
-import { GEM_CONFIGS, type GemPresetId } from "@/lib/gem-gpu/gem-configs";
+import { GEM_CONFIGS, type GemConfig, type GemPresetId } from "@/lib/gem-gpu/gem-configs";
+import { applyJewelryGemShader } from "@/lib/gem-gpu/jewelry-gem-shader";
 
 export const GEM_GPU_USER_KEY = "gemGpuDiamond" as const;
 
-export function createGemMaterial(presetId: GemPresetId): THREE.MeshPhysicalMaterial {
-  const cfg = GEM_CONFIGS[presetId];
+export type CreateGemMaterialOptions = {
+  qualityReduce?: boolean;
+};
+
+export function createGemMaterial(
+  presetId: GemPresetId,
+  options: CreateGemMaterialOptions = {},
+): THREE.MeshPhysicalMaterial {
+  const cfg: GemConfig = GEM_CONFIGS[presetId];
   const transmission = cfg.transmission ?? 1;
   const m = new THREE.MeshPhysicalMaterial({
     name: `GemGPU-${presetId}`,
@@ -29,6 +37,14 @@ export function createGemMaterial(presetId: GemPresetId): THREE.MeshPhysicalMate
     flatShading: false,
   });
   m.userData[GEM_GPU_USER_KEY] = presetId;
+
+  applyJewelryGemShader(m, {
+    sparkleStrength: cfg.sparkleStrength ?? 1,
+    fireStrength: 1,
+    qualityReduce: options.qualityReduce ?? false,
+    dispersionAmplitude: cfg.dispersionAmplitude,
+  });
+
   return m;
 }
 
@@ -37,7 +53,7 @@ export function createGemGpuDiamondMaterial(): THREE.MeshPhysicalMaterial {
 }
 
 export function isGemGpuMaterial(
-  m: THREE.Material
+  m: THREE.Material,
 ): m is THREE.MeshPhysicalMaterial {
   if (!(m instanceof THREE.MeshPhysicalMaterial)) return false;
   const tag = m.userData[GEM_GPU_USER_KEY];
@@ -47,7 +63,7 @@ export function isGemGpuMaterial(
 export const isGemGpuDiamondMaterial = isGemGpuMaterial;
 
 export function gemPresetIdFromMaterial(
-  m: THREE.MeshPhysicalMaterial
+  m: THREE.MeshPhysicalMaterial,
 ): GemPresetId | null {
   const tag = m.userData[GEM_GPU_USER_KEY];
   if (typeof tag === "string") return tag as GemPresetId;

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyQualityToPostFX,
   detectDeviceTier,
+  gemShaderQualityReduce,
   normalizeQualityLevel,
   resolveEffectiveQuality,
 } from "@/lib/viewer-quality";
@@ -62,6 +63,14 @@ describe("normalizeQualityLevel", () => {
     expect(normalizeQualityLevel(undefined)).toBe("auto");
     expect(normalizeQualityLevel(42)).toBe("auto");
     expect(normalizeQualityLevel({ level: "high" })).toBe("auto");
+  });
+});
+
+describe("gemShaderQualityReduce", () => {
+  it("only performance tier reduces gem shader quality", () => {
+    expect(gemShaderQualityReduce("performance")).toBe(true);
+    expect(gemShaderQualityReduce("high")).toBe(false);
+    expect(gemShaderQualityReduce("balanced")).toBe(false);
   });
 });
 

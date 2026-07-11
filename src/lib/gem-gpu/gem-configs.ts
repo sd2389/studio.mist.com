@@ -14,6 +14,8 @@ export type GemConfig = {
   iridescence?: number;
   /** Optional clearcoat (high-polish gems). */
   clearcoat?: number;
+  /** 0..1 — env micro-glint strength. Default 1 when omitted. */
+  sparkleStrength?: number;
 };
 
 /**

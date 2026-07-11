@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { aiImageStatusLabel } from "@/lib/ai-image-api";
 import { getPublicApiUrl } from "@/lib/api-url";
 import { cn } from "@/lib/utils";
 import { captureTransparentPng } from "@/stores/transparent-capture-store";
@@ -35,11 +36,15 @@ export function AiBgModal({ open, onOpenChange, modelId }: AiBgModalProps) {
   const [idx, setIdx] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
   const [lastResultUrl, setLastResultUrl] = useState<string | null>(null);
+  const [lastMode, setLastMode] = useState<string | null>(null);
 
   async function generateAI() {
     setError(null);
+    setStatus(null);
     setLastResultUrl(null);
+    setLastMode(null);
     const transparentPNG = captureTransparentPng();
     if (!transparentPNG) {
       setError("3D view not ready — wait for the model to load, then try again.");
@@ -57,6 +62,7 @@ export function AiBgModal({ open, onOpenChange, modelId }: AiBgModalProps) {
       });
       const data = (await response.json()) as {
         result_url?: string | null;
+        mode?: string;
         error?: string;
       };
       if (!response.ok) {
@@ -71,6 +77,8 @@ export function AiBgModal({ open, onOpenChange, modelId }: AiBgModalProps) {
         );
       }
       setLastResultUrl(data.result_url);
+      setLastMode(data.mode ?? null);
+      setStatus(aiImageStatusLabel(data.mode));
       window.open(data.result_url, "_blank", "noopener,noreferrer");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Generation failed");
@@ -85,14 +93,14 @@ export function AiBgModal({ open, onOpenChange, modelId }: AiBgModalProps) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-xl text-foreground">
             <Sparkles className="size-5 text-primary" aria-hidden />
-            AI background
+            AI Visuals
           </DialogTitle>
           <DialogDescription className="text-muted-foreground">
             Captures a <strong>transparent PNG</strong> from the viewer, then calls your FastAPI{" "}
             <code className="rounded bg-muted px-1 text-xs">/ai-background</code>. Default mode is{" "}
             <code className="rounded bg-muted px-1 text-xs">stub</code> (white composite); set{" "}
             <code className="rounded bg-muted px-1 text-xs">AI_BACKGROUND_MODE=sdxl</code> on a GPU
-            host for real inpainting.
+            host for real inpainting. Stub results are labeled in the status line — not production AI.
             {modelId ? (
               <>
                 {" "}
@@ -135,6 +143,12 @@ export function AiBgModal({ open, onOpenChange, modelId }: AiBgModalProps) {
           {error ? (
             <p className="text-sm text-destructive" role="alert">
               {error}
+            </p>
+          ) : null}
+          {status ? (
+            <p className="text-xs text-muted-foreground" role="status">
+              {status}
+              {lastMode ? ` · pipeline ${lastMode}` : ""}
             </p>
           ) : null}
           {lastResultUrl ? (

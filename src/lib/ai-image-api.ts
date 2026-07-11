@@ -17,6 +17,13 @@ export type AiImageResponse = {
   error?: string;
 };
 
+/** User-facing status from API `mode` (e.g. `shoot:stub`, `model:stub`). */
+export function aiImageStatusLabel(mode: string | null | undefined): string {
+  return (mode ?? "").includes("stub")
+    ? "Stub result (dev mode) — not production AI"
+    : "AI image ready";
+}
+
 export async function requestAiImage(body: AiImageRequest): Promise<AiImageResponse> {
   const response = await fetch("/api/ai-background", {
     method: "POST",

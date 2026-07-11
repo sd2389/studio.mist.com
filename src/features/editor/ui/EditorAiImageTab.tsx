@@ -1,22 +1,22 @@
 "use client";
 
-import {
-  ChevronLeft,
-  ChevronRight,
-  Download,
-  ExternalLink,
-  Loader2,
-  Sparkles,
-} from "lucide-react";
+import { Loader2, Sparkles } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { Button, buttonVariants } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { requestAiImage } from "@/lib/ai-image-api";
+import { Button } from "@/components/ui/button";
+import {
+  AiBackgroundPanel,
+  type BackgroundKind,
+} from "@/features/editor/ui/ai-visuals/AiBackgroundPanel";
+import { AiModelPanel } from "@/features/editor/ui/ai-visuals/AiModelPanel";
+import {
+  AiVisualsEntryPicker,
+  type AiVisualsEntry,
+} from "@/features/editor/ui/ai-visuals/AiVisualsEntryPicker";
+import { AiVisualsResult } from "@/features/editor/ui/ai-visuals/AiVisualsResult";
+import { aiImageStatusLabel, requestAiImage } from "@/lib/ai-image-api";
 import { fetchBillingAccount } from "@/lib/billing/client";
 import { formatAiCredits } from "@/lib/ai-image-credits";
 import {
-  AI_MODEL_VARIANTS,
   AI_SHOOT_PRESETS,
   DEFAULT_AI_CUSTOM_PROMPT,
   type AiImageSubMode,
@@ -24,7 +24,6 @@ import {
 } from "@/lib/ai-image-presets";
 import { downloadBlob } from "@/lib/export-presets";
 import { getPublicApiUrl } from "@/lib/api-url";
-import { cn } from "@/lib/utils";
 import { useAiImageCreditsStore } from "@/stores/ai-image-credits-store";
 import { captureTransparentPng } from "@/stores/transparent-capture-store";
 
@@ -32,23 +31,10 @@ type EditorAiImageTabProps = {
   viewerId: string;
 };
 
-const SUB_MODES: { id: AiImageSubMode; label: string; description: string }[] = [
-  {
-    id: "shoot",
-    label: "Shoot",
-    description: "Preset studio and lifestyle scenes.",
-  },
-  {
-    id: "model",
-    label: "Model",
-    description: "Jewelry on an AI model (hand, neck, or ear).",
-  },
-  {
-    id: "custom",
-    label: "Custom",
-    description: "Describe your own background or scene.",
-  },
-];
+function resolveSubMode(entry: AiVisualsEntry, backgroundKind: BackgroundKind): AiImageSubMode {
+  if (entry === "model") return "model";
+  return backgroundKind === "custom" ? "custom" : "shoot";
+}
 
 export function EditorAiImageTab({ viewerId }: EditorAiImageTabProps) {
   const remaining = useAiImageCreditsStore((s) => s.remaining);
@@ -66,7 +52,8 @@ export function EditorAiImageTab({ viewerId }: EditorAiImageTabProps) {
       .catch(() => {});
   }, [hydrateFromServer]);
 
-  const [subMode, setSubMode] = useState<AiImageSubMode>("shoot");
+  const [entry, setEntry] = useState<AiVisualsEntry>("background");
+  const [backgroundKind, setBackgroundKind] = useState<BackgroundKind>("shoot");
   const [presetIdx, setPresetIdx] = useState(0);
   const [modelVariant, setModelVariant] = useState<AiModelVariant>("hand");
   const [customPrompt, setCustomPrompt] = useState(DEFAULT_AI_CUSTOM_PROMPT);
@@ -76,6 +63,7 @@ export function EditorAiImageTab({ viewerId }: EditorAiImageTabProps) {
   const [lastResultUrl, setLastResultUrl] = useState<string | null>(null);
   const [lastMode, setLastMode] = useState<string | null>(null);
 
+  const subMode = resolveSubMode(entry, backgroundKind);
   const selectedPreset = AI_SHOOT_PRESETS[presetIdx] ?? AI_SHOOT_PRESETS[0]!;
   const creditsLabel = useMemo(() => formatAiCredits(remaining, total), [remaining, total]);
 
@@ -122,7 +110,7 @@ export function EditorAiImageTab({ viewerId }: EditorAiImageTabProps) {
 
       setLastResultUrl(data.result_url);
       setLastMode(data.mode ?? null);
-      setStatus("AI image ready");
+      setStatus(aiImageStatusLabel(data.mode));
     } catch (e) {
       useAiImageCreditsStore.setState((s) => ({
         remaining: Math.min(s.total, s.remaining + 1),
@@ -165,9 +153,10 @@ export function EditorAiImageTab({ viewerId }: EditorAiImageTabProps) {
       <div className="space-y-3 border-b border-border px-4 py-4">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h2 className="text-sm font-semibold text-foreground">AI Image</h2>
+            <h2 className="text-sm font-semibold text-foreground">AI Visuals</h2>
             <p className="mt-1 text-xs text-muted-foreground">
-              Shoot, on-model, or custom backgrounds from a transparent viewport capture.
+              Background scenes primary; on-model shots secondary. Uses a transparent viewport
+              capture.
             </p>
           </div>
           <div className="shrink-0 rounded-lg border border-border bg-muted/40 px-2.5 py-1.5 text-right">
@@ -180,150 +169,24 @@ export function EditorAiImageTab({ viewerId }: EditorAiImageTabProps) {
       </div>
 
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
-        <div className="space-y-2">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            Mode
-          </p>
-          <div className="grid grid-cols-3 gap-2">
-            {SUB_MODES.map((mode) => (
-              <button
-                key={mode.id}
-                type="button"
-                onClick={() => setSubMode(mode.id)}
-                className={cn(
-                  "rounded-lg border px-2 py-2 text-left transition-colors",
-                  subMode === mode.id
-                    ? "border-primary bg-primary/10 text-foreground"
-                    : "border-border bg-background hover:bg-muted",
-                )}
-              >
-                <p className="text-sm font-medium">{mode.label}</p>
-                <p className="mt-0.5 text-[10px] leading-snug text-muted-foreground">
-                  {mode.description}
-                </p>
-              </button>
-            ))}
-          </div>
-        </div>
+        <AiVisualsEntryPicker
+          entry={entry}
+          onSelectBackground={() => setEntry("background")}
+          onSelectModel={() => setEntry("model")}
+        />
 
-        {subMode === "shoot" ? (
-          <div className="space-y-2">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              Scene preset
-            </p>
-            <div className="relative overflow-hidden rounded-xl border border-border">
-              <div
-                className={cn(
-                  "flex aspect-video items-end bg-gradient-to-br p-4",
-                  selectedPreset.gradient,
-                )}
-              >
-                <div>
-                  <p className="text-sm font-medium text-foreground/90 drop-shadow-sm">
-                    {selectedPreset.label}
-                  </p>
-                  <p className="mt-1 line-clamp-2 text-[10px] text-foreground/70">
-                    {selectedPreset.prompt}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center justify-between border-t border-border bg-muted/50 px-2 py-1">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={() =>
-                    setPresetIdx(
-                      (i) => (i - 1 + AI_SHOOT_PRESETS.length) % AI_SHOOT_PRESETS.length,
-                    )
-                  }
-                  aria-label="Previous preset"
-                >
-                  <ChevronLeft className="size-4" />
-                </Button>
-                <span className="text-xs text-muted-foreground">
-                  {presetIdx + 1} / {AI_SHOOT_PRESETS.length}
-                </span>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={() => setPresetIdx((i) => (i + 1) % AI_SHOOT_PRESETS.length)}
-                  aria-label="Next preset"
-                >
-                  <ChevronRight className="size-4" />
-                </Button>
-              </div>
-            </div>
-            <div className="grid grid-cols-4 gap-1.5">
-              {AI_SHOOT_PRESETS.map((preset, index) => (
-                <button
-                  key={preset.id}
-                  type="button"
-                  onClick={() => setPresetIdx(index)}
-                  className={cn(
-                    "rounded-md border p-1 text-left transition-colors",
-                    presetIdx === index
-                      ? "border-primary ring-1 ring-primary/30"
-                      : "border-border hover:border-muted-foreground/40",
-                  )}
-                  title={preset.label}
-                >
-                  <div className={cn("aspect-square rounded bg-gradient-to-br", preset.gradient)} />
-                  <p className="mt-1 truncate text-[9px] text-muted-foreground">{preset.label}</p>
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : null}
-
-        {subMode === "model" ? (
-          <div className="space-y-2">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              Placement
-            </p>
-            <div className="grid grid-cols-3 gap-2">
-              {AI_MODEL_VARIANTS.map((variant) => (
-                <button
-                  key={variant.id}
-                  type="button"
-                  onClick={() => setModelVariant(variant.id)}
-                  className={cn(
-                    "rounded-lg border px-2 py-2 text-left transition-colors",
-                    modelVariant === variant.id
-                      ? "border-primary bg-primary/10 text-foreground"
-                      : "border-border bg-background hover:bg-muted",
-                  )}
-                >
-                  <p className="text-sm font-medium">{variant.label}</p>
-                  <p className="mt-0.5 text-[10px] text-muted-foreground">{variant.description}</p>
-                </button>
-              ))}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Provider: stub by default. Set{" "}
-              <code className="rounded bg-muted px-1 text-[10px]">AI_ON_MODEL_PROVIDER=replicate</code>{" "}
-              + <code className="rounded bg-muted px-1 text-[10px]">REPLICATE_API_TOKEN</code> for hosted
-              on-model shots.
-            </p>
-          </div>
-        ) : null}
-
-        {subMode === "custom" ? (
-          <div className="space-y-2">
-            <Label htmlFor="ai-custom-prompt" className="text-muted-foreground">
-              Prompt
-            </Label>
-            <Textarea
-              id="ai-custom-prompt"
-              value={customPrompt}
-              onChange={(e) => setCustomPrompt(e.target.value)}
-              rows={4}
-              className="resize-none border-border bg-background text-sm"
-              placeholder="Describe the scene…"
-            />
-          </div>
-        ) : null}
+        {entry === "background" ? (
+          <AiBackgroundPanel
+            backgroundKind={backgroundKind}
+            onBackgroundKindChange={setBackgroundKind}
+            presetIdx={presetIdx}
+            onPresetIdxChange={setPresetIdx}
+            customPrompt={customPrompt}
+            onCustomPromptChange={setCustomPrompt}
+          />
+        ) : (
+          <AiModelPanel modelVariant={modelVariant} onModelVariantChange={setModelVariant} />
+        )}
 
         <Button
           type="button"
@@ -363,40 +226,7 @@ export function EditorAiImageTab({ viewerId }: EditorAiImageTabProps) {
         ) : null}
 
         {lastResultUrl ? (
-          <div className="space-y-2">
-            <div className="overflow-hidden rounded-xl border border-border">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={lastResultUrl}
-                alt="Latest AI generated jewelry image"
-                className="aspect-video w-full object-cover"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <a
-                href={lastResultUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={cn(
-                  buttonVariants({ variant: "outline", size: "sm" }),
-                  "inline-flex items-center justify-center gap-2",
-                )}
-              >
-                <ExternalLink className="size-4" aria-hidden />
-                Open
-              </a>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="gap-2"
-                onClick={() => void handleDownload()}
-              >
-                <Download className="size-4" aria-hidden />
-                Download
-              </Button>
-            </div>
-          </div>
+          <AiVisualsResult resultUrl={lastResultUrl} onDownload={() => void handleDownload()} />
         ) : null}
       </div>
     </div>

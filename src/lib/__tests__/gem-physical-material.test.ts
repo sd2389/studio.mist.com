@@ -52,6 +52,26 @@ describe("createGemMaterialFromParams", () => {
       attenuationDistance: 0.4,
     });
     expect(m.userData[JEWELRY_GEM_SHADER_KEY]).toBe(true);
+    expect(m.userData.jewelryGemQualityReduce).toBe(false);
+    m.dispose();
+  });
+
+  it("threads qualityReduce into the jewelry shader", () => {
+    const m = createGemMaterialFromParams(
+      {
+        baseColor: "#ffffff",
+        ior: 2.417,
+        dispersionBase: 0.08,
+        roughness: 0.02,
+        thickness: 0.55,
+        envMapIntensity: 1.6,
+        attenuationColor: "#ffffff",
+        attenuationDistance: 0.4,
+      },
+      true,
+    );
+    expect(m.userData[JEWELRY_GEM_SHADER_KEY]).toBe(true);
+    expect(m.userData.jewelryGemQualityReduce).toBe(true);
     m.dispose();
   });
 });

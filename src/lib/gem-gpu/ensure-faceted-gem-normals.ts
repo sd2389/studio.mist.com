@@ -26,10 +26,17 @@ export function ensureFacetedGemNormals(
   return faceted;
 }
 
+/**
+ * Replace mesh geometry with a faceted copy when needed.
+ *
+ * Intentionally does **not** dispose the previous geometry: JewelryModel clones
+ * GLTF scenes with `raw.clone(true)`, which shares BufferGeometry with the
+ * useGLTF cache. Disposing here would corrupt other viewers / the cache.
+ * Callers that own exclusive geometry may dispose the old buffer themselves.
+ */
 export function ensureFacetedGemNormalsOnMesh(mesh: THREE.Mesh): void {
   const next = ensureFacetedGemNormals(mesh.geometry);
   if (next !== mesh.geometry) {
-    mesh.geometry.dispose();
     mesh.geometry = next;
   }
 }

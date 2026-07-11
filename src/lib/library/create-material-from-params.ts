@@ -36,7 +36,10 @@ export function createMetalMaterialFromParams(
   });
 }
 
-export function createGemMaterialFromParams(params: Record<string, unknown>): THREE.MeshPhysicalMaterial {
+export function createGemMaterialFromParams(
+  params: Record<string, unknown>,
+  qualityReduce = false,
+): THREE.MeshPhysicalMaterial {
   const baseColor = typeof params.baseColor === "string" ? params.baseColor : "#FFFFFF";
   const attenuationColor =
     typeof params.attenuationColor === "string" ? params.attenuationColor : baseColor;
@@ -69,7 +72,7 @@ export function createGemMaterialFromParams(params: Record<string, unknown>): TH
   applyJewelryGemShader(m, {
     sparkleStrength: typeof params.sparkleStrength === "number" ? params.sparkleStrength : 1,
     fireStrength: 1,
-    qualityReduce: false,
+    qualityReduce,
     dispersionAmplitude:
       typeof params.dispersionAmplitude === "number" ? params.dispersionAmplitude : 0.035,
   });

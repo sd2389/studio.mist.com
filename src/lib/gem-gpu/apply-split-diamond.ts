@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { createPresetMaterial } from "@/lib/material-presets";
-import { createGemMaterial } from "@/lib/gem-gpu/gem-physical-material";
+import { createGemMaterial, isGemGpuMaterial } from "@/lib/gem-gpu/gem-physical-material";
 import { ensureFacetedGemNormalsOnMesh } from "@/lib/gem-gpu/ensure-faceted-gem-normals";
 import type { GemPresetId } from "@/lib/gem-gpu/gem-configs";
 
@@ -36,12 +36,8 @@ export function applySplitGemBandPreset(
 
   root.traverse((obj) => {
     if (!(obj instanceof THREE.Mesh)) return;
-    let hadCarbonSlot = false;
     const assignFor = (src: THREE.Material): THREE.Material => {
-      if (src.name === GLTF_GEM_SLOT) {
-        hadCarbonSlot = true;
-        return gem.clone();
-      }
+      if (src.name === GLTF_GEM_SLOT) return gem.clone();
       if (src.name === GLTF_BAND_SLOT) return band.clone();
       if (src.name) return band.clone();
       return gem.clone();
@@ -60,7 +56,9 @@ export function applySplitGemBandPreset(
       obj.material = next;
     }
 
-    if (hadCarbonSlot) {
+    // Align with assignMaterial: facet whenever a gem GPU material is present,
+    // not only when the GLTF Carbon slot was the source name.
+    if (meshMaterials(obj).some(isGemGpuMaterial)) {
       ensureFacetedGemNormalsOnMesh(obj);
     }
   });

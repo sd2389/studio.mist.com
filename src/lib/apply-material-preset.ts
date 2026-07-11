@@ -127,14 +127,19 @@ export function applyMaterialPreset(
 
 type SlotSelectionMapLegacy = Record<string, MaterialPresetId>;
 
-function buildCatalogTemplate(ref: SlotMaterialRef, role: JewelryRole | "any", finish: FinishId): THREE.Material | null {
+function buildCatalogTemplate(
+  ref: SlotMaterialRef,
+  role: JewelryRole | "any",
+  finish: FinishId,
+  qualityReduce = false,
+): THREE.Material | null {
   if (!isCatalogMaterialRef(ref)) return null;
   const slug = parseCatalogMaterialSlug(ref);
   if (!slug) return null;
   const store = useCatalogParamsStore.getState();
   if (role === "gem" || role === "accent-gem") {
     const params = store.getGemParams(slug);
-    if (params) return createGemMaterialFromParams(params);
+    if (params) return createGemMaterialFromParams(params, qualityReduce);
   } else {
     const params = store.getMetalParams(slug);
     if (params) return createMetalMaterialFromParams(params, finish);
@@ -142,13 +147,16 @@ function buildCatalogTemplate(ref: SlotMaterialRef, role: JewelryRole | "any", f
   return null;
 }
 
-function buildCustomTemplate(ref: SlotMaterialRef): THREE.Material | null {
+function buildCustomTemplate(
+  ref: SlotMaterialRef,
+  qualityReduce = false,
+): THREE.Material | null {
   if (!isCustomMaterialRef(ref)) return null;
   const id = parseCustomMaterialId(ref);
   if (id === null) return null;
   const item = useUserLibraryStore.getState().getMaterial(id);
   if (!item) return null;
-  if (item.kind === "gem") return createGemMaterialFromParams(item.params);
+  if (item.kind === "gem") return createGemMaterialFromParams(item.params, qualityReduce);
   const finish =
     typeof item.params.finish === "string" ? (item.params.finish as FinishId) : "polished";
   return createMetalMaterialFromParams(item.params, finish);
@@ -160,10 +168,10 @@ function buildTemplate(
   finish: FinishId,
   qualityReduce = false,
 ): THREE.Material {
-  const catalog = buildCatalogTemplate(preset, role, finish);
+  const catalog = buildCatalogTemplate(preset, role, finish, qualityReduce);
   if (catalog) return catalog;
 
-  const custom = buildCustomTemplate(preset);
+  const custom = buildCustomTemplate(preset, qualityReduce);
   if (custom) return custom;
 
   if (role === "metal" && isGemPresetId(preset as MaterialPresetId)) {

@@ -1,6 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import * as THREE from "three";
-import { ensureFacetedGemNormals } from "@/lib/gem-gpu/ensure-faceted-gem-normals";
+import {
+  ensureFacetedGemNormals,
+  ensureFacetedGemNormalsOnMesh,
+} from "@/lib/gem-gpu/ensure-faceted-gem-normals";
 
 describe("ensureFacetedGemNormals", () => {
   it("converts a smoothed indexed sphere into non-indexed faceted normals", () => {
@@ -19,5 +22,21 @@ describe("ensureFacetedGemNormals", () => {
     const first = ensureFacetedGemNormals(geom);
     const second = ensureFacetedGemNormals(first);
     expect(second).toBe(first);
+  });
+});
+
+describe("ensureFacetedGemNormalsOnMesh", () => {
+  it("replaces geometry without disposing the previous one (GLTF/cache may share it)", () => {
+    const shared = new THREE.SphereGeometry(1, 8, 6);
+    const disposeSpy = vi.spyOn(shared, "dispose");
+    const mesh = new THREE.Mesh(shared);
+
+    ensureFacetedGemNormalsOnMesh(mesh);
+
+    expect(mesh.geometry).not.toBe(shared);
+    expect(disposeSpy).not.toHaveBeenCalled();
+    disposeSpy.mockRestore();
+    shared.dispose();
+    mesh.geometry.dispose();
   });
 });

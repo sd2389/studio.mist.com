@@ -1,5 +1,7 @@
 import * as THREE from "three";
 import { getFinishMaps } from "@/lib/finish-textures";
+import { GEM_GPU_USER_KEY } from "@/lib/gem-gpu/gem-physical-material";
+import { applyJewelryGemShader } from "@/lib/gem-gpu/jewelry-gem-shader";
 import type { FinishId } from "@/stores/material-preset-store";
 import type { UserMaterialItem } from "@/lib/library/types";
 
@@ -40,7 +42,7 @@ export function createGemMaterialFromParams(params: Record<string, unknown>): TH
     typeof params.attenuationColor === "string" ? params.attenuationColor : baseColor;
   const transmission = typeof params.transmission === "number" ? params.transmission : 1;
 
-  return new THREE.MeshPhysicalMaterial({
+  const m = new THREE.MeshPhysicalMaterial({
     name: "CustomGem",
     color: new THREE.Color(baseColor),
     metalness: 0,
@@ -62,6 +64,16 @@ export function createGemMaterialFromParams(params: Record<string, unknown>): TH
     iridescence: typeof params.iridescence === "number" ? params.iridescence : 0,
     iridescenceIOR: typeof params.iridescence === "number" ? 1.3 : 1,
   });
+
+  m.userData[GEM_GPU_USER_KEY] = true;
+  applyJewelryGemShader(m, {
+    sparkleStrength: typeof params.sparkleStrength === "number" ? params.sparkleStrength : 1,
+    fireStrength: 1,
+    qualityReduce: false,
+    dispersionAmplitude:
+      typeof params.dispersionAmplitude === "number" ? params.dispersionAmplitude : 0.035,
+  });
+  return m;
 }
 
 export function createMaterialFromUserItem(item: UserMaterialItem): THREE.Material {

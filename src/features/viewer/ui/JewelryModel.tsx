@@ -15,8 +15,14 @@ import { modelExtFromUrl } from "@/lib/model-key";
 import type { ModelTransform, PersistedModelConfig } from "@/lib/slot-materials/model-config";
 import { degreesToRadians, normalizeModelTransform } from "@/lib/viewer-scene";
 import { detectSlots } from "@/lib/slot-materials/detect-slots";
+import {
+  gemShaderQualityReduce,
+  readDeviceCaps,
+  resolveEffectiveQuality,
+} from "@/lib/viewer-quality";
 import { resetModelReady, signalModelReady } from "@/stores/batch-export-store";
 import { useMaterialPresetStore, type MaterialPresetId } from "@/stores/material-preset-store";
+import { useViewerQualityStore } from "@/stores/viewer-quality-store";
 
 type JewelryModelProps = {
   url: string;
@@ -76,6 +82,7 @@ function PresetWrapper({
 }) {
   const finish = useMaterialPresetStore((s) => s.finish);
   const slotSelections = useMaterialPresetStore((s) => s.slotSelections);
+  const qualityLevel = useViewerQualityStore((s) => s.level);
   const model = useMemo(() => {
     const cloned = raw.clone(true);
     fitToUnit(cloned, FIT_SIZE);
@@ -106,13 +113,16 @@ function PresetWrapper({
   }, [model, materialProps, slotMap]);
 
   useLayoutEffect(() => {
+    const qualityReduce = gemShaderQualityReduce(
+      resolveEffectiveQuality(qualityLevel, readDeviceCaps()).tier,
+    );
     if (hasSlotAwareModel) {
-      applyMaterialPresetBySlot(model, slotSelections, preset, slotTokens, finish);
+      applyMaterialPresetBySlot(model, slotSelections, preset, slotTokens, finish, qualityReduce);
     } else {
-      applyMaterialPreset(model, preset, finish);
+      applyMaterialPreset(model, preset, finish, qualityReduce);
     }
     signalModelReady();
-  }, [model, preset, finish, slotSelections, hasSlotAwareModel, slotTokens]);
+  }, [model, preset, finish, slotSelections, hasSlotAwareModel, slotTokens, qualityLevel]);
 
   const transform = normalizeModelTransform(modelTransform);
 

@@ -4,7 +4,8 @@ import {
   applySplitGemBandPreset,
   canApplySplitGemBand,
 } from "@/lib/gem-gpu/apply-split-diamond";
-import { createGemMaterial } from "@/lib/gem-gpu/gem-physical-material";
+import { createGemMaterial, isGemGpuMaterial } from "@/lib/gem-gpu/gem-physical-material";
+import { ensureFacetedGemNormalsOnMesh } from "@/lib/gem-gpu/ensure-faceted-gem-normals";
 import { isGemPresetId } from "@/lib/gem-gpu/gem-configs";
 import {
   createGemMaterialFromParams,
@@ -73,6 +74,7 @@ export function applyMaterialPreset(
   root: THREE.Object3D,
   preset: MaterialPresetId,
   finish: FinishId = "polished",
+  qualityReduce = false,
 ): void {
   if (preset === "original") {
     root.traverse((obj) => {
@@ -84,7 +86,7 @@ export function applyMaterialPreset(
   }
 
   if (isGemPresetId(preset) && canApplySplitGemBand(root)) {
-    applySplitGemBandSetup(root, (r) => applySplitGemBandPreset(r, preset));
+    applySplitGemBandSetup(root, (r) => applySplitGemBandPreset(r, preset, qualityReduce));
     return;
   }
 
@@ -104,7 +106,9 @@ export function applyMaterialPreset(
         (target === "metal" && role === "metal") ||
         (target === "gem" && (role === "gem" || role === "accent-gem"));
       if (!applyHere) return;
-      const template = wantsGem ? createGemMaterial(preset as Parameters<typeof createGemMaterial>[0]) : createPresetMaterial(preset, finish);
+      const template = wantsGem
+        ? createGemMaterial(preset as Parameters<typeof createGemMaterial>[0], { qualityReduce })
+        : createPresetMaterial(preset, finish);
       assignMaterial(obj, template);
     });
     return;
@@ -114,7 +118,9 @@ export function applyMaterialPreset(
     if (!(obj instanceof THREE.Mesh)) return;
     applyShadowFlags(obj);
 
-    const template = createPresetMaterial(preset, finish);
+    const template = isGemPresetId(preset)
+      ? createGemMaterial(preset, { qualityReduce })
+      : createPresetMaterial(preset, finish);
     assignMaterial(obj, template);
   });
 }
@@ -152,6 +158,7 @@ function buildTemplate(
   preset: SlotMaterialRef,
   role: JewelryRole | "any",
   finish: FinishId,
+  qualityReduce = false,
 ): THREE.Material {
   const catalog = buildCatalogTemplate(preset, role, finish);
   if (catalog) return catalog;
@@ -163,16 +170,16 @@ function buildTemplate(
     return createPresetMaterial("gold-14k-yellow", finish);
   }
   if (role === "gem" && !isGemPresetId(preset as MaterialPresetId) && preset !== "original") {
-    return createGemMaterial("diamond");
+    return createGemMaterial("diamond", { qualityReduce });
   }
   if (preset !== "original" && isGemPresetId(preset as MaterialPresetId)) {
-    return createGemMaterial(preset as Parameters<typeof createGemMaterial>[0]);
+    return createGemMaterial(preset as Parameters<typeof createGemMaterial>[0], { qualityReduce });
   }
   if (preset !== "original" && !isCustomMaterialRef(preset)) {
     return createPresetMaterial(preset as Exclude<MaterialPresetId, "original">, finish);
   }
   if (role === "gem") {
-    return createGemMaterial("diamond");
+    return createGemMaterial("diamond", { qualityReduce });
   }
   return createPresetMaterial("gold-14k-yellow", finish);
 }
@@ -189,12 +196,13 @@ export function applyMaterialPresetBySlot(
   fallbackPreset: MaterialPresetId,
   slotTokens?: PersistedSlotTokens,
   finish: FinishId = "polished",
+  qualityReduce = false,
 ): void {
   const sanitizedSelections = sanitizeSlotSelections(selections as SlotSelectionMap);
   const slotMap = detectSlots(root, slotTokens);
   const realSlots = [...slotMap.keys()].filter((slot) => slot !== "default");
   if (realSlots.length === 0) {
-    applyMaterialPreset(root, fallbackPreset, finish);
+    applyMaterialPreset(root, fallbackPreset, finish, qualityReduce);
     return;
   }
 
@@ -216,7 +224,7 @@ export function applyMaterialPresetBySlot(
         restoreOriginal(mesh);
         continue;
       }
-      const template = buildTemplate(resolvedPreset, role, finish);
+      const template = buildTemplate(resolvedPreset, role, finish, qualityReduce);
       assignMaterial(mesh, template);
     }
   }
@@ -230,6 +238,9 @@ function assignMaterial(mesh: THREE.Mesh, template: THREE.Material): void {
   } else {
     mesh.material.dispose();
     mesh.material = template.clone();
+  }
+  if (isGemGpuMaterial(template)) {
+    ensureFacetedGemNormalsOnMesh(mesh);
   }
 }
 

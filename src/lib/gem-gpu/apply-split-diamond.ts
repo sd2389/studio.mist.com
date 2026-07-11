@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { createPresetMaterial } from "@/lib/material-presets";
 import { createGemMaterial } from "@/lib/gem-gpu/gem-physical-material";
+import { ensureFacetedGemNormalsOnMesh } from "@/lib/gem-gpu/ensure-faceted-gem-normals";
 import type { GemPresetId } from "@/lib/gem-gpu/gem-configs";
 
 const GLTF_GEM_SLOT = "Carbon";
@@ -27,15 +28,20 @@ export function canApplySplitGemBand(root: THREE.Object3D): boolean {
 
 export function applySplitGemBandPreset(
   root: THREE.Object3D,
-  gemPreset: GemPresetId = "diamond"
+  gemPreset: GemPresetId = "diamond",
+  qualityReduce = false,
 ): void {
-  const gem = createGemMaterial(gemPreset);
+  const gem = createGemMaterial(gemPreset, { qualityReduce });
   const band = createPresetMaterial("platinum");
 
   root.traverse((obj) => {
     if (!(obj instanceof THREE.Mesh)) return;
+    let hadCarbonSlot = false;
     const assignFor = (src: THREE.Material): THREE.Material => {
-      if (src.name === GLTF_GEM_SLOT) return gem.clone();
+      if (src.name === GLTF_GEM_SLOT) {
+        hadCarbonSlot = true;
+        return gem.clone();
+      }
       if (src.name === GLTF_BAND_SLOT) return band.clone();
       if (src.name) return band.clone();
       return gem.clone();
@@ -52,6 +58,10 @@ export function applySplitGemBandPreset(
       const next = assignFor(obj.material);
       obj.material.dispose();
       obj.material = next;
+    }
+
+    if (hadCarbonSlot) {
+      ensureFacetedGemNormalsOnMesh(obj);
     }
   });
 }

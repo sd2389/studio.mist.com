@@ -6,12 +6,10 @@ from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core import storage
+from app.core import storage_keys as keys
 from app.core.model_keys import normalized_model_key
-from app.core.public_urls import (
-    public_file_url,
-    published_scene_model_url,
-    published_scene_thumbnail_url,
-)
+from app.core.public_urls import public_file_url
 from app.features.publish import service as publish_service
 from app.models import Render, Scene
 from app.schemas.scene import RenderItem, SceneDetail, SceneListItem, ScenePatch
@@ -19,17 +17,17 @@ from app.schemas.scene import RenderItem, SceneDetail, SceneListItem, ScenePatch
 
 def _scene_model_url(scene: Scene) -> str | None:
     if scene.sku:
-        published = published_scene_model_url(scene.user_id, scene.sku)
-        if published:
-            return published
+        published_key = keys.public_model_key(scene.user_id, scene.sku)
+        if storage.get_storage().exists(published_key):
+            return public_file_url(published_key)
     return public_file_url(scene.model_key) if scene.model_key else None
 
 
 def _scene_thumbnail_url(scene: Scene) -> str | None:
     if scene.sku:
-        published = published_scene_thumbnail_url(scene.user_id, scene.sku)
-        if published:
-            return published
+        published_key = keys.public_thumbnail_key(scene.user_id, scene.sku)
+        if storage.get_storage().exists(published_key):
+            return public_file_url(published_key)
     return public_file_url(scene.thumbnail_key) if scene.thumbnail_key else None
 
 

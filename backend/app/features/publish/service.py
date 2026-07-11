@@ -16,18 +16,21 @@ def publish_scene_to_public(scene: Scene) -> bool:
     if not sku:
         return False
 
+    dest_model = keys.public_model_key(scene.user_id, sku)
+    dest_thumb = keys.public_thumbnail_key(scene.user_id, sku) if scene.thumbnail_key else None
+
     public_backend = storage.get_public_storage()
-    if public_backend is None:
-        log_event(_logger, "publish.skipped", scene_id=scene.id, reason="no_public_bucket")
-        return False
+    backend = public_backend or storage.get_storage()
 
     try:
-        dest_model = keys.public_model_key(scene.user_id, sku)
-        public_backend.copy_object(scene.model_key, dest_model)
-
-        if scene.thumbnail_key:
-            dest_thumb = keys.public_thumbnail_key(scene.user_id, sku)
-            public_backend.copy_object(scene.thumbnail_key, dest_thumb)
+        if public_backend is not None:
+            public_backend.copy_object(scene.model_key, dest_model)
+            if scene.thumbnail_key and dest_thumb:
+                public_backend.copy_object(scene.thumbnail_key, dest_thumb)
+        else:
+            backend.copy_object(scene.model_key, dest_model)
+            if scene.thumbnail_key and dest_thumb:
+                backend.copy_object(scene.thumbnail_key, dest_thumb)
 
         log_event(
             _logger,
@@ -36,6 +39,7 @@ def publish_scene_to_public(scene: Scene) -> bool:
             user_id=scene.user_id,
             sku=sku,
             model_key=dest_model,
+            backend=backend.__class__.__name__,
         )
         return True
     except Exception as exc:

@@ -36,13 +36,19 @@ def get_storage() -> StorageBackend:
 def get_public_storage() -> R2Backend | None:
     """Return R2 backend when public bucket publishing is available."""
     settings = get_settings()
-    if (settings.storage_backend or "").lower() == "r2" or (
-        settings.r2_bucket_name and settings.r2_access_key_id
+    backend = (settings.storage_backend or "auto").lower()
+    if backend in ("local", "s3"):
+        return None
+    if backend == "r2" or (
+        backend == "auto"
+        and settings.r2_bucket_name
+        and settings.r2_access_key_id
+        and settings.r2_secret_access_key
     ):
         try:
-            backend = R2Backend(settings)
-            if backend.public_bucket:
-                return backend
+            r2_backend = R2Backend(settings)
+            if r2_backend.public_bucket:
+                return r2_backend
         except Exception:
             return None
     return None

@@ -1,6 +1,6 @@
 "use client";
 
-import { Gem, LogOut, User } from "lucide-react";
+import { LogOut, User } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -24,29 +24,27 @@ export function AppHeader({ userEmail, showAdminLink }: AppHeaderProps) {
   const router = useRouter();
 
   return (
-    <header className="sticky top-0 z-40 border-b border-foreground/[0.08] bg-background/78 backdrop-blur-xl">
-      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-5 sm:px-8">
+    <header className="sticky top-0 z-40 border-b border-black bg-[#d8d5cd]">
+      <div className="grid h-[70px] grid-cols-[1fr_auto] md:grid-cols-[260px_1fr_auto]">
         <Link
           href="/dashboard"
-          className="flex items-center gap-2 text-foreground"
+          className="flex items-center gap-2 border-r border-black text-foreground"
         >
-          <span className="grid size-8 place-items-center rounded-full border border-[#9a7d4d]/30 bg-[#9a7d4d]/10">
-            <Gem className="size-3.5 text-[#9a7d4d]" aria-hidden />
-          </span>
-          <span className="text-sm font-semibold tracking-[-0.01em]">
+          <span className="ml-6 size-2.5 bg-[#ef5b2a]" />
+          <span className="text-[15px] font-black tracking-[-0.04em]">
             DEVJEWELS
           </span>
-          <span className="hidden border-l border-foreground/10 pl-2.5 text-[9px] uppercase tracking-[0.18em] text-muted-foreground sm:inline">
-            Studio
-          </span>
         </Link>
+        <div className="hidden items-center border-r border-black px-6 text-[9px] font-bold uppercase tracking-[0.2em] md:flex">
+          Private production archive
+        </div>
 
-        <nav className="flex items-center gap-2">
+        <nav className="flex items-center gap-1 px-3 sm:px-5">
           <Link
             href="/dashboard"
             className={cn(
               buttonVariants({ variant: "ghost", size: "sm" }),
-              "text-muted-foreground hover:text-foreground",
+              "rounded-none text-[9px] font-bold uppercase tracking-[0.14em] text-black/60 hover:bg-transparent hover:text-black",
             )}
           >
             Workshop
@@ -56,7 +54,7 @@ export function AppHeader({ userEmail, showAdminLink }: AppHeaderProps) {
               href="/pricing"
               className={cn(
                 buttonVariants({ variant: "ghost", size: "sm" }),
-                "text-muted-foreground hover:text-foreground",
+                "rounded-none text-[9px] font-bold uppercase tracking-[0.14em] text-black/60 hover:bg-transparent hover:text-black",
               )}
             >
               Pricing
@@ -68,7 +66,7 @@ export function AppHeader({ userEmail, showAdminLink }: AppHeaderProps) {
               <Button
                 variant="outline"
                 size="sm"
-                className="gap-2 rounded-full bg-card/70"
+                className="gap-2 rounded-none border-black bg-transparent"
               >
                 <User className="size-4" />
                 <span className="hidden max-w-[140px] truncate sm:inline">

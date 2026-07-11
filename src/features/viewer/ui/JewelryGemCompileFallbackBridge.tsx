@@ -86,16 +86,17 @@ function installJewelryGemCompileFallback(
  * Non-jewelry shader errors are ignored by this bridge.
  */
 export function JewelryGemCompileFallbackBridge() {
+  const gl = useThree((s) => s.gl);
+  const scene = useThree((s) => s.scene);
   const toastedRef = useRef(false);
 
   useEffect(() => {
-    const { gl: renderer, scene } = useThree.getState();
-    return installJewelryGemCompileFallback(renderer, scene, () => {
+    return installJewelryGemCompileFallback(gl, scene, () => {
       if (toastedRef.current) return;
       toastedRef.current = true;
       useViewerToastStore.getState().showToast(SAFE_MODE_TOAST);
     });
-  }, []);
+  }, [gl, scene]);
 
   return null;
 }

@@ -20,12 +20,12 @@ export function StoneTile({ cutId, label, description }: StoneTileProps) {
   return (
     <Link
       href={`/stones/${cutId}`}
-      className="group block rounded-[1.4rem] focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="group block focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       aria-label={`Open ${label} in studio`}
     >
-      <Card className="overflow-hidden border-0 bg-[#211f1b] p-0 text-white transition duration-500 group-hover:-translate-y-1 group-hover:shadow-[0_30px_70px_-35px_rgba(30,22,12,0.7)]">
+      <Card className="overflow-hidden rounded-none border border-black bg-[#11110f] p-0 text-white ring-0 transition duration-300 group-hover:bg-black">
         <div className="relative aspect-square overflow-hidden bg-[radial-gradient(circle_at_50%_42%,#51515a_0%,#27272c_48%,#19191c_100%)]">
-          <span className="absolute left-4 top-4 z-10 rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-[9px] uppercase tracking-[0.14em] text-white/45 backdrop-blur">
+          <span className="absolute left-4 top-4 z-10 border border-white/20 bg-black/30 px-2.5 py-1 text-[8px] uppercase tracking-[0.14em] text-white/60 backdrop-blur">
             Precision cut
           </span>
           <Canvas
@@ -54,7 +54,9 @@ export function StoneTile({ cutId, label, description }: StoneTileProps) {
           </Canvas>
         </div>
         <CardContent className="space-y-2 p-5">
-          <p className="font-display text-xl italic text-white">{label}</p>
+          <p className="text-2xl font-black uppercase tracking-[-0.05em] text-white">
+            {label}
+          </p>
           <p className="line-clamp-2 text-xs leading-5 text-white/42">
             {description}
           </p>

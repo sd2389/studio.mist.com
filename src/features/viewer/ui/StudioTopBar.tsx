@@ -5,18 +5,21 @@ import { LayoutDashboard, Save, Share2 } from "lucide-react";
 import { useState } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { buildEmbedUrl, resolveEmbedKey } from "@/lib/embed-settings";
 import { sceneDisplayName } from "@/lib/scene-display-name";
 import { useMaterialPresetStore } from "@/stores/material-preset-store";
 import { QualityMenu } from "./QualityMenu";
 
 type StudioTopBarProps = {
   modelId: string;
+  sku?: string | null;
 };
 
-export function StudioTopBar({ modelId }: StudioTopBarProps) {
+export function StudioTopBar({ modelId, sku }: StudioTopBarProps) {
   const preset = useMaterialPresetStore((s) => s.preset);
   const lighting = useMaterialPresetStore((s) => s.lighting);
   const [toast, setToast] = useState<string | null>(null);
+  const canShare = Boolean(sku?.trim());
 
   function savePreset() {
     const payload = { preset, lighting, savedAt: Date.now() };
@@ -26,7 +29,9 @@ export function StudioTopBar({ modelId }: StudioTopBarProps) {
   }
 
   async function shareEmbed() {
-    const url = `${window.location.origin}/embed/${encodeURIComponent(modelId)}`;
+    if (!canShare) return;
+    const embedKey = resolveEmbedKey(sku, modelId);
+    const url = buildEmbedUrl(window.location.origin, embedKey);
     await navigator.clipboard.writeText(url);
     setToast("Embed URL copied");
     setTimeout(() => setToast(null), 2200);
@@ -69,6 +74,8 @@ export function StudioTopBar({ modelId }: StudioTopBarProps) {
           variant="default"
           size="sm"
           onClick={() => void shareEmbed()}
+          disabled={!canShare}
+          title={canShare ? "Copy embed URL" : "Publish or set a SKU before embedding"}
         >
           <Share2 className="size-4" aria-hidden />
           <span className="hidden sm:inline">Share</span>

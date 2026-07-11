@@ -38,6 +38,7 @@ export function JewelryViewer({ pieceId }: { pieceId: JewelryId }) {
         <aside className="hidden h-full w-80 shrink-0 flex-col border-r border-border bg-card lg:flex xl:w-[360px] 2xl:w-[400px]">
           <StudioSidebar
             modelId={modelId}
+            sku={null}
             onOpenAi={() => setAiOpen(true)}
             onOpenExport={() => setExportOpen(true)}
             onOpenHiResExport={() => setHiResOpen(true)}
@@ -94,6 +95,7 @@ export function JewelryViewer({ pieceId }: { pieceId: JewelryId }) {
           <StudioSidebar
             className="max-h-[calc(min(85dvh,640px)-56px)] sm:max-h-[calc(min(80dvh,720px)-56px)]"
             modelId={modelId}
+            sku={null}
             onOpenAi={() => {
               setMobileControlsOpen(false);
               setAiOpen(true);
@@ -115,7 +117,7 @@ export function JewelryViewer({ pieceId }: { pieceId: JewelryId }) {
       </Sheet>
 
       <AiBgModal open={aiOpen} onOpenChange={setAiOpen} modelId={modelId} />
-      <ExportModal open={exportOpen} onOpenChange={setExportOpen} modelId={modelId} />
+      <ExportModal open={exportOpen} onOpenChange={setExportOpen} modelId={modelId} sku={null} />
       <HiResExportModal open={hiResOpen} onOpenChange={setHiResOpen} modelId={modelId} />
       <Video360Modal open={video360Open} onOpenChange={setVideo360Open} modelId={modelId} />
     </>

@@ -56,6 +56,7 @@ export function ViewerShell({
   const replaceSceneSettings = useMaterialPresetStore((s) => s.replaceSceneSettings);
 
   const [modelConfig, setModelConfig] = useState(() => buildModelConfigFromSlots([]));
+  const [sceneSku, setSceneSku] = useState<string | null>(initialScene?.sku ?? null);
   const [catalog, setCatalog] = useState<SourceCatalogPayload | null>(null);
   const [sceneLoaded, setSceneLoaded] = useState(false);
   const applyingPersistedState = useRef(false);
@@ -109,6 +110,7 @@ export function ViewerShell({
       replaceSlotSelections(safeSelections);
       replaceSceneSettings(scene.scene_settings ?? getDefaultSceneSettings());
       setModelConfig(resolvedModelConfig);
+      setSceneSku(scene.sku ?? null);
       setSceneLoaded(true);
       window.setTimeout(() => {
         applyingPersistedState.current = false;
@@ -136,9 +138,11 @@ export function ViewerShell({
         replaceSlotSelections(safeSelections);
         replaceSceneSettings(scene.scene_settings ?? getDefaultSceneSettings());
         setModelConfig(resolvedModelConfig);
+        setSceneSku(scene.sku ?? null);
       })
       .catch(() => {
         if (cancelled) return;
+        setSceneSku(null);
         replaceSceneSettings(getDefaultSceneSettings());
       })
       .finally(() => {
@@ -233,6 +237,7 @@ export function ViewerShell({
         <aside className="hidden h-full w-80 shrink-0 flex-col border-r border-border bg-card lg:flex xl:w-[360px] 2xl:w-[400px]">
           <StudioSidebar
             modelId={modelId}
+            sku={sceneSku}
             modelConfig={modelConfig}
             onOpenAi={() => setAiOpen(true)}
             onOpenExport={() => setExportOpen(true)}
@@ -242,7 +247,7 @@ export function ViewerShell({
         </aside>
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-white">
-          <StudioTopBar modelId={modelId} />
+          <StudioTopBar modelId={modelId} sku={sceneSku} />
           <motion.div
             className="relative min-h-0 flex-1"
             initial={{ opacity: 0.88, scale: 0.995 }}
@@ -283,6 +288,7 @@ export function ViewerShell({
           <StudioSidebar
             className="max-h-[calc(min(85dvh,640px)-56px)] sm:max-h-[calc(min(80dvh,720px)-56px)]"
             modelId={modelId}
+            sku={sceneSku}
             modelConfig={modelConfig}
             onOpenAi={() => {
               setMobileControlsOpen(false);
@@ -305,7 +311,7 @@ export function ViewerShell({
       </Sheet>
 
       <AiBgModal open={aiOpen} onOpenChange={setAiOpen} modelId={modelId} />
-      <ExportModal open={exportOpen} onOpenChange={setExportOpen} modelId={modelId} />
+      <ExportModal open={exportOpen} onOpenChange={setExportOpen} modelId={modelId} sku={sceneSku} />
       <HiResExportModal open={hiResOpen} onOpenChange={setHiResOpen} modelId={modelId} />
       <Video360Modal open={video360Open} onOpenChange={setVideo360Open} modelId={modelId} />
     </>

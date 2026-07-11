@@ -35,6 +35,7 @@ import { StudioMoreDrawer } from "@/features/viewer/ui/StudioMoreDrawer";
 
 type StudioSidebarProps = {
   modelId: string;
+  sku?: string | null;
   modelConfig?: PersistedModelConfig;
   onOpenAi: () => void;
   onOpenExport: () => void;
@@ -45,6 +46,7 @@ type StudioSidebarProps = {
 
 export function StudioSidebar({
   modelId,
+  sku,
   modelConfig = buildModelConfigFromSlots([]),
   onOpenAi,
   onOpenExport,
@@ -122,6 +124,7 @@ export function StudioSidebar({
       {panel === "export" ? (
         <ExportSharePanel
           modelId={modelId}
+          sku={sku}
           onOpenAi={onOpenAi}
           onOpenExport={onOpenExport}
           onOpenHiResExport={onOpenHiResExport}

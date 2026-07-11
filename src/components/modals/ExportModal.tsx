@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, Copy } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -11,20 +11,39 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  buildEmbedIframeSnippet,
+  buildEmbedUrl,
+  resolveEmbedKey,
+} from "@/lib/embed-settings";
 
 type ExportModalProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   modelId: string;
+  /** Required for a live embed URL — without SKU, copy stays disabled. */
+  sku?: string | null;
 };
 
-export function ExportModal({ open, onOpenChange, modelId }: ExportModalProps) {
+export function ExportModal({ open, onOpenChange, modelId, sku }: ExportModalProps) {
   const [copied, setCopied] = useState(false);
   const origin = typeof window !== "undefined" ? window.location.origin : "";
-  const embedSrc = `${origin}/embed/${encodeURIComponent(modelId)}`;
-  const snippet = `<iframe\n  src="${embedSrc}"\n  width="100%"\n  height="640"\n  style="border:0;border-radius:12px;max-width:100%"\n  loading="lazy"\n  title="DevJewels 3D"\n></iframe>`;
+  const canEmbed = Boolean(sku?.trim());
+  const embedKey = resolveEmbedKey(sku, modelId);
+  const embedSrc = useMemo(
+    () => (canEmbed && origin ? buildEmbedUrl(origin, embedKey) : ""),
+    [canEmbed, origin, embedKey],
+  );
+  const snippet = useMemo(
+    () =>
+      embedSrc
+        ? buildEmbedIframeSnippet(embedSrc, { height: 640, title: "DevJewels 3D" })
+        : "",
+    [embedSrc],
+  );
 
   async function copySnippet() {
+    if (!canEmbed || !snippet) return;
     await navigator.clipboard.writeText(snippet);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -39,6 +58,15 @@ export function ExportModal({ open, onOpenChange, modelId }: ExportModalProps) {
             Paste this iframe on your site or landing page.
           </DialogDescription>
         </DialogHeader>
+        {canEmbed ? (
+          <p className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+            Embed key: <span className="font-medium text-foreground">{sku?.trim()}</span>
+          </p>
+        ) : (
+          <p className="rounded-lg border border-dashed border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+            Publish or set a SKU before embedding
+          </p>
+        )}
         <Textarea
           readOnly
           value={snippet}
@@ -49,6 +77,7 @@ export function ExportModal({ open, onOpenChange, modelId }: ExportModalProps) {
           variant="default"
           className="w-full"
           onClick={() => void copySnippet()}
+          disabled={!canEmbed || !snippet}
         >
           {copied ? (
             <>

@@ -11,7 +11,6 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { resolveEmbedKey } from "@/lib/embed-settings";
 import { renderAtResolution } from "@/lib/offscreen-render";
 import { captureFrameToDataUrl } from "@/stores/screenshot-store";
 import { getHiresRefs } from "@/stores/hires-export-store";
@@ -20,10 +19,8 @@ import { useMaterialPresetStore } from "@/stores/material-preset-store";
 
 type ExportSharePanelProps = {
   modelId: string;
-  /** When provided, gates Share/Embed until a SKU is set. */
+  /** Scene SKU — Share/Embed stays gated until a non-empty SKU is set. */
   sku?: string | null;
-  /** When provided as false, gates Share/Embed until the model is published. */
-  published?: boolean;
   onOpenAi: () => void;
   onOpenExport: () => void;
   onOpenHiResExport: () => void;
@@ -31,25 +28,14 @@ type ExportSharePanelProps = {
   className?: string;
 };
 
-function canOpenEmbed(opts: {
-  modelId: string;
-  sku?: string | null;
-  published?: boolean;
-}): boolean {
-  const { modelId, sku, published } = opts;
-  // No publish/SKU state on props — open ExportModal (EditorEmbedTab warns there).
-  if (sku === undefined && published === undefined) return true;
-  if (published === false) return false;
-  const embedKey = resolveEmbedKey(sku, modelId);
-  if (!embedKey.trim()) return false;
-  if (sku !== undefined && !sku?.trim()) return false;
-  return true;
+/** Embed requires a real SKU; viewer-id fallbacks must not unlock copy/share. */
+function canOpenEmbed(sku: string | null | undefined): boolean {
+  return Boolean(sku?.trim());
 }
 
 export function ExportSharePanel({
   modelId,
   sku,
-  published,
   onOpenAi,
   onOpenExport,
   onOpenHiResExport,
@@ -60,7 +46,7 @@ export function ExportSharePanel({
   const lighting = useMaterialPresetStore((s) => s.lighting);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
-  const embedReady = canOpenEmbed({ modelId, sku, published });
+  const embedReady = canOpenEmbed(sku);
 
   async function handleCapture() {
     const dataUrl = captureFrameToDataUrl();
@@ -141,10 +127,7 @@ export function ExportSharePanel({
   }
 
   function handleOpenEmbed() {
-    if (!embedReady) {
-      setStatus("Publish or set a SKU before embedding");
-      return;
-    }
+    if (!embedReady) return;
     setStatus(null);
     onOpenExport();
   }
@@ -194,7 +177,7 @@ export function ExportSharePanel({
           variant="outline"
           className="w-full justify-start gap-3 border-border/60 bg-card/60"
           onClick={handleOpenEmbed}
-          aria-disabled={!embedReady}
+          disabled={!embedReady}
         >
           <Link2 className="size-4" aria-hidden />
           <span className="flex flex-col items-start leading-tight">

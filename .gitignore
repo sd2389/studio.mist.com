@@ -78,3 +78,6 @@ docker-compose.override.yml
 
 # Superpowers visual companion / local agent artifacts
 .superpowers/
+
+# Git worktrees (project-local isolated checkouts)
+.worktrees/

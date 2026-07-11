@@ -55,7 +55,7 @@ export function DashboardToolbar({
 
   return (
     <div
-      className="mb-8 space-y-4 rounded-2xl border border-foreground/[0.08] bg-card/55 p-4 shadow-sm backdrop-blur-sm sm:p-5"
+      className="mb-8 space-y-4 border-b border-black pb-5"
       aria-busy={pending}
     >
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -77,7 +77,7 @@ export function DashboardToolbar({
                 value={searchDraft}
                 onChange={(e) => setSearchDraft(e.target.value)}
                 placeholder="Search models…"
-                className="h-11 rounded-xl bg-background/65 pl-9"
+                className="h-12 rounded-none border-black bg-transparent pl-9 text-black placeholder:text-black/50"
               />
             </div>
           </div>
@@ -94,7 +94,7 @@ export function DashboardToolbar({
               onChange={(e) =>
                 pushFilters({ category: e.target.value, page: 1 })
               }
-              className="flex h-11 w-full rounded-xl border border-input bg-background/65 px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="flex h-12 w-full rounded-none border border-black bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ef5b2a]"
             >
               <option value="">All categories</option>
               {JEWELRY_CATEGORIES.map((category) => (
@@ -120,7 +120,7 @@ export function DashboardToolbar({
               onChange={(e) =>
                 pushFilters({ limit: Number(e.target.value), page: 1 })
               }
-              className="flex h-11 min-w-[5.5rem] rounded-xl border border-input bg-background/65 px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="flex h-12 min-w-[5.5rem] rounded-none border border-black bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ef5b2a]"
             >
               {DASHBOARD_ROWS_OPTIONS.map((n) => (
                 <option key={n} value={n}>
@@ -139,7 +139,7 @@ export function DashboardToolbar({
       </div>
 
       {pageCount > 1 ? (
-        <div className="flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-card/60 px-4 py-2">
+        <div className="flex items-center justify-between gap-3 border border-black bg-transparent px-4 py-2">
           <p className="text-sm text-muted-foreground">
             Page{" "}
             <span className="font-medium tabular-nums text-foreground">

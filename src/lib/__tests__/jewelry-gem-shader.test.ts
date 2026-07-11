@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import * as THREE from "three";
 import {
   applyJewelryGemShader,
+  enableJewelryGemSafeMode,
   JEWELRY_GEM_SHADER_KEY,
+  setJewelryGemTime,
   type JewelryGemShaderOpts,
 } from "@/lib/gem-gpu/jewelry-gem-shader";
 
@@ -31,5 +33,38 @@ describe("applyJewelryGemShader", () => {
     });
     expect(m.userData[JEWELRY_GEM_SHADER_KEY]).toBe(true);
     expect(m.userData.jewelryGemQualityReduce).toBe(true);
+  });
+
+  it("enableJewelryGemSafeMode keeps jewelry tag with reduced quality", () => {
+    const m = new THREE.MeshPhysicalMaterial();
+    applyJewelryGemShader(m, {
+      sparkleStrength: 1,
+      fireStrength: 1,
+      qualityReduce: false,
+      dispersionAmplitude: 0.035,
+    });
+    enableJewelryGemSafeMode(m);
+    expect(m.userData[JEWELRY_GEM_SHADER_KEY]).toBe(true);
+    expect(m.userData.jewelryGemQualityReduce).toBe(true);
+    expect(m.userData.jewelryGemSafeMode).toBe(true);
+    const uniforms = m.userData.jewelryGemUniforms as {
+      uSparkleStrength: { value: number };
+      uFireStrength: { value: number };
+    };
+    expect(uniforms.uSparkleStrength.value).toBe(0.35);
+    expect(uniforms.uFireStrength.value).toBe(0.5);
+  });
+
+  it("setJewelryGemTime updates uTime on tagged materials", () => {
+    const m = new THREE.MeshPhysicalMaterial();
+    applyJewelryGemShader(m, {
+      sparkleStrength: 1,
+      fireStrength: 1,
+      qualityReduce: false,
+      dispersionAmplitude: 0.035,
+    });
+    setJewelryGemTime(m, 12.5);
+    const uniforms = m.userData.jewelryGemUniforms as { uTime: { value: number } };
+    expect(uniforms.uTime.value).toBe(12.5);
   });
 });

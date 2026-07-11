@@ -14,8 +14,11 @@ import {
 } from "@/features/render";
 import { ViewerPostFX } from "./ViewerPostFX";
 import { JewelryModel } from "./JewelryModel";
+import { JewelryGemCompileFallbackBridge } from "./JewelryGemCompileFallbackBridge";
+import { JewelryGemTimeBridge } from "./JewelryGemTimeBridge";
 import { SceneEnvironmentBridge } from "./SceneEnvironmentBridge";
 import { ScenePoseBridge } from "./ScenePoseBridge";
+import { ViewerToastHost } from "./ViewerToastHost";
 import {
   backgroundColorForCanvas,
   groundParamsFromItem,
@@ -134,76 +137,81 @@ export function ViewerCanvas({
   const contactBlur = ground.blur || (photometric ? 2.1 : 2.5);
 
   return (
-    <Canvas
-      className="h-full w-full touch-none"
-      shadows={{ type: THREE.PCFShadowMap }}
-      dpr={[1, dprCap]}
-      camera={{ position: [0, 0.35, 2.2], fov: 45, near: 0.01, far: 200 }}
-      gl={{
-        alpha: true,
-        preserveDrawingBuffer: true,
-        antialias: true,
-      }}
-    >
-      {bg ? <color attach="background" args={[bg]} /> : null}
-      <ambientLight intensity={ambient} />
-      <spotLight
-        position={[4, 6, 4]}
-        angle={0.35}
-        penumbra={0.9}
-        intensity={spot}
-        castShadow
-        shadow-mapSize={photometric ? [2048, 2048] : [1024, 1024]}
-      />
-      {photometric ? (
+    <div className="relative h-full w-full">
+      <Canvas
+        className="h-full w-full touch-none"
+        shadows={{ type: THREE.PCFShadowMap }}
+        dpr={[1, dprCap]}
+        camera={{ position: [0, 0.35, 2.2], fov: 45, near: 0.01, far: 200 }}
+        gl={{
+          alpha: true,
+          preserveDrawingBuffer: true,
+          antialias: true,
+        }}
+      >
+        {bg ? <color attach="background" args={[bg]} /> : null}
+        <ambientLight intensity={ambient} />
         <spotLight
-          position={[-4, 2.3, -3]}
-          angle={0.4}
-          penumbra={0.95}
-          intensity={spot * 0.38}
-          castShadow={false}
+          position={[4, 6, 4]}
+          angle={0.35}
+          penumbra={0.9}
+          intensity={spot}
+          castShadow
+          shadow-mapSize={photometric ? [2048, 2048] : [1024, 1024]}
         />
-      ) : null}
-      <Suspense fallback={null}>
-        <JewelryModel
-          key={preset}
-          url={modelUrl}
-          preset={preset}
-          modelConfig={modelConfig}
-          modelTransform={sceneSettings?.modelTransform}
-        />
-        <Environment files={hdrFile} background={false} />
-        <SceneEnvironmentBridge rotationRadians={envRotation} intensity={envIntensity} />
-        <ContactShadows
-          position={[0, -0.55, 0]}
-          color="#0a0a0a"
-          opacity={contactShadow}
-          scale={12}
-          blur={contactBlur}
-          far={4.5}
-        />
-        <OrbitControls
-          makeDefault
-          enableDamping
-          dampingFactor={0.06}
-          minDistance={0.4}
-          maxDistance={20}
-          target={[0, 0, 0]}
-          autoRotate={autoRotate}
-          autoRotateSpeed={0.6}
-        />
-        <ScenePoseBridge
-          activePoseId={sceneSettings?.activePoseId}
-          savedPoses={sceneSettings?.poses}
-        />
-        <ViewerPostFX advanced={advanced} />
-        <RenderFidelityBridge exposure={exposure} advanced={advanced} />
-        <ScreenshotBridge />
-        <TransparentCaptureBridge />
-        <HiresExportBridge />
-        <VideoCaptureBridge />
-        <OrbitControlsBridge />
-      </Suspense>
-    </Canvas>
+        {photometric ? (
+          <spotLight
+            position={[-4, 2.3, -3]}
+            angle={0.4}
+            penumbra={0.95}
+            intensity={spot * 0.38}
+            castShadow={false}
+          />
+        ) : null}
+        <Suspense fallback={null}>
+          <JewelryModel
+            key={preset}
+            url={modelUrl}
+            preset={preset}
+            modelConfig={modelConfig}
+            modelTransform={sceneSettings?.modelTransform}
+          />
+          <Environment files={hdrFile} background={false} />
+          <SceneEnvironmentBridge rotationRadians={envRotation} intensity={envIntensity} />
+          <ContactShadows
+            position={[0, -0.55, 0]}
+            color="#0a0a0a"
+            opacity={contactShadow}
+            scale={12}
+            blur={contactBlur}
+            far={4.5}
+          />
+          <OrbitControls
+            makeDefault
+            enableDamping
+            dampingFactor={0.06}
+            minDistance={0.4}
+            maxDistance={20}
+            target={[0, 0, 0]}
+            autoRotate={autoRotate}
+            autoRotateSpeed={0.6}
+          />
+          <ScenePoseBridge
+            activePoseId={sceneSettings?.activePoseId}
+            savedPoses={sceneSettings?.poses}
+          />
+          <ViewerPostFX advanced={advanced} />
+          <RenderFidelityBridge exposure={exposure} advanced={advanced} />
+          <ScreenshotBridge />
+          <TransparentCaptureBridge />
+          <HiresExportBridge />
+          <VideoCaptureBridge />
+          <JewelryGemTimeBridge />
+          <JewelryGemCompileFallbackBridge />
+          <OrbitControlsBridge />
+        </Suspense>
+      </Canvas>
+      <ViewerToastHost />
+    </div>
   );
 }

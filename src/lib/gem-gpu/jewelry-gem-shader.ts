@@ -97,3 +97,19 @@ export function setJewelryGemTime(material: THREE.Material, timeSec: number): vo
   const uniforms = material.userData.jewelryGemUniforms as JewelryUniforms | undefined;
   if (uniforms) uniforms.uTime.value = timeSec;
 }
+
+/**
+ * Re-apply jewelry gem shader with reduced sparkle/fire after a WebGL compile failure.
+ * Never falls back to silent stock glass — keeps the jewelry path with qualityReduce.
+ */
+export function enableJewelryGemSafeMode(material: THREE.MeshPhysicalMaterial): void {
+  if (material.userData.jewelryGemSafeMode === true) return;
+
+  applyJewelryGemShader(material, {
+    sparkleStrength: 0.35,
+    fireStrength: 0.5,
+    qualityReduce: true,
+    dispersionAmplitude: 0.02,
+  });
+  material.userData.jewelryGemSafeMode = true;
+}

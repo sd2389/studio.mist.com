@@ -5,6 +5,7 @@ import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import {
   enableJewelryGemSafeMode,
+  isJewelryGemFragmentSource,
   JEWELRY_GEM_SHADER_KEY,
 } from "@/lib/gem-gpu/jewelry-gem-shader";
 import { useViewerToastStore } from "@/stores/viewer-toast-store";
@@ -47,6 +48,16 @@ function installJewelryGemCompileFallback(
   renderer.debug.checkShaderErrors = true;
 
   const handler: ShaderErrorHandler = (context, program, vertexShader, fragmentShader) => {
+    // Gate: only jewelry gem fragment failures may toast / safe-mode gems.
+    // Non-gem shader errors must not degrade jewelry materials.
+    const fragmentSource = context.getShaderSource(fragmentShader);
+    if (!isJewelryGemFragmentSource(fragmentSource)) {
+      if (typeof previous === "function") {
+        previous(context, program, vertexShader, fragmentShader);
+      }
+      return;
+    }
+
     const programLog = (context.getProgramInfoLog(program) || "").trim();
     console.error("[jewelry-gem] WebGL program compile/link failed", {
       programLog,
@@ -70,8 +81,9 @@ function installJewelryGemCompileFallback(
 }
 
 /**
- * On WebGL program link failure, toast once and re-apply jewelry gem shader
- * in qualityReduce safe mode (never silent stock glass).
+ * On jewelry-gem WebGL program link failure, toast once and switch to the
+ * simpler jewelry-gem-safe GLSL path (never silent stock glass).
+ * Non-jewelry shader errors are ignored by this bridge.
  */
 export function JewelryGemCompileFallbackBridge() {
   const toastedRef = useRef(false);

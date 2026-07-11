@@ -4,13 +4,14 @@ import { useState } from "react";
 import {
   Camera,
   Download,
+  Link2,
   Loader2,
-  Maximize2,
   Sparkles,
   Video,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { resolveEmbedKey } from "@/lib/embed-settings";
 import { renderAtResolution } from "@/lib/offscreen-render";
 import { captureFrameToDataUrl } from "@/stores/screenshot-store";
 import { getHiresRefs } from "@/stores/hires-export-store";
@@ -19,6 +20,10 @@ import { useMaterialPresetStore } from "@/stores/material-preset-store";
 
 type ExportSharePanelProps = {
   modelId: string;
+  /** When provided, gates Share/Embed until a SKU is set. */
+  sku?: string | null;
+  /** When provided as false, gates Share/Embed until the model is published. */
+  published?: boolean;
   onOpenAi: () => void;
   onOpenExport: () => void;
   onOpenHiResExport: () => void;
@@ -26,8 +31,25 @@ type ExportSharePanelProps = {
   className?: string;
 };
 
+function canOpenEmbed(opts: {
+  modelId: string;
+  sku?: string | null;
+  published?: boolean;
+}): boolean {
+  const { modelId, sku, published } = opts;
+  // No publish/SKU state on props — open ExportModal (EditorEmbedTab warns there).
+  if (sku === undefined && published === undefined) return true;
+  if (published === false) return false;
+  const embedKey = resolveEmbedKey(sku, modelId);
+  if (!embedKey.trim()) return false;
+  if (sku !== undefined && !sku?.trim()) return false;
+  return true;
+}
+
 export function ExportSharePanel({
   modelId,
+  sku,
+  published,
   onOpenAi,
   onOpenExport,
   onOpenHiResExport,
@@ -38,6 +60,7 @@ export function ExportSharePanel({
   const lighting = useMaterialPresetStore((s) => s.lighting);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const embedReady = canOpenEmbed({ modelId, sku, published });
 
   async function handleCapture() {
     const dataUrl = captureFrameToDataUrl();
@@ -117,6 +140,15 @@ export function ExportSharePanel({
     }
   }
 
+  function handleOpenEmbed() {
+    if (!embedReady) {
+      setStatus("Publish or set a SKU before embedding");
+      return;
+    }
+    setStatus(null);
+    onOpenExport();
+  }
+
   return (
     <div
       className={cn(
@@ -125,7 +157,9 @@ export function ExportSharePanel({
       )}
     >
       <section className="space-y-2">
-        <h3 className="font-display text-[13px] italic leading-none text-foreground/95">Capture</h3>
+        <h3 className="font-display text-[13px] italic leading-none text-foreground/95">
+          Export & share
+        </h3>
         <Button
           type="button"
           variant="outline"
@@ -139,10 +173,70 @@ export function ExportSharePanel({
             <Camera className="size-4" aria-hidden />
           )}
           <span className="flex flex-col items-start leading-tight">
-            <span className="text-sm">Save render</span>
+            <span className="text-sm">Capture still</span>
             <span className="text-[10px] text-muted-foreground">Pushes current frame to cloud</span>
           </span>
         </Button>
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full justify-start gap-3 border-border/60 bg-card/60"
+          onClick={onOpenHiResExport}
+        >
+          <Download className="size-4" aria-hidden />
+          <span className="flex flex-col items-start leading-tight">
+            <span className="text-sm">Hi-res PNG</span>
+            <span className="text-[10px] text-muted-foreground">1080p · 4K · 8K offscreen</span>
+          </span>
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full justify-start gap-3 border-border/60 bg-card/60"
+          onClick={handleOpenEmbed}
+          aria-disabled={!embedReady}
+        >
+          <Link2 className="size-4" aria-hidden />
+          <span className="flex flex-col items-start leading-tight">
+            <span className="text-sm">Share link / Embed snippet</span>
+            <span className="text-[10px] text-muted-foreground">iframe for PDPs & decks</span>
+          </span>
+        </Button>
+        {!embedReady ? (
+          <p className="rounded-lg border border-dashed border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-400">
+            Publish or set a SKU before embedding
+          </p>
+        ) : null}
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full justify-start gap-3 border-border/60 bg-card/60"
+          onClick={onOpenVideo360}
+        >
+          <Video className="size-4" aria-hidden />
+          <span className="flex flex-col items-start leading-tight">
+            <span className="text-sm">360° turntable</span>
+            <span className="text-[10px] text-muted-foreground">MP4 via Mediabunny + WebCodecs</span>
+          </span>
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full justify-start gap-3 border-border/60 bg-card/60"
+          onClick={onOpenAi}
+        >
+          <Sparkles className="size-4 text-primary" aria-hidden />
+          <span className="flex flex-col items-start leading-tight">
+            <span className="text-sm">AI Visuals</span>
+            <span className="text-[10px] text-muted-foreground">Lifestyle scene compositing</span>
+          </span>
+        </Button>
+      </section>
+
+      <section className="space-y-2">
+        <h3 className="font-display text-[13px] italic leading-none text-foreground/95">
+          Downloads
+        </h3>
         <Button
           type="button"
           variant="outline"
@@ -165,60 +259,6 @@ export function ExportSharePanel({
           <span className="flex flex-col items-start leading-tight">
             <span className="text-sm">Download source model</span>
             <span className="text-[10px] text-muted-foreground">Original uploaded GLB/3DM/STL</span>
-          </span>
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          className="w-full justify-start gap-3 border-border/60 bg-card/60"
-          onClick={onOpenHiResExport}
-        >
-          <Download className="size-4" aria-hidden />
-          <span className="flex flex-col items-start leading-tight">
-            <span className="text-sm">High-res PNG</span>
-            <span className="text-[10px] text-muted-foreground">1080p · 4K · 8K offscreen</span>
-          </span>
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          className="w-full justify-start gap-3 border-border/60 bg-card/60"
-          onClick={onOpenVideo360}
-        >
-          <Video className="size-4" aria-hidden />
-          <span className="flex flex-col items-start leading-tight">
-            <span className="text-sm">360° turntable</span>
-            <span className="text-[10px] text-muted-foreground">MP4 via Mediabunny + WebCodecs</span>
-          </span>
-        </Button>
-      </section>
-
-      <section className="space-y-2">
-        <h3 className="font-display text-[13px] italic leading-none text-foreground/95">
-          Share & marketing
-        </h3>
-        <Button
-          type="button"
-          variant="outline"
-          className="w-full justify-start gap-3 border-border/60 bg-card/60"
-          onClick={onOpenAi}
-        >
-          <Sparkles className="size-4 text-primary" aria-hidden />
-          <span className="flex flex-col items-start leading-tight">
-            <span className="text-sm">AI background</span>
-            <span className="text-[10px] text-muted-foreground">Lifestyle scene compositing</span>
-          </span>
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          className="w-full justify-start gap-3 border-border/60 bg-card/60"
-          onClick={onOpenExport}
-        >
-          <Maximize2 className="size-4" aria-hidden />
-          <span className="flex flex-col items-start leading-tight">
-            <span className="text-sm">Embed code</span>
-            <span className="text-[10px] text-muted-foreground">iframe for PDPs & decks</span>
           </span>
         </Button>
       </section>

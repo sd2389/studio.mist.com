@@ -33,9 +33,10 @@ export function EditorEmbedTab({ viewerId, sku, displayName }: EditorEmbedTabPro
   const embedKey = resolveEmbedKey(sku, viewerId);
   const settings = resolveEmbedSettings(sceneSettings.embed);
   const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const canEmbed = Boolean(sku?.trim());
   const embedUrl = useMemo(
-    () => (origin ? buildEmbedUrl(origin, embedKey, settings) : ""),
-    [origin, embedKey, settings],
+    () => (canEmbed && origin ? buildEmbedUrl(origin, embedKey, settings) : ""),
+    [canEmbed, origin, embedKey, settings],
   );
   const iframeSnippet = useMemo(
     () =>
@@ -47,7 +48,10 @@ export function EditorEmbedTab({ viewerId, sku, displayName }: EditorEmbedTabPro
     [embedUrl, displayName, embedKey],
   );
 
+  const canCopyEmbed = Boolean(canEmbed && embedUrl);
+
   async function copyText(text: string, target: CopyTarget) {
+    if (!canCopyEmbed || !text) return;
     await navigator.clipboard.writeText(text);
     setCopied(target);
     window.setTimeout(() => setCopied(null), 2000);
@@ -68,7 +72,7 @@ export function EditorEmbedTab({ viewerId, sku, displayName }: EditorEmbedTabPro
           </p>
         ) : (
           <p className="rounded-lg border border-dashed border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
-            Set a SKU in Settings to use a product-keyed embed URL.
+            Publish or set a SKU before embedding
           </p>
         )}
       </div>
@@ -176,6 +180,7 @@ export function EditorEmbedTab({ viewerId, sku, displayName }: EditorEmbedTabPro
             variant="outline"
             className="gap-2 text-xs"
             onClick={() => void copyText(iframeSnippet, "html")}
+            disabled={!canCopyEmbed}
           >
             {copied === "html" ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
             Copy HTML
@@ -185,6 +190,7 @@ export function EditorEmbedTab({ viewerId, sku, displayName }: EditorEmbedTabPro
             variant="outline"
             className="gap-2 text-xs"
             onClick={() => setShowCode((value) => !value)}
+            disabled={!canCopyEmbed}
           >
             <Code className="size-3.5" aria-hidden />
             {showCode ? "Hide code" : "View code"}
@@ -193,8 +199,8 @@ export function EditorEmbedTab({ viewerId, sku, displayName }: EditorEmbedTabPro
             type="button"
             variant="outline"
             className="gap-2 text-xs"
-            onClick={() => embedUrl && window.open(embedUrl, "_blank", "noopener")}
-            disabled={!embedUrl}
+            onClick={() => canCopyEmbed && window.open(embedUrl, "_blank", "noopener")}
+            disabled={!canCopyEmbed}
           >
             <ExternalLink className="size-3.5" aria-hidden />
             Preview
@@ -204,7 +210,7 @@ export function EditorEmbedTab({ viewerId, sku, displayName }: EditorEmbedTabPro
             variant="outline"
             className="gap-2 text-xs"
             onClick={() => void copyText(embedUrl, "link")}
-            disabled={!embedUrl}
+            disabled={!canCopyEmbed}
           >
             {copied === "link" ? <Check className="size-3.5" /> : <Link2 className="size-3.5" />}
             Copy link

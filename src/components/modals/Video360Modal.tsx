@@ -127,7 +127,7 @@ export function Video360Modal({ open, onOpenChange, modelId }: Video360ModalProp
 
     const refs = getVideoCaptureRefs();
     if (!refs) {
-      setError("Viewer not ready. Wait for the model to load.");
+      setError("3D view not ready — wait for the model to load, then try again.");
       return;
     }
 
@@ -296,16 +296,32 @@ export function Video360Modal({ open, onOpenChange, modelId }: Video360ModalProp
                 />
               </div>
               <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-                <span>{Math.round(progress * 100)}%</span>
+                <span role="status">Recording… {Math.round(progress * 100)}%</span>
                 {etaLabel ? <span>{etaLabel}</span> : null}
               </div>
             </div>
           ) : null}
 
           {error ? (
-            <p className="text-sm text-destructive" role="alert">
-              {error}
-            </p>
+            <div className="space-y-2">
+              <p className="text-sm text-destructive" role="alert">
+                {error}
+              </p>
+              {!busy ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="gap-2 border-border"
+                  onClick={() => {
+                    setError(null);
+                    void handleRender();
+                  }}
+                >
+                  <Video className="size-4" aria-hidden />
+                  Retry
+                </Button>
+              ) : null}
+            </div>
           ) : null}
           {status ? (
             <p className="text-xs text-muted-foreground" role="status">
@@ -343,7 +359,7 @@ export function Video360Modal({ open, onOpenChange, modelId }: Video360ModalProp
               {busy ? (
                 <>
                   <Loader2 className="size-4 animate-spin" aria-hidden />
-                  Rendering...
+                  Recording… {Math.round(progress * 100)}%
                 </>
               ) : (
                 <>

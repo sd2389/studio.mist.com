@@ -73,13 +73,13 @@ export function LandingPage() {
               >
                 Start creating
               </Link>
-              <button
-                type="button"
+              <Link
+                href="/gallery"
                 className="grid size-10 place-items-center rounded-full bg-white/45 md:hidden"
-                aria-label="Open menu"
+                aria-label="Open jewelry gallery"
               >
                 <Menu className="size-4" aria-hidden />
-              </button>
+              </Link>
             </div>
           </header>
 

@@ -68,11 +68,11 @@ export function PricingPageClient({
   return (
     <div className="min-h-[100dvh] bg-app-canvas">
       {isAuthenticated ? <AppHeader /> : null}
-      <main className="mx-auto max-w-[1500px] px-5 py-14 sm:px-8 lg:py-20">
-        <header className="mb-14 text-center">
-          <p className="text-kicker text-[#ef5b2a]">Simple, scalable access</p>
-          <h1 className="mt-5 text-[clamp(4rem,8vw,8rem)] font-black uppercase leading-[0.78] tracking-[-0.085em] text-black">
-            Access / Plans
+      <main className="mx-auto max-w-[1500px] p-3 sm:p-4">
+        <header className="ice-panel mb-3 px-6 py-20 text-center lg:py-28">
+          <p className="text-kicker text-black/45">Simple, scalable access</p>
+          <h1 className="mt-5 text-[clamp(4rem,8vw,8rem)] font-light leading-[0.78] tracking-[-0.085em] text-black">
+            Access <span className="text-black/20">/ Plans</span>
           </h1>
           <p className="mx-auto mt-5 max-w-xl leading-7 text-muted-foreground">
             Model credits, AI generations, custom materials, and storage —
@@ -86,21 +86,21 @@ export function PricingPageClient({
           </p>
         ) : null}
 
-        <div className="grid gap-5 lg:grid-cols-3">
+        <div className="grid gap-3 lg:grid-cols-3">
           {catalog.plans.map((plan) => (
             <Card
               key={plan.tier}
               className={
                 plan.tier === "grow"
-                  ? "rounded-none border-black bg-[#10100f] text-white ring-0"
-                  : "rounded-none border-black bg-transparent ring-0"
+                  ? "rounded-[2rem] border-black bg-[#212121] text-white ring-0"
+                  : "rounded-[2rem] border-black/[0.06] bg-[#eaeff5] ring-0"
               }
             >
               <CardHeader>
                 <p className="text-xs font-semibold uppercase tracking-[0.15em] text-muted-foreground">
                   {plan.label}
                 </p>
-                <CardTitle className="text-5xl font-black tracking-[-0.06em]">
+                <CardTitle className="text-5xl font-light tracking-[-0.06em]">
                   {plan.monthly_price_label}
                 </CardTitle>
               </CardHeader>
@@ -134,7 +134,7 @@ export function PricingPageClient({
                 </ul>
                 <Button
                   size="lg"
-                  className="w-full rounded-none text-[10px] font-black uppercase tracking-[0.14em]"
+                  className="w-full rounded-full text-[10px] font-semibold uppercase tracking-[0.1em]"
                   variant={plan.tier === "grow" ? "default" : "outline"}
                   onClick={() => subscribe(plan.stripe_price_id, plan.tier)}
                   disabled={busy === plan.tier}

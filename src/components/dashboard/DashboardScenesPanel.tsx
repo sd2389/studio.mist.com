@@ -74,7 +74,7 @@ export function DashboardScenesPanel({
         <div className="space-y-1">
           <h2
             id="scenes-heading"
-            className="text-[10px] font-black uppercase tracking-[0.2em] text-[#ef5b2a]"
+            className="text-[10px] uppercase tracking-[0.16em] text-black/45"
           >
             Production archive
           </h2>
@@ -92,7 +92,7 @@ export function DashboardScenesPanel({
               href="/gallery"
               className={cn(
                 buttonVariants({ variant: "ghost", size: "sm" }),
-                "h-10 rounded-none px-4 text-[9px] font-bold uppercase tracking-[0.14em] text-black/60 hover:bg-transparent hover:text-black",
+                "h-10 rounded-full px-4 text-[9px] uppercase tracking-[0.1em] text-black/55 hover:bg-white/45 hover:text-black",
               )}
             >
               Gallery
@@ -103,7 +103,7 @@ export function DashboardScenesPanel({
               href="/stones"
               className={cn(
                 buttonVariants({ variant: "ghost", size: "sm" }),
-                "h-10 rounded-none px-4 text-[9px] font-bold uppercase tracking-[0.14em] text-black/60 hover:bg-transparent hover:text-black",
+                "h-10 rounded-full px-4 text-[9px] uppercase tracking-[0.1em] text-black/55 hover:bg-white/45 hover:text-black",
               )}
             >
               Cuts
@@ -113,7 +113,7 @@ export function DashboardScenesPanel({
             href="/viewer/clearcoat"
             className={cn(
               buttonVariants({ variant: "outline", size: "sm" }),
-              "h-10 gap-2 rounded-none border-black bg-transparent px-4 text-[9px] font-bold uppercase tracking-[0.12em]",
+              "h-10 gap-2 rounded-full border-black/10 bg-white/45 px-4 text-[9px] uppercase tracking-[0.1em] shadow-none",
             )}
           >
             <Plus className="size-4 shrink-0" aria-hidden />
@@ -217,8 +217,8 @@ export function DashboardScenesPanel({
                     }
               }
             >
-              <Card className="group/card grid overflow-hidden rounded-none border-0 border-b border-black bg-transparent p-0 shadow-none ring-0 transition-colors hover:bg-[#ebe9e2] md:grid-cols-[1fr_310px]">
-                <div className="relative aspect-[16/9] bg-[radial-gradient(circle_at_50%_42%,#5a554c_0%,#2b2823_48%,#1c1a17_100%)] md:order-2 md:my-5">
+              <Card className="group/card mb-3 grid overflow-hidden rounded-[1.6rem] border border-black/[0.06] bg-white/38 p-0 shadow-none ring-0 transition-colors hover:bg-white/70 md:grid-cols-[1fr_310px]">
+                <div className="relative aspect-[16/9] overflow-hidden rounded-[1.25rem] bg-[radial-gradient(circle_at_50%_42%,#ffffff_0%,#dfe7f0_48%,#c8d4e1_100%)] md:order-2 md:m-3 md:ml-0">
                   <div className="absolute inset-0">
                     <SceneCardPreview scene={scene} />
                   </div>
@@ -239,7 +239,7 @@ export function DashboardScenesPanel({
                 <CardContent className="space-y-5 p-5 md:order-1 md:flex md:flex-col md:justify-center md:px-8">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 space-y-0.5">
-                      <p className="truncate text-3xl font-black uppercase leading-none tracking-[-0.055em] text-black sm:text-5xl">
+                      <p className="truncate text-3xl font-light leading-none tracking-[-0.055em] text-black sm:text-5xl">
                         {sceneTitle(scene)}
                       </p>
                       {scene.sku?.trim() ? (

@@ -50,38 +50,38 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-/* DevJewels editorial system — limestone, black, and one mineral-orange accent. */
+/* DevJewels Ice system — rich black, luminous blue-white, and optical glass. */
 :root {
   /* Brand navy / deep background — use: bg-ink, text-ink, border-ink, or var(--ink) */
   --ink: #0b0b0a;
-  --background: #d8d5cd;
-  --foreground: #10100f;
-  --card: #efeee9;
-  --card-foreground: #10100f;
-  --popover: #efeee9;
-  --popover-foreground: #10100f;
-  --primary: #ef5b2a;
-  --primary-foreground: #0b0b0a;
-  --secondary: oklch(0.935 0.014 78);
-  --secondary-foreground: oklch(0.27 0.012 70);
-  --muted: oklch(0.945 0.01 78);
-  --muted-foreground: oklch(0.49 0.014 68);
-  --accent: #ef5b2a;
-  --accent-foreground: #0b0b0a;
+  --background: #f7f9fc;
+  --foreground: #212121;
+  --card: #eaeff5;
+  --card-foreground: #212121;
+  --popover: #ffffff;
+  --popover-foreground: #212121;
+  --primary: #212121;
+  --primary-foreground: #ffffff;
+  --secondary: #eaeff5;
+  --secondary-foreground: #212121;
+  --muted: #eef2f7;
+  --muted-foreground: #69717d;
+  --accent: #dce6f2;
+  --accent-foreground: #212121;
   --destructive: oklch(0.52 0.19 25);
   --border: oklch(0.875 0.012 76);
   --input: oklch(0.875 0.012 76);
-  --ring: #ef5b2a;
+  --ring: #9badc1;
   --chart-1: oklch(0.45 0.03 255);
   --chart-2: oklch(0.55 0.02 200);
   --chart-3: oklch(0.65 0.02 180);
   --chart-4: oklch(0.75 0.02 160);
   --chart-5: oklch(0.82 0.01 120);
-  --radius: 0.15rem;
+  --radius: 1.15rem;
   --sidebar: oklch(0.16 0.008 70);
   --sidebar-foreground: oklch(0.93 0.01 78);
-  --sidebar-primary: oklch(0.77 0.075 76);
-  --sidebar-primary-foreground: oklch(0.16 0.008 70);
+  --sidebar-primary: #eaeff5;
+  --sidebar-primary-foreground: #212121;
   --sidebar-accent: oklch(0.23 0.01 70);
   --sidebar-accent-foreground: oklch(0.95 0.01 78);
   --sidebar-border: oklch(0.29 0.01 70);
@@ -128,28 +128,28 @@
   h3,
   .font-heading {
     font-family: var(--font-heading);
-    font-weight: 600;
+    font-weight: 400;
   }
 }
 
 ::selection {
-  background: #ef5b2a;
-  color: #0b0b0a;
+  background: #212121;
+  color: #ffffff;
 }
 
 /* Warm gallery canvas; studio routes opt into their own graphite shell. */
 @utility bg-app-canvas {
-  background: #d8d5cd;
+  background: #f7f9fc;
 }
 
 @utility bg-studio-canvas {
   background:
     radial-gradient(
       circle at 62% 34%,
-      oklch(0.34 0.015 70 / 0.55),
+      rgba(255, 255, 255, 0.95),
       transparent 32%
     ),
-    linear-gradient(145deg, oklch(0.19 0.008 70), oklch(0.115 0.006 70));
+    linear-gradient(145deg, #eaf0f7, #ccd8e5);
 }
 
 @utility text-kicker {
@@ -161,4 +161,31 @@
 
 .cinematic-grain {
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 160 160' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.22'/%3E%3C/svg%3E");
+}
+
+.ice-panel {
+  border: 1px solid rgba(33, 33, 33, 0.06);
+  border-radius: 2.25rem;
+  background:
+    radial-gradient(
+      circle at 58% 28%,
+      rgba(255, 255, 255, 0.95),
+      transparent 34%
+    ),
+    radial-gradient(
+      circle at 15% 10%,
+      rgba(255, 255, 255, 0.75),
+      transparent 27%
+    ),
+    linear-gradient(145deg, #f3f6fb 0%, #e5ebf3 52%, #edf2f7 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.8),
+    0 22px 70px rgba(91, 112, 137, 0.09);
+}
+
+.glass-panel {
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.42);
+  box-shadow: 0 24px 80px rgba(61, 82, 105, 0.14);
+  backdrop-filter: blur(28px);
 }

@@ -33,7 +33,7 @@ export function StudioPrimaryBar({
   return (
     <div
       className={cn(
-        "grid h-auto shrink-0 grid-cols-5 border-b border-white/20 bg-black/15",
+        "grid h-auto shrink-0 grid-cols-5 border-b border-black/10 bg-white/35",
         className,
       )}
       role="tablist"
@@ -50,10 +50,10 @@ export function StudioPrimaryBar({
             aria-selected={isActive}
             onClick={() => onChange(isActive ? null : control.id)}
             className={cn(
-              "flex min-w-0 flex-col items-center gap-1.5 border-r border-white/15 px-1 py-3 text-[8px] font-medium uppercase tracking-[0.11em] transition-all last:border-r-0",
+              "flex min-w-0 flex-col items-center gap-1.5 border-r border-black/10 px-1 py-3 text-[8px] font-medium uppercase tracking-[0.11em] transition-all last:border-r-0",
               isActive
-                ? "bg-[#ef5b2a] text-black"
-                : "border-transparent text-white/35 hover:bg-white/[0.05] hover:text-white/70",
+                ? "bg-[#212121] text-white"
+                : "border-transparent text-black/35 hover:bg-white/55 hover:text-black/70",
             )}
           >
             <Icon className="size-3.5" strokeWidth={1.6} aria-hidden />

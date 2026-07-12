@@ -37,27 +37,27 @@ export function StudioTopBar({ modelId, sku }: StudioTopBarProps) {
   }
 
   return (
-    <header className="relative z-50 grid h-[68px] shrink-0 grid-cols-[78px_1fr_auto] border-b border-white/20 bg-[#0b0b0a]/90 backdrop-blur-xl">
+    <header className="relative z-50 grid h-[72px] shrink-0 grid-cols-[78px_1fr_auto] border-b border-black/10 bg-white/55 text-[#212121] backdrop-blur-2xl">
       <Link
         href="/dashboard"
-        className="grid place-items-center border-r border-white/20 text-white"
+        className="grid place-items-center border-r border-black/10 text-black"
         aria-label="Back to workshop"
       >
-        <span className="size-2.5 bg-[#ef5b2a]" />
+        <span className="size-2.5 rotate-45 border border-black" />
       </Link>
       <div className="flex min-w-0 flex-1 items-center gap-3">
         <Link
           href="/dashboard"
-          className="ml-4 grid size-8 shrink-0 place-items-center border border-white/20 text-white/50 transition hover:bg-white/10 hover:text-white"
+          className="ml-4 grid size-8 shrink-0 place-items-center rounded-full border border-black/10 text-black/45 transition hover:bg-white/60 hover:text-black"
           aria-label="Back to workshop"
         >
           <ChevronLeft className="size-4" aria-hidden />
         </Link>
         <div className="min-w-0">
-          <p className="truncate text-[11px] font-black uppercase tracking-[0.14em] text-white">
+          <p className="truncate text-[11px] font-semibold uppercase tracking-[0.1em] text-black">
             {sceneDisplayName(modelId)}
           </p>
-          <p className="mt-1 truncate text-[8px] font-medium uppercase tracking-[0.13em] text-white/35">
+          <p className="mt-1 truncate text-[8px] font-medium uppercase tracking-[0.13em] text-black/35">
             {preset} · {lighting}
           </p>
         </div>
@@ -68,7 +68,7 @@ export function StudioTopBar({ modelId, sku }: StudioTopBarProps) {
           type="button"
           variant="outline"
           size="sm"
-          className="rounded-none border-white/20 bg-transparent text-[9px] uppercase tracking-[0.12em] text-white/70 hover:bg-white/10 hover:text-white"
+          className="rounded-full border-black/10 bg-white/35 text-[9px] uppercase tracking-[0.1em] text-black/60 hover:bg-white hover:text-black"
           onClick={savePreset}
         >
           <Save className="size-4" aria-hidden />
@@ -78,7 +78,7 @@ export function StudioTopBar({ modelId, sku }: StudioTopBarProps) {
           type="button"
           variant="ghost"
           size="sm"
-          className="rounded-none text-[9px] uppercase tracking-[0.12em] text-white hover:bg-white/10"
+          className="rounded-full text-[9px] uppercase tracking-[0.1em] text-black hover:bg-white/60"
           onClick={() => void shareEmbed()}
           disabled={!canShare}
           title={
@@ -93,7 +93,7 @@ export function StudioTopBar({ modelId, sku }: StudioTopBarProps) {
       </div>
       {toast ? (
         <p
-          className="absolute left-1/2 top-[4.5rem] z-50 -translate-x-1/2 border border-white/20 bg-[#10100f] px-3 py-1.5 text-xs text-white shadow-xl"
+          className="glass-panel absolute left-1/2 top-[4.8rem] z-50 -translate-x-1/2 rounded-full px-4 py-2 text-xs text-black"
           role="status"
         >
           {toast}

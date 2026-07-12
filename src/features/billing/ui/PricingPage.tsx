@@ -68,11 +68,11 @@ export function PricingPageClient({
   return (
     <div className="min-h-[100dvh] bg-app-canvas">
       {isAuthenticated ? <AppHeader /> : null}
-      <main className="mx-auto max-w-7xl px-5 py-16 sm:px-8 lg:py-24">
+      <main className="mx-auto max-w-[1500px] px-5 py-14 sm:px-8 lg:py-20">
         <header className="mb-14 text-center">
-          <p className="text-kicker text-[#92784e]">Simple, scalable access</p>
-          <h1 className="mt-5 font-display text-5xl font-normal italic tracking-[-0.04em] text-foreground sm:text-7xl">
-            Plans for every atelier.
+          <p className="text-kicker text-[#ef5b2a]">Simple, scalable access</p>
+          <h1 className="mt-5 text-[clamp(4rem,8vw,8rem)] font-black uppercase leading-[0.78] tracking-[-0.085em] text-black">
+            Access / Plans
           </h1>
           <p className="mx-auto mt-5 max-w-xl leading-7 text-muted-foreground">
             Model credits, AI generations, custom materials, and storage —
@@ -92,15 +92,15 @@ export function PricingPageClient({
               key={plan.tier}
               className={
                 plan.tier === "grow"
-                  ? "border-[#9a7d4d]/45 bg-[#211f1b] text-white ring-1 ring-[#9a7d4d]/20"
-                  : ""
+                  ? "rounded-none border-black bg-[#10100f] text-white ring-0"
+                  : "rounded-none border-black bg-transparent ring-0"
               }
             >
               <CardHeader>
                 <p className="text-xs font-semibold uppercase tracking-[0.15em] text-muted-foreground">
                   {plan.label}
                 </p>
-                <CardTitle className="font-display text-4xl italic">
+                <CardTitle className="text-5xl font-black tracking-[-0.06em]">
                   {plan.monthly_price_label}
                 </CardTitle>
               </CardHeader>
@@ -134,7 +134,7 @@ export function PricingPageClient({
                 </ul>
                 <Button
                   size="lg"
-                  className="w-full"
+                  className="w-full rounded-none text-[10px] font-black uppercase tracking-[0.14em]"
                   variant={plan.tier === "grow" ? "default" : "outline"}
                   onClick={() => subscribe(plan.stripe_price_id, plan.tier)}
                   disabled={busy === plan.tier}

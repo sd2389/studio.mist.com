@@ -40,8 +40,8 @@ export function JewelryTile({ id, label, description }: Props) {
       className="group block focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       aria-label={`Open ${label} in studio`}
     >
-      <Card className="overflow-hidden rounded-none border border-black bg-[#11110f] p-0 text-white ring-0 transition duration-300 group-hover:bg-black">
-        <div className="relative aspect-square overflow-hidden bg-[radial-gradient(circle_at_50%_42%,#5a554c_0%,#2a2722_48%,#1b1916_100%)]">
+      <Card className="overflow-hidden rounded-[1.75rem] border border-black/[0.06] bg-[#eaeff5] p-0 text-black ring-0 transition duration-300 group-hover:bg-white">
+        <div className="relative aspect-square overflow-hidden bg-[radial-gradient(circle_at_50%_42%,#ffffff_0%,#dfe7f0_50%,#cad6e3_100%)]">
           <span className="absolute left-4 top-4 z-10 border border-white/20 bg-black/30 px-2.5 py-1 text-[8px] uppercase tracking-[0.14em] text-white/60 backdrop-blur">
             Live 3D
           </span>
@@ -70,10 +70,10 @@ export function JewelryTile({ id, label, description }: Props) {
           </Canvas>
         </div>
         <CardContent className="space-y-2 p-5">
-          <p className="text-2xl font-black uppercase tracking-[-0.05em] text-white">
+          <p className="text-2xl font-light tracking-[-0.05em] text-black">
             {label}
           </p>
-          <p className="line-clamp-2 text-xs leading-5 text-white/42">
+          <p className="line-clamp-2 text-xs leading-5 text-black/45">
             {description}
           </p>
         </CardContent>

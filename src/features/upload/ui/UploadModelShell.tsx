@@ -37,25 +37,25 @@ export function UploadModelShell() {
   } = flow;
 
   return (
-    <main className="dark relative isolate min-h-[100dvh] overflow-hidden bg-[#0b0b0a] text-foreground">
+    <main className="relative isolate min-h-[100dvh] overflow-hidden bg-white p-2.5 text-[#212121] sm:p-4">
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0 overflow-hidden"
       >
-        <div className="cinematic-grain absolute inset-0 opacity-15" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_15%,#eaeff5,transparent_38%)]" />
       </div>
 
-      <div className="relative z-10 mx-auto flex min-h-[100dvh] max-w-[1600px] flex-col px-4 py-5 sm:px-7">
-        <header className="mb-5 flex flex-wrap items-end justify-between gap-4 border-b border-white/20 pb-5">
+      <div className="ice-panel relative z-10 mx-auto flex min-h-[calc(100dvh-20px)] max-w-[1600px] flex-col overflow-hidden sm:min-h-[calc(100dvh-32px)]">
+        <header className="flex flex-wrap items-end justify-between gap-4 border-b border-black/10 px-6 py-6 lg:px-10">
           <div>
             <Link
               href="/dashboard"
-              className="inline-flex text-[9px] font-black uppercase tracking-[0.2em] text-[#ef5b2a] transition-colors hover:text-white"
+              className="inline-flex text-[9px] uppercase tracking-[0.14em] text-black/45 transition-colors hover:text-black"
             >
               DevJewels Studio
             </Link>
-            <h1 className="mt-3 text-[clamp(3rem,6vw,6rem)] font-black uppercase leading-[0.78] tracking-[-0.075em] text-white">
-              Drop your <span className="text-[#ef5b2a]">CAD.</span>
+            <h1 className="mt-3 text-[clamp(3rem,6vw,6rem)] font-light leading-[0.78] tracking-[-0.075em] text-black">
+              Drop your <strong className="font-semibold">CAD.</strong>
             </h1>
           </div>
           {parsed ? (
@@ -71,8 +71,8 @@ export function UploadModelShell() {
           ) : null}
         </header>
 
-        <div className="grid flex-1 gap-0 border border-white/20 lg:grid-cols-[1.35fr_0.65fr]">
-          <section className="relative min-h-[420px] overflow-hidden border-b border-white/20 bg-[radial-gradient(circle_at_50%_40%,#393630_0%,#201e1a_48%,#0b0b0a_100%)] lg:min-h-[650px] lg:border-b-0 lg:border-r">
+        <div className="grid flex-1 gap-0 lg:grid-cols-[1.35fr_0.65fr]">
+          <section className="relative min-h-[420px] overflow-hidden border-b border-black/10 bg-[radial-gradient(circle_at_50%_40%,#ffffff_0%,#e3eaf2_52%,#cbd7e4_100%)] lg:min-h-[650px] lg:border-b-0 lg:border-r lg:border-black/10">
             {phase === "parsing" ? (
               <div className="flex h-full min-h-[420px] flex-col items-center justify-center gap-4 bg-black/10">
                 <Loader2
@@ -103,7 +103,7 @@ export function UploadModelShell() {
             )}
           </section>
 
-          <aside className="flex flex-col gap-4 bg-[#10100f] p-5">
+          <aside className="flex flex-col gap-4 bg-white/28 p-5 lg:p-7">
             {phase === "idle" || phase === "error" ? (
               <>
                 <UploadDropPanel
@@ -123,7 +123,7 @@ export function UploadModelShell() {
             ) : null}
 
             {phase === "ready" || phase === "saving" ? (
-              <div className="flex flex-col gap-5 border border-white/20 bg-[#10100f] p-5">
+              <div className="flex flex-col gap-5 rounded-[1.75rem] border border-black/[0.06] bg-white/55 p-5">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                     Model details
@@ -190,7 +190,7 @@ export function UploadModelShell() {
 
                 <Button
                   type="button"
-                  className="w-full rounded-none bg-[#ef5b2a] py-6 text-[10px] font-black uppercase tracking-[0.15em] text-black hover:bg-[#ef5b2a]/90"
+                  className="w-full rounded-full bg-[#212121] py-6 text-[10px] font-semibold uppercase tracking-[0.1em] text-white hover:bg-black"
                   disabled={busy}
                   onClick={() => void handleSave()}
                 >

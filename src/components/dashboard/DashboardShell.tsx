@@ -37,12 +37,12 @@ export function DashboardShell({
   const aiTotal = initialBilling?.allotments.ai_image_credits ?? 0;
 
   return (
-    <div className="min-h-dvh bg-[#d8d5cd] text-[#10100f]">
+    <div className="min-h-dvh bg-[#f7f9fc] text-[#212121]">
       <AppHeader userEmail={userEmail} showAdminLink={isAdmin} />
-      <main className="grid min-h-[calc(100dvh-70px)] lg:grid-cols-[260px_1fr]">
-        <aside className="hidden flex-col border-r border-black lg:flex">
+      <main className="grid min-h-[calc(100dvh-76px)] gap-3 p-3 lg:grid-cols-[248px_1fr]">
+        <aside className="ice-panel hidden flex-col overflow-hidden lg:flex">
           <div className="p-6">
-            <p className="mb-5 text-[9px] font-black uppercase tracking-[0.2em]">
+            <p className="mb-5 text-[9px] uppercase tracking-[0.18em] text-black/45">
               Index
             </p>
             {[
@@ -53,21 +53,23 @@ export function DashboardShell({
             ].map(([label, value], index) => (
               <div
                 key={label}
-                className="flex items-center justify-between border-b border-black/25 py-3 text-[11px] uppercase"
+                className="flex items-center justify-between border-b border-black/10 py-3.5 text-[10px]"
               >
                 <span className="flex items-center gap-2">
-                  {index === 0 ? <i className="size-2 bg-[#ef5b2a]" /> : null}
+                  {index === 0 ? (
+                    <i className="size-2 rounded-full bg-black" />
+                  ) : null}
                   {label}
                 </span>
                 <span>{value}</span>
               </div>
             ))}
           </div>
-          <div className="mt-auto border-t border-black p-6">
-            <p className="text-[9px] font-bold uppercase tracking-[0.18em]">
+          <div className="mt-auto border-t border-black/10 p-6">
+            <p className="text-[9px] uppercase tracking-[0.16em] text-black/45">
               Monthly capacity
             </p>
-            <p className="mt-1 text-5xl font-black tracking-[-0.07em]">
+            <p className="mt-2 text-5xl font-light tracking-[-0.07em]">
               {modelCredits}/{modelTotal}
             </p>
             <p className="mt-1 text-xs">Model credits available</p>
@@ -76,19 +78,22 @@ export function DashboardShell({
             </p>
           </div>
         </aside>
-        <section className="min-w-0 p-5 sm:p-7">
-          <header className="flex flex-col gap-6 border-b border-black pb-7 sm:flex-row sm:items-end sm:justify-between">
+        <section className="ice-panel min-w-0 overflow-hidden p-5 sm:p-8">
+          <header className="flex flex-col gap-6 border-b border-black/10 pb-8 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <p className="text-[9px] font-black uppercase tracking-[0.2em] text-[#ef5b2a]">
+              <p className="text-[9px] uppercase tracking-[0.16em] text-black/45">
                 Workshop / Objects
               </p>
-              <h1 className="mt-6 text-[clamp(4rem,8vw,7.5rem)] font-black uppercase leading-[0.72] tracking-[-0.085em]">
-                {String(allSceneCount).padStart(2, "0")} / Objects
+              <h1 className="mt-7 text-[clamp(3.8rem,7.6vw,7rem)] font-light leading-[0.78] tracking-[-0.08em]">
+                <span className="text-black/25">
+                  {String(allSceneCount).padStart(2, "0")}
+                </span>{" "}
+                / Objects
               </h1>
             </div>
             <Link
               href="/upload-model"
-              className="self-start bg-black px-5 py-4 text-[9px] font-black uppercase tracking-[0.16em] text-white sm:self-auto"
+              className="self-start rounded-full bg-[#212121] px-6 py-4 text-[9px] font-semibold uppercase tracking-[0.1em] text-white sm:self-auto"
             >
               ＋ Add new object
             </Link>

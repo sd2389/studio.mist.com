@@ -20,17 +20,17 @@ export default async function GalleryPage() {
   }
   return (
     <div className="relative min-h-[100dvh] overflow-hidden bg-app-canvas">
-      <div className="relative z-10 mx-auto max-w-[1500px] px-5 py-8 sm:px-8 lg:py-12">
-        <header className="mb-10 flex flex-col gap-8 border-b border-black pb-8 sm:flex-row sm:items-end sm:justify-between">
+      <div className="relative z-10 mx-auto max-w-[1500px] px-3 py-3 sm:px-4">
+        <header className="ice-panel mb-3 flex flex-col gap-8 p-7 sm:flex-row sm:items-end sm:justify-between lg:p-12">
           <div>
             <Link
               href="/"
-              className="mb-8 inline-flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.2em] text-[#ef5b2a]"
+              className="mb-10 inline-flex items-center gap-2 text-[9px] uppercase tracking-[0.14em] text-black/45"
             >
               <ArrowLeft className="size-3.5" aria-hidden /> DevJewels Studio
             </Link>
-            <h1 className="text-[clamp(4rem,9vw,9rem)] font-black uppercase leading-[0.76] tracking-[-0.085em] text-black">
-              Objects / Archive
+            <h1 className="text-[clamp(4rem,9vw,9rem)] font-light leading-[0.76] tracking-[-0.085em] text-black">
+              Objects <span className="text-black/20">/ Archive</span>
             </h1>
             <p className="mt-5 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">
               Explore jewelry-native material and lighting studies. Every piece
@@ -41,7 +41,7 @@ export default async function GalleryPage() {
             href="/dashboard"
             className={cn(
               buttonVariants({ variant: "outline", size: "lg" }),
-              "rounded-none border-black bg-transparent text-[9px] font-black uppercase tracking-[0.14em]",
+              "rounded-full border-black/10 bg-white/45 text-[9px] uppercase tracking-[0.1em] shadow-none",
             )}
           >
             Dashboard

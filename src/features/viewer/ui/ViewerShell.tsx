@@ -264,8 +264,8 @@ export function ViewerShell({
 
   return (
     <>
-      <div className="dark relative h-[100dvh] overflow-hidden bg-[#080808] text-foreground">
-        <aside className="absolute bottom-20 left-24 top-[90px] z-40 hidden w-[340px] overflow-hidden border border-white/20 bg-[#10100f]/95 backdrop-blur-xl lg:flex">
+      <div className="relative h-[100dvh] overflow-hidden bg-[#eaeff5] text-foreground">
+        <aside className="glass-panel absolute bottom-20 left-24 top-[94px] z-40 hidden w-[340px] overflow-hidden rounded-[1.75rem] lg:flex">
           <StudioSidebar
             modelId={modelId}
             sku={sceneSku}
@@ -280,7 +280,7 @@ export function ViewerShell({
         <div className="absolute inset-0 flex min-h-0 min-w-0 flex-col bg-studio-canvas">
           <StudioTopBar modelId={modelId} sku={sceneSku} />
           <motion.div
-            className="relative min-h-0 flex-1 cinematic-grain"
+            className="relative min-h-0 flex-1"
             initial={{ opacity: 0.88, scale: 0.995 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
@@ -294,11 +294,11 @@ export function ViewerShell({
               sceneSettings={resolvedSceneSettings}
             />
             <ZoomControls />
-            <p className="pointer-events-none absolute bottom-6 left-24 hidden text-[8px] font-bold uppercase tracking-[0.18em] text-white/70 lg:block">
+            <p className="pointer-events-none absolute bottom-6 left-24 hidden text-[8px] uppercase tracking-[0.16em] text-black/45 lg:block">
               ● Real-time &nbsp;&nbsp; Perspective / 50mm &nbsp;&nbsp; Quality /
               High
             </p>
-            <p className="pointer-events-none absolute right-7 top-24 hidden text-[8px] uppercase tracking-[0.2em] text-white/45 [writing-mode:vertical-rl] lg:block">
+            <p className="pointer-events-none absolute right-7 top-24 hidden text-[8px] uppercase tracking-[0.2em] text-black/35 [writing-mode:vertical-rl] lg:block">
               Object / {modelId} / DevJewels
             </p>
           </motion.div>
@@ -306,7 +306,7 @@ export function ViewerShell({
         <Button
           type="button"
           onClick={() => setExportOpen(true)}
-          className="absolute bottom-7 right-7 z-50 hidden size-28 rounded-full bg-[#ef5b2a] text-[9px] font-black uppercase tracking-[0.15em] text-black hover:bg-[#ef5b2a] lg:grid"
+          className="absolute bottom-7 right-7 z-50 hidden size-28 rounded-full bg-[#212121] text-[9px] font-semibold uppercase tracking-[0.12em] text-white hover:bg-black lg:grid"
         >
           Export ↗
         </Button>
@@ -315,7 +315,7 @@ export function ViewerShell({
       <Button
         type="button"
         size="lg"
-        className="dark fixed bottom-5 left-4 z-50 gap-2 rounded-none border border-white/20 bg-[#10100f]/90 text-white shadow-2xl backdrop-blur-xl lg:hidden"
+        className="fixed bottom-5 left-4 z-50 gap-2 rounded-full border border-black/10 bg-[#212121] text-white shadow-2xl lg:hidden"
         onClick={() => setMobileControlsOpen(true)}
       >
         <SlidersHorizontal className="size-4" aria-hidden />
@@ -325,7 +325,7 @@ export function ViewerShell({
       <Sheet open={mobileControlsOpen} onOpenChange={setMobileControlsOpen}>
         <SheetContent
           side="bottom"
-          className="dark h-[min(85dvh,640px)] rounded-none border-white/20 bg-[#10100f] p-0 text-white sm:h-[min(80dvh,720px)]"
+          className="h-[min(85dvh,640px)] rounded-t-[2rem] border-black/10 bg-[#eaeff5] p-0 text-black sm:h-[min(80dvh,720px)]"
         >
           <SheetHeader className="border-b border-border px-4 py-3 text-left">
             <SheetTitle className="text-base font-semibold text-foreground">

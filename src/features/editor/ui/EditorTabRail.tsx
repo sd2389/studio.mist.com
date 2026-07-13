@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import {
   Circle,
+  ClipboardList,
   Code2,
   Download,
   Gem,
@@ -28,6 +29,7 @@ import type {
   ScenePresetItem,
 } from "@/lib/catalog/types";
 import type { LibraryPage, UserAssetItem, UserMaterialItem } from "@/lib/library/types";
+import type { ProductSpecs } from "@/lib/product-specs/types";
 import { FeatureErrorBoundary } from "@/components/FeatureErrorBoundary";
 import { cn } from "@/lib/utils";
 import { EditorAiImageTab } from "./EditorAiImageTab";
@@ -43,6 +45,7 @@ import { EditorPoseTab } from "./EditorPoseTab";
 import { EditorPositionTab } from "./EditorPositionTab";
 import { EditorSceneTab } from "./EditorSceneTab";
 import { EditorSettingsTab } from "./EditorSettingsTab";
+import { EditorSpecsTab } from "./EditorSpecsTab";
 import { EditorVideoTab } from "./EditorVideoTab";
 import type { UploadMetadata } from "@/features/upload/ui/UploadMetadataForm";
 import type { PersistedModelConfig } from "@/lib/slot-materials/model-config";
@@ -51,6 +54,7 @@ import type { LightingPresetId, MaterialPresetId } from "@/stores/material-prese
 
 export type EditorTabId =
   | "settings"
+  | "specs"
   | "metal-material"
   | "gem-material"
   | "metal-env"
@@ -70,6 +74,9 @@ type EditorTabRailProps = {
   sceneId: number;
   viewerId: string;
   metadata: UploadMetadata;
+  productSpecs: ProductSpecs;
+  onSpecsSaved: (specs: ProductSpecs) => void;
+  onSuggestFromMaterials: () => void;
   preset: MaterialPresetId;
   lighting: LightingPresetId;
   modelConfig: PersistedModelConfig;
@@ -107,6 +114,7 @@ function TabPanel({ label, children }: { label: string; children: ReactNode }) {
 
 const TAB_ITEMS: { id: EditorTabId; label: string; icon: typeof Settings }[] = [
   { id: "settings", label: "Settings", icon: Settings },
+  { id: "specs", label: "Specs", icon: ClipboardList },
   { id: "metal-material", label: "Metal Material", icon: Circle },
   { id: "gem-material", label: "Gem Material", icon: Gem },
   { id: "metal-env", label: "Metal Env", icon: Sun },
@@ -127,6 +135,9 @@ export function EditorTabRail({
   sceneId,
   viewerId,
   metadata,
+  productSpecs,
+  onSpecsSaved,
+  onSuggestFromMaterials,
   preset,
   lighting,
   modelConfig,
@@ -206,7 +217,18 @@ export function EditorTabRail({
           />
           </TabPanel>
         </TabsContent>
+        <TabsContent value="specs" className="m-0 h-full min-h-0 overflow-hidden">
+          <TabPanel label="Specs">
+            <EditorSpecsTab
+              sceneId={sceneId}
+              initialSpecs={productSpecs}
+              onSpecsSaved={onSpecsSaved}
+              onSuggestFromMaterials={onSuggestFromMaterials}
+            />
+          </TabPanel>
+        </TabsContent>
         <TabsContent value="metal-material" className="m-0 h-full min-h-0 overflow-hidden">
+
           <TabPanel label="Metal Material">
           <EditorMetalMaterialTab
             activeSlot={activeSlot}

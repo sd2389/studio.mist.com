@@ -1,6 +1,7 @@
 export { ModelEditorShell } from "./ui/ModelEditorShell";
 export { EditorTabRail } from "./ui/EditorTabRail";
 export { EditorSettingsTab, metadataFromScene } from "./ui/EditorSettingsTab";
+export { EditorSpecsTab } from "./ui/EditorSpecsTab";
 export { EditorMetalMaterialTab } from "./ui/EditorMetalMaterialTab";
 export { EditorGemMaterialTab } from "./ui/EditorGemMaterialTab";
 export { EditorLayersTab } from "./ui/EditorLayersTab";

@@ -1,4 +1,5 @@
 import { apiDelete, apiGet, apiPatch } from "@/lib/api/client";
+import type { ProductSpecs } from "@/lib/product-specs/types";
 import type {
   PersistedModelConfig,
   SceneSettingsBuckets,
@@ -18,6 +19,7 @@ export type Scene = {
   slot_selections: Record<string, string>;
   scene_settings: SceneSettingsBuckets;
   variants?: SceneVariantsState;
+  product_specs?: ProductSpecs;
   model_url: string | null;
   thumbnail_key: string | null;
   thumbnail_url: string | null;
@@ -53,6 +55,7 @@ export type ScenePatch = Partial<{
   slot_selections: Record<string, string>;
   scene_settings: SceneSettingsBuckets;
   variants?: SceneVariantsState;
+  product_specs?: ProductSpecs;
 }>;
 
 export function listScenes(): Promise<Scene[]> {

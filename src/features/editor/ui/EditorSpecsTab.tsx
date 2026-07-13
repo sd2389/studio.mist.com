@@ -15,7 +15,8 @@ type EditorSpecsTabProps = {
   sceneId: number;
   initialSpecs: ProductSpecs;
   onSpecsSaved?: (specs: ProductSpecs) => void;
-  onSuggestFromMaterials?: () => void;
+  /** Pure transform applied to the local draft; does not persist until Update specs. */
+  onSuggestFromMaterials?: (current: ProductSpecs) => ProductSpecs;
 };
 
 export function EditorSpecsTab({
@@ -64,7 +65,10 @@ export function EditorSpecsTab({
           type="button"
           variant="outline"
           className="w-full"
-          onClick={() => onSuggestFromMaterials?.()}
+          onClick={() => {
+            if (!onSuggestFromMaterials) return;
+            setSpecs((prev) => onSuggestFromMaterials(prev));
+          }}
           disabled={busy}
         >
           Suggest from materials

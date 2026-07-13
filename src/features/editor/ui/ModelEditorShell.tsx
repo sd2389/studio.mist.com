@@ -161,19 +161,6 @@ export function ModelEditorShell({
     return map;
   }, [initialGems]);
 
-  const handleSuggestFromMaterials = () => {
-    const slotSelections = useMaterialPresetStore.getState().slotSelections;
-    setProductSpecs((prev) =>
-      suggestProductSpecsFromMaterials({
-        specs: prev,
-        slotSelections,
-        modelConfig,
-        metalsBySlug,
-        gemsBySlug,
-      }),
-    );
-  };
-
   const displayName = metadata.name.trim() || initialScene.name || viewerId;
 
   const handleScreenshot = (dataUrl: string) => {
@@ -192,7 +179,15 @@ export function ModelEditorShell({
       metadata={metadata}
       productSpecs={productSpecs}
       onSpecsSaved={setProductSpecs}
-      onSuggestFromMaterials={handleSuggestFromMaterials}
+      onSuggestFromMaterials={(current) =>
+        suggestProductSpecsFromMaterials({
+          specs: current,
+          slotSelections: useMaterialPresetStore.getState().slotSelections,
+          modelConfig,
+          metalsBySlug,
+          gemsBySlug,
+        })
+      }
       preset={preset}
       lighting={lighting}
       modelConfig={modelConfig}

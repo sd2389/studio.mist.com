@@ -76,7 +76,7 @@ type EditorTabRailProps = {
   metadata: UploadMetadata;
   productSpecs: ProductSpecs;
   onSpecsSaved: (specs: ProductSpecs) => void;
-  onSuggestFromMaterials: () => void;
+  onSuggestFromMaterials: (current: ProductSpecs) => ProductSpecs;
   preset: MaterialPresetId;
   lighting: LightingPresetId;
   modelConfig: PersistedModelConfig;

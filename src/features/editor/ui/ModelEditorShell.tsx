@@ -25,11 +25,13 @@ import type { SceneDetail } from "@/lib/api/scenes";
 import type { SourceCatalogPayload } from "@/lib/source-catalog";
 import { viewerIdFromModelKey } from "@/lib/model-key";
 import { productSpecsFromScene } from "@/lib/product-specs/defaults";
+import { suggestProductSpecsFromMaterials } from "@/lib/product-specs/suggest-from-materials";
 import type { ProductSpecs } from "@/lib/product-specs/types";
 import { buildEditorLayerRows } from "@/lib/upload/editor-layer-rows";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+import { useMaterialPresetStore } from "@/stores/material-preset-store";
 import { useEditorSceneState } from "../hooks/useEditorSceneState";
 import { EditorTabRail } from "./EditorTabRail";
 import { metadataFromScene } from "./EditorSettingsTab";
@@ -147,6 +149,31 @@ export function ModelEditorShell({
   const layerRows = useMemo(() => buildEditorLayerRows(modelConfig), [modelConfig]);
   const resolvedActiveSlot = activeSlot ?? layerRows[0]?.slotId ?? null;
 
+  const metalsBySlug = useMemo(() => {
+    const map = new Map<string, MetalItem>();
+    for (const item of initialMetals?.items ?? []) map.set(item.slug, item);
+    return map;
+  }, [initialMetals]);
+
+  const gemsBySlug = useMemo(() => {
+    const map = new Map<string, GemItem>();
+    for (const item of initialGems?.items ?? []) map.set(item.slug, item);
+    return map;
+  }, [initialGems]);
+
+  const handleSuggestFromMaterials = () => {
+    const slotSelections = useMaterialPresetStore.getState().slotSelections;
+    setProductSpecs((prev) =>
+      suggestProductSpecsFromMaterials({
+        specs: prev,
+        slotSelections,
+        modelConfig,
+        metalsBySlug,
+        gemsBySlug,
+      }),
+    );
+  };
+
   const displayName = metadata.name.trim() || initialScene.name || viewerId;
 
   const handleScreenshot = (dataUrl: string) => {
@@ -165,7 +192,7 @@ export function ModelEditorShell({
       metadata={metadata}
       productSpecs={productSpecs}
       onSpecsSaved={setProductSpecs}
-      onSuggestFromMaterials={() => {}}
+      onSuggestFromMaterials={handleSuggestFromMaterials}
       preset={preset}
       lighting={lighting}
       modelConfig={modelConfig}

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +10,12 @@ import { AuthShell } from "@/features/auth/ui/AuthShell";
 import { forgotPassword } from "@/lib/auth/client";
 
 export function ForgotPasswordForm() {
+  const searchParams = useSearchParams();
+  const nextParam = searchParams.get("next");
+  const loginHref = nextParam
+    ? `/login?next=${encodeURIComponent(nextParam)}`
+    : "/login";
+
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -34,7 +41,7 @@ export function ForgotPasswordForm() {
       title="Forgot password"
       description="We'll email you a link to reset your password."
       footer={
-        <Link href="/login" className="font-medium text-primary hover:underline">
+        <Link href={loginHref} className="font-medium text-primary hover:underline">
           Back to sign in
         </Link>
       }
@@ -51,8 +58,8 @@ export function ForgotPasswordForm() {
             onChange={(e) => setEmail(e.target.value)}
           />
         </div>
-        {error ? <p className="text-sm text-destructive">{error}</p> : null}
         {message ? <p className="text-sm text-muted-foreground">{message}</p> : null}
+        {error ? <p className="text-sm text-destructive">{error}</p> : null}
         <Button type="submit" className="w-full" disabled={pending}>
           {pending ? "Sending…" : "Send reset link"}
         </Button>

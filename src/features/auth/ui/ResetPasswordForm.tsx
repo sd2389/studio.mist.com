@@ -9,6 +9,8 @@ import { Label } from "@/components/ui/label";
 import { AuthShell } from "@/features/auth/ui/AuthShell";
 import { resetPassword } from "@/lib/auth/client";
 
+type TokenStatus = "loading" | "ready" | "missing";
+
 function readResetToken(): string {
   if (typeof window === "undefined") return "";
   const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
@@ -20,6 +22,7 @@ function readResetToken(): string {
 export function ResetPasswordForm() {
   const router = useRouter();
   const [token, setToken] = useState("");
+  const [tokenStatus, setTokenStatus] = useState<TokenStatus>("loading");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -28,6 +31,7 @@ export function ResetPasswordForm() {
   useEffect(() => {
     const resolved = readResetToken();
     setToken(resolved);
+    setTokenStatus(resolved ? "ready" : "missing");
     if (window.location.search || window.location.hash) {
       window.history.replaceState({}, "", "/reset-password");
     }
@@ -52,7 +56,18 @@ export function ResetPasswordForm() {
     }
   }
 
-  if (!token) {
+  if (tokenStatus === "loading") {
+    return (
+      <AuthShell
+        title="Checking link…"
+        description="One moment while we verify your reset link."
+      >
+        <p className="text-sm text-black/45">Please wait…</p>
+      </AuthShell>
+    );
+  }
+
+  if (tokenStatus === "missing") {
     return (
       <AuthShell title="Invalid link" description="This password reset link is missing or expired.">
         <Link href="/forgot-password" className="text-sm font-medium text-primary hover:underline">

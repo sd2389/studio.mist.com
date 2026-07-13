@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { AdminUserDetailShell } from "@/features/admin/ui/AdminUserDetailShell";
-import { fetchCurrentUser } from "@/lib/auth/server-session";
+import { requirePageUser } from "@/lib/auth/require-page-user";
 import { fetchAdminUserDetailServer } from "@/lib/admin/server-fetch";
 
 export const metadata: Metadata = {
@@ -13,8 +13,7 @@ type PageProps = {
 };
 
 export default async function AdminUserDetailPage({ params }: PageProps) {
-  const user = await fetchCurrentUser();
-  if (!user) redirect("/login?next=/admin/users");
+  const user = await requirePageUser("/admin/users");
   if (user.role !== "admin") redirect("/dashboard");
 
   const { id } = await params;

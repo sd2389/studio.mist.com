@@ -8,7 +8,7 @@ import {
   fetchAdminTopUsersServer,
   requireAdminAnalyticsServer,
 } from "@/lib/admin/server-fetch";
-import { fetchCurrentUser } from "@/lib/auth/server-session";
+import { requirePageUser } from "@/lib/auth/require-page-user";
 import { formatStorageGb } from "@/lib/billing/format";
 
 export const metadata: Metadata = {
@@ -17,8 +17,7 @@ export const metadata: Metadata = {
 };
 
 export default async function AdminOverviewPage() {
-  const user = await fetchCurrentUser();
-  if (!user) redirect("/login?next=/admin");
+  const user = await requirePageUser("/admin");
   if (user.role !== "admin") redirect("/dashboard");
 
   const [analytics, topUsers] = await Promise.all([

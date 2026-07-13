@@ -27,7 +27,7 @@ export function PricingPageClient({
 
   async function subscribe(priceId: string | null, tier: string) {
     if (!isAuthenticated) {
-      window.location.href = `/signup?next=/pricing`;
+      window.location.href = `/login?mode=signup&next=/pricing`;
       return;
     }
     if (!priceId) {
@@ -51,7 +51,7 @@ export function PricingPageClient({
 
   async function buyTopUp(packId: string) {
     if (!isAuthenticated) {
-      window.location.href = `/signup?next=/pricing`;
+      window.location.href = `/login?mode=signup&next=/pricing`;
       return;
     }
     setBusy(packId);

@@ -2,15 +2,14 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { AdminFeaturesShell } from "@/features/feature-flags";
 import { fetchAdminFeaturesServer } from "@/lib/feature-flags/server-fetch";
-import { fetchCurrentUser } from "@/lib/auth/server-session";
+import { requirePageUser } from "@/lib/auth/require-page-user";
 
 export const metadata: Metadata = {
   title: "Features · Admin",
 };
 
 export default async function AdminFeaturesPage() {
-  const user = await fetchCurrentUser();
-  if (!user) redirect("/login?next=/admin/features");
+  const user = await requirePageUser("/admin/features");
   if (user.role !== "admin") redirect("/dashboard");
 
   const data = await fetchAdminFeaturesServer();

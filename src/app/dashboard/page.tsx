@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { DashboardShell, loadDashboardData } from "@/components/dashboard/DashboardShell";
 import { parseDashboardSearchParams } from "@/lib/dashboard/filters";
-import { fetchCurrentUser } from "@/lib/auth/server-session";
+import { requirePageUser } from "@/lib/auth/require-page-user";
 import { fetchBillingAccountServer } from "@/lib/billing/server-fetch";
 
 export const metadata: Metadata = {
@@ -14,14 +14,11 @@ type DashboardPageProps = {
 };
 
 export default async function DashboardPage({ searchParams }: DashboardPageProps) {
+  const user = await requirePageUser("/dashboard");
   const params = await searchParams;
   const filters = parseDashboardSearchParams(params);
-  const [{ initialScenes, initialError, filterResult, allSceneCount }, billing, user] =
-    await Promise.all([
-      loadDashboardData(filters),
-      fetchBillingAccountServer(),
-      fetchCurrentUser(),
-    ]);
+  const [{ initialScenes, initialError, filterResult, allSceneCount }, billing] =
+    await Promise.all([loadDashboardData(filters), fetchBillingAccountServer()]);
 
   return (
     <DashboardShell
@@ -31,8 +28,8 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       filterResult={filterResult}
       allSceneCount={allSceneCount}
       initialBilling={billing}
-      userEmail={user?.email}
-      isAdmin={user?.role === "admin"}
+      userEmail={user.email}
+      isAdmin={user.role === "admin"}
     />
   );
 }

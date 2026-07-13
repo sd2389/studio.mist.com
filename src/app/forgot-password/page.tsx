@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { ForgotPasswordForm } from "@/features/auth";
 
 export const metadata: Metadata = {
@@ -6,5 +7,9 @@ export const metadata: Metadata = {
 };
 
 export default function ForgotPasswordPage() {
-  return <ForgotPasswordForm />;
+  return (
+    <Suspense fallback={<div className="min-h-[100dvh] bg-app-canvas" />}>
+      <ForgotPasswordForm />
+    </Suspense>
+  );
 }

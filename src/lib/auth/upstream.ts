@@ -1,6 +1,7 @@
 import "server-only";
 
 import { getServerApiUrl } from "@/lib/api-url";
+import { parseAuthErrorBody } from "@/lib/auth/parse-auth-error";
 import { authHeaders } from "@/lib/auth/server-session";
 
 export async function upstreamFetch(
@@ -49,6 +50,5 @@ export async function readUpstreamJson(upstream: Response): Promise<unknown> {
 }
 
 export function upstreamError(json: unknown, fallback: string): string {
-  const body = json as { detail?: string; error?: string; message?: string };
-  return body.detail ?? body.error ?? body.message ?? fallback;
+  return parseAuthErrorBody(json, fallback);
 }

@@ -266,7 +266,7 @@ export function ViewerShell({
             modelConfig={modelConfig}
             sceneSettings={resolvedSceneSettings}
           />
-          {showZoomControls ? <ZoomControls variant="embed" /> : null}
+          {showZoomControls ? <ZoomControls variant="embed" touchLayout /> : null}
         </div>
         <EmbedShopperMaterials modelConfig={modelConfig} />
       </div>

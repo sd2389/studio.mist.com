@@ -12,6 +12,9 @@ import { useMaterialPresetStore } from "@/stores/material-preset-store";
 import {
   applyShopperMaterial,
   selectedShopperPreset,
+  SHOPPER_FALLBACK_GEMS,
+  SHOPPER_FALLBACK_LIMIT,
+  SHOPPER_FALLBACK_METALS,
   shopperMaterialOptions,
   shopperSlotsForKind,
 } from "@/features/viewer/domain/shopper-material-apply";
@@ -68,13 +71,34 @@ describe("shopper material apply", () => {
     ]);
   });
 
-  it("falls back to the catalog when the CAD has no options", () => {
+  it("caps empty-CAD fallback at 4 metals and 4 gems", () => {
     const modelConfig = {
       ...publishedSkuConfig(),
       slots: [],
     };
-    const catalogFallback = [{ id: "platinum" as const, label: "Platinum" }];
-    expect(shopperMaterialOptions(modelConfig, "metal", catalogFallback)).toEqual(catalogFallback);
+    const metalDump = Array.from({ length: 21 }, (_, index) => ({
+      id: "gold-14k-yellow" as const,
+      label: `Metal ${index}`,
+    }));
+    const gemDump = Array.from({ length: 26 }, (_, index) => ({
+      id: "diamond" as const,
+      label: `Gem ${index}`,
+    }));
+    expect(shopperMaterialOptions(modelConfig, "metal")).toEqual([...SHOPPER_FALLBACK_METALS]);
+    expect(shopperMaterialOptions(modelConfig, "gem")).toEqual([...SHOPPER_FALLBACK_GEMS]);
+    expect(shopperMaterialOptions(modelConfig, "metal", metalDump)).toHaveLength(
+      SHOPPER_FALLBACK_LIMIT,
+    );
+    expect(shopperMaterialOptions(modelConfig, "gem", gemDump)).toHaveLength(
+      SHOPPER_FALLBACK_LIMIT,
+    );
+  });
+
+  it("keeps a longer uploaded CAD list", () => {
+    const modelConfig = publishedSkuConfig();
+    expect(shopperMaterialOptions(modelConfig, "metal").length).toBeGreaterThan(
+      SHOPPER_FALLBACK_LIMIT,
+    );
   });
 
   it("writes metal and gem selections independently", () => {
@@ -184,6 +208,30 @@ describe("embed shopper wiring", () => {
     );
     expect(shopper.includes('"Metal"')).toBe(true);
     expect(shopper.includes('"Gem"')).toBe(true);
+    expect(shopper.includes("MATERIAL_GROUPS")).toBe(false);
+    expect(shopper.includes("safe-area-inset-bottom")).toBe(true);
+    expect(shopper.includes("role=\"tablist\"")).toBe(true);
+
+    const chrome = readFileSync(
+      path.join(process.cwd(), "src/features/viewer/ui/EmbedChrome.tsx"),
+      "utf8",
+    );
+    expect(chrome.includes("size-11!")).toBe(true);
+    expect(chrome.includes("DevJewels Studio")).toBe(false);
+
+    const zoom = readFileSync(
+      path.join(process.cwd(), "src/features/viewer/ui/ZoomControls.tsx"),
+      "utf8",
+    );
+    expect(zoom.includes("size-11!")).toBe(true);
+    expect(zoom.includes("hidden md:inline-flex")).toBe(true);
+    expect(shell.includes("touchLayout")).toBe(true);
+
+    const shortViewport = readFileSync(
+      path.join(process.cwd(), "src/features/viewer/ui/useShortViewport.ts"),
+      "utf8",
+    );
+    expect(shortViewport.includes("(max-height: 500px)")).toBe(true);
   });
 });
 

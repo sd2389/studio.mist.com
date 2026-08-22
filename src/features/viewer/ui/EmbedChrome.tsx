@@ -48,7 +48,7 @@ export function EmbedChrome({
   }, []);
 
   return (
-    <div className="pointer-events-auto z-20 flex h-12 shrink-0 items-center justify-between gap-2 border-b border-black/10 bg-[#F4F2EE] px-3 text-[#212121]">
+    <div className="pointer-events-auto z-20 flex h-14 shrink-0 items-center justify-between gap-2 border-b border-black/10 bg-[#F4F2EE] px-2 text-[#212121] sm:h-12 sm:px-3">
       <div className="min-w-0">
         {title ? (
           <p className="truncate text-sm font-medium text-black">{title}</p>
@@ -60,8 +60,7 @@ export function EmbedChrome({
         <Button
           type="button"
           variant="ghost"
-          size="icon-sm"
-          className="text-black/45 hover:bg-black/[0.04] hover:text-black"
+          className="size-11! text-black/45 hover:bg-black/[0.04] hover:text-black"
           onClick={() => void toggleFs()}
           aria-label={fs ? "Exit fullscreen" : "Enter fullscreen"}
         >
@@ -72,8 +71,8 @@ export function EmbedChrome({
             href={studioHref}
             aria-label="Open full studio"
             className={cn(
-              buttonVariants({ variant: "ghost", size: "icon-sm" }),
-              "text-black/45 hover:bg-black/[0.04] hover:text-black",
+              buttonVariants({ variant: "ghost" }),
+              "size-11! text-black/45 hover:bg-black/[0.04] hover:text-black",
             )}
           >
             <Sparkles className="size-4" />

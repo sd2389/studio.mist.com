@@ -12,6 +12,22 @@ const FALLBACK_SLOTS: Record<ShopperMaterialKind, readonly string[]> = {
   gem: ["Gem 1"],
 };
 
+export const SHOPPER_FALLBACK_LIMIT = 4;
+
+export const SHOPPER_FALLBACK_METALS: readonly ShopperMaterialOption[] = [
+  { id: "gold-14k-yellow", label: "14K Yellow" },
+  { id: "gold-18k-white", label: "18K White" },
+  { id: "gold-18k-rose", label: "18K Rose" },
+  { id: "platinum", label: "Platinum" },
+];
+
+export const SHOPPER_FALLBACK_GEMS: readonly ShopperMaterialOption[] = [
+  { id: "diamond", label: "Diamond" },
+  { id: "ruby", label: "Ruby" },
+  { id: "sapphire", label: "Sapphire" },
+  { id: "emerald", label: "Emerald" },
+];
+
 export function shopperSlotsForKind(
   modelConfig: PersistedModelConfig,
   kind: ShopperMaterialKind,
@@ -22,11 +38,11 @@ export function shopperSlotsForKind(
   return fromConfig.length > 0 ? fromConfig : [...FALLBACK_SLOTS[kind]];
 }
 
-/** Prefer the uploaded CAD's slot options; catalog is only a fallback. */
+/** Prefer the uploaded CAD's slot options; empty CAD gets at most 4 closer picks. */
 export function shopperMaterialOptions(
   modelConfig: PersistedModelConfig,
   kind: ShopperMaterialKind,
-  catalogFallback: readonly ShopperMaterialOption[],
+  catalogFallback: readonly ShopperMaterialOption[] = shopperFallbackOptions(kind),
 ): ShopperMaterialOption[] {
   const seen = new Map<string, ShopperMaterialOption>();
   for (const slot of modelConfig.slots) {
@@ -41,7 +57,13 @@ export function shopperMaterialOptions(
     }
   }
   if (seen.size > 0) return [...seen.values()];
-  return [...catalogFallback];
+  return catalogFallback.slice(0, SHOPPER_FALLBACK_LIMIT);
+}
+
+export function shopperFallbackOptions(
+  kind: ShopperMaterialKind,
+): readonly ShopperMaterialOption[] {
+  return kind === "gem" ? SHOPPER_FALLBACK_GEMS : SHOPPER_FALLBACK_METALS;
 }
 
 export function applyShopperMaterial(args: {

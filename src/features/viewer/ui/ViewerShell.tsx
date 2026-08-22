@@ -9,11 +9,13 @@ import { HiResExportModal } from "@/components/modals/HiResExportModal";
 import { Video360Modal } from "@/components/modals/Video360Modal";
 import { ViewerCanvas } from "./ViewerCanvas";
 import { EmbedChrome } from "./EmbedChrome";
+import { EmbedShopperMaterials } from "./EmbedShopperMaterials";
 import { StudioPrimaryBar } from "./StudioPrimaryBar";
 import { StudioSidebar } from "./StudioSidebar";
 import { StudioTopBar } from "./StudioTopBar";
 import { ZoomControls } from "./ZoomControls";
 import { useStudioPrimaryPanel } from "./useStudioPrimaryPanel";
+import { shouldPersistViewerScene } from "@/features/viewer/domain/viewer-scene-persist";
 import { cn } from "@/lib/utils";
 import type { EmbedSettings } from "@/lib/embed-settings";
 import { resolveModelUrl } from "@/lib/model-url";
@@ -211,6 +213,7 @@ export function ViewerShell({
   }, [catalog, sceneSettings]);
 
   useEffect(() => {
+    if (!shouldPersistViewerScene(variant)) return;
     if (!sceneLoaded || applyingPersistedState.current) return;
     if (persistTimer.current !== null)
       window.clearTimeout(persistTimer.current);
@@ -219,7 +222,7 @@ export function ViewerShell({
         () => undefined,
       );
     }, 350);
-  }, [modelId, persistPayload, sceneLoaded]);
+  }, [modelId, persistPayload, sceneLoaded, variant]);
 
   const sidebarProps = {
     modelId,
@@ -237,10 +240,9 @@ export function ViewerShell({
     const embedAutoRotate = embedSettings?.autoRotate ?? autoRotate;
     const showChrome = embedSettings?.showChrome ?? true;
     const showZoomControls = embedSettings?.showZoomControls ?? true;
-    const chromeOffset = showChrome ? "top-12" : "top-0";
 
     return (
-      <div className="studio-stage relative h-[100dvh] w-full overflow-hidden bg-[#F4F2EE]">
+      <div className="studio-stage flex h-[100dvh] w-full flex-col overflow-hidden bg-[#F4F2EE]">
         {showChrome ? (
           <EmbedChrome
             modelId={modelId}
@@ -255,7 +257,7 @@ export function ViewerShell({
             showStudioLink={embedSettings?.showStudioLink ?? true}
           />
         ) : null}
-        <div className={`absolute inset-0 ${chromeOffset} min-h-0`}>
+        <div className="relative min-h-0 flex-1">
           <ViewerCanvas
             modelUrl={modelUrl}
             preset={preset}
@@ -266,6 +268,7 @@ export function ViewerShell({
           />
           {showZoomControls ? <ZoomControls variant="embed" /> : null}
         </div>
+        <EmbedShopperMaterials modelConfig={modelConfig} />
       </div>
     );
   }

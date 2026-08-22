@@ -48,7 +48,7 @@ export function EmbedChrome({
   }, []);
 
   return (
-    <div className="pointer-events-auto absolute left-0 right-0 top-0 z-20 flex h-12 items-center justify-between gap-2 border-b border-black/10 bg-[#F4F2EE] px-3 text-[#212121]">
+    <div className="pointer-events-auto z-20 flex h-12 shrink-0 items-center justify-between gap-2 border-b border-black/10 bg-[#F4F2EE] px-3 text-[#212121]">
       <div className="min-w-0">
         {title ? (
           <p className="truncate text-sm font-medium text-black">{title}</p>

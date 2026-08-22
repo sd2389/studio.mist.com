@@ -9,7 +9,10 @@ import {
   type MaterialEntry,
 } from "@/features/viewer/ui/studio-material-groups";
 import { useShopperMaterialApply } from "@/features/viewer/ui/useShopperMaterialApply";
-import type { ShopperMaterialKind } from "@/features/viewer/domain/shopper-material-apply";
+import {
+  shopperMaterialOptions,
+  type ShopperMaterialKind,
+} from "@/features/viewer/domain/shopper-material-apply";
 
 type EmbedShopperMaterialsProps = {
   modelConfig?: PersistedModelConfig;
@@ -35,7 +38,11 @@ export function EmbedShopperMaterials({
           key={row.kind}
           kind={row.kind}
           label={row.label}
-          entries={materialEntriesForKind(row.kind)}
+          entries={shopperMaterialOptions(
+            modelConfig,
+            row.kind,
+            catalogEntriesForKind(row.kind),
+          )}
           selectedId={selectedFor(row.kind)}
           onSelect={(id) => applyKind(row.kind, id)}
         />
@@ -83,7 +90,7 @@ function EmbedShopperKindRow({
   );
 }
 
-function materialEntriesForKind(kind: ShopperMaterialKind): MaterialEntry[] {
+function catalogEntriesForKind(kind: ShopperMaterialKind): MaterialEntry[] {
   return MATERIAL_GROUPS.flatMap((group) =>
     group.items.filter((item) =>
       kind === "gem" ? isGemPresetId(item.id) : !isGemPresetId(item.id),

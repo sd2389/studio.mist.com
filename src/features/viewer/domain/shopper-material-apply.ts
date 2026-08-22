@@ -5,6 +5,7 @@ import type { PersistedModelConfig } from "@/lib/slot-materials/model-config";
 import type { MaterialPresetId } from "@/stores/material-preset-store";
 
 export type ShopperMaterialKind = "metal" | "gem";
+export type ShopperMaterialOption = { id: MaterialPresetId; label: string };
 
 const FALLBACK_SLOTS: Record<ShopperMaterialKind, readonly string[]> = {
   metal: ["Metal 1"],
@@ -19,6 +20,28 @@ export function shopperSlotsForKind(
     .filter((slot) => matchesShopperKind(slot.kind, kind))
     .map((slot) => slot.slotId);
   return fromConfig.length > 0 ? fromConfig : [...FALLBACK_SLOTS[kind]];
+}
+
+/** Prefer the uploaded CAD's slot options; catalog is only a fallback. */
+export function shopperMaterialOptions(
+  modelConfig: PersistedModelConfig,
+  kind: ShopperMaterialKind,
+  catalogFallback: readonly ShopperMaterialOption[],
+): ShopperMaterialOption[] {
+  const seen = new Map<string, ShopperMaterialOption>();
+  for (const slot of modelConfig.slots) {
+    if (!matchesShopperKind(slot.kind, kind)) continue;
+    const options =
+      slot.materialOptions.length > 0
+        ? slot.materialOptions
+        : (modelConfig.materialOptionsBySlot[slot.slotId] ?? []);
+    for (const option of options) {
+      if (seen.has(option.id)) continue;
+      seen.set(option.id, { id: option.id, label: option.label });
+    }
+  }
+  if (seen.size > 0) return [...seen.values()];
+  return [...catalogFallback];
 }
 
 export function applyShopperMaterial(args: {

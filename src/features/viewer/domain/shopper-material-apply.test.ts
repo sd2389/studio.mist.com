@@ -12,6 +12,7 @@ import { useMaterialPresetStore } from "@/stores/material-preset-store";
 import {
   applyShopperMaterial,
   selectedShopperPreset,
+  shopperMaterialOptions,
   shopperSlotsForKind,
 } from "@/features/viewer/domain/shopper-material-apply";
 import { shouldPersistViewerScene } from "@/features/viewer/domain/viewer-scene-persist";
@@ -37,6 +38,43 @@ describe("shopper material apply", () => {
     };
     expect(shopperSlotsForKind(modelConfig, "metal")).toEqual(["Metal 1"]);
     expect(shopperSlotsForKind(modelConfig, "gem")).toEqual(["Gem 1"]);
+  });
+
+  it("uses the uploaded CAD slot options, not a studio catalog dump", () => {
+    const modelConfig = publishedSkuConfig();
+    const metalSlot = modelConfig.slots.find((slot) => slot.kind === "metal");
+    const gemSlot = modelConfig.slots.find((slot) => slot.kind === "gem");
+    if (!metalSlot || !gemSlot) throw new Error("expected metal and gem slots");
+    metalSlot.materialOptions = [
+      { id: "gold-14k-yellow", label: "14K Yellow" },
+      { id: "gold-18k-rose", label: "18K Rose" },
+    ];
+    gemSlot.materialOptions = [
+      { id: "diamond", label: "Diamond" },
+      { id: "ruby", label: "Ruby" },
+    ];
+
+    const catalogFallback = [
+      { id: "gold-24k" as const, label: "24K" },
+      { id: "moissanite" as const, label: "Moissanite" },
+    ];
+    expect(shopperMaterialOptions(modelConfig, "metal", catalogFallback).map((o) => o.id)).toEqual([
+      "gold-14k-yellow",
+      "gold-18k-rose",
+    ]);
+    expect(shopperMaterialOptions(modelConfig, "gem", catalogFallback).map((o) => o.id)).toEqual([
+      "diamond",
+      "ruby",
+    ]);
+  });
+
+  it("falls back to the catalog when the CAD has no options", () => {
+    const modelConfig = {
+      ...publishedSkuConfig(),
+      slots: [],
+    };
+    const catalogFallback = [{ id: "platinum" as const, label: "Platinum" }];
+    expect(shopperMaterialOptions(modelConfig, "metal", catalogFallback)).toEqual(catalogFallback);
   });
 
   it("writes metal and gem selections independently", () => {

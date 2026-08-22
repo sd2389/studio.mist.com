@@ -21,7 +21,7 @@ export function EmbedChrome({
   displayName,
   brandingText,
   showTitle = true,
-  showStudioLink = true,
+  showStudioLink = false,
 }: EmbedChromeProps) {
   const studioHref = editorHref ?? `/viewer/${encodeURIComponent(modelId)}`;
   const [fs, setFs] = useState(false);
@@ -53,7 +53,7 @@ export function EmbedChrome({
         {title ? (
           <p className="truncate text-sm font-medium text-black">{title}</p>
         ) : (
-          <p className="truncate text-sm font-medium text-black/45">DevJewels Studio</p>
+          <p className="truncate text-sm font-medium text-black/45">Jewelry</p>
         )}
       </div>
       <div className="flex shrink-0 items-center gap-1">

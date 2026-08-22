@@ -254,7 +254,7 @@ export function ViewerShell({
             displayName={displayName}
             brandingText={embedSettings?.brandingText}
             showTitle={embedSettings?.showTitle ?? true}
-            showStudioLink={embedSettings?.showStudioLink ?? true}
+            showStudioLink={embedSettings?.showStudioLink ?? false}
           />
         ) : null}
         <div className="relative min-h-0 flex-1">

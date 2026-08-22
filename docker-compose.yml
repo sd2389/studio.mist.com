@@ -1,3 +1,9 @@
+# After `docker compose up`, seed the shopper demo piece:
+#   docker compose exec backend python -m scripts.seed_demo_embed
+# Prints embed_id DEMO-EMBED-RING. Open /embed/DEMO-EMBED-RING on the web host.
+# Public host: set APP_PUBLIC_URL, NEXT_PUBLIC_API_URL, PUBLIC_API_BASE, CORS_ORIGINS
+# (API_URL stays the internal backend URL). Rebuild web after changing NEXT_PUBLIC_*.
+#
 # Local worker smoke testing: copy docker-compose.override.example.yml to
 # docker-compose.override.yml (git-ignored; auto-merged by `docker compose up`).
 services:
@@ -30,10 +36,12 @@ services:
       - "8765:8765"
     environment:
       DATABASE_URL: postgresql+psycopg2://studio:studio@postgres:5432/studio
-      CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+      CORS_ORIGIN_REGEX: ${CORS_ORIGIN_REGEX:-}
       AI_BACKGROUND_MODE: stub
-      PUBLIC_API_BASE: http://localhost:8765
-      APP_PUBLIC_URL: http://localhost:3000
+      PUBLIC_API_BASE: ${PUBLIC_API_BASE:-${NEXT_PUBLIC_API_URL:-http://localhost:8765}}
+      APP_PUBLIC_URL: ${APP_PUBLIC_URL:-http://localhost:3000}
       EMAIL_FROM: studio@devjewels.com
       CONTACT_NOTIFY_EMAIL: support@devjewels.com
       ADMIN_EMAILS: sd2389@njit.edu
@@ -58,7 +66,7 @@ services:
       dockerfile: Dockerfile
       args:
         # Baked into the JS bundle. Browser uses this to hit the API directly.
-        NEXT_PUBLIC_API_URL: http://localhost:8765
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8765}
         # NEXT_PUBLIC_CDN_ORIGIN: https://cdn.studio.devjewels.com
         # NEXT_PUBLIC_SOURCE_ASSET_ORIGIN: https://assets.studio.devjewels.com
     restart: unless-stopped
@@ -70,8 +78,8 @@ services:
     environment:
       # Server-side proxy target. Server-rendered API routes hit the backend
       # over the internal Docker network.
-      API_URL: http://backend:8765
-      NEXT_PUBLIC_API_URL: http://localhost:8765
+      API_URL: ${API_URL:-http://backend:8765}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8765}
 
 volumes:
   studio_pg:

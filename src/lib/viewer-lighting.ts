@@ -60,7 +60,7 @@ export const TONE_EXPOSURE_BY_LIGHTING: Record<LightingPresetId, number> = {
   dramatic: 0.86,
 };
 
-/** Contact-shadow opacity per lighting mode (used by drei `<ContactShadows>`). */
+/** Contact-shadow opacity per lighting mode (used by `<ViewerContactShadows>`). */
 export const CONTACT_SHADOW_OPACITY: Record<LightingPresetId, number> = {
   studio: 0.24,
   soft: 0.2,

@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import type { ViewerRenderer } from "@/lib/gpu/viewer-renderer";
 
 /** sRGB output — stable for PNG/JPEG export and canvas readback. */
 export const VIEWER_OUTPUT_COLOR_SPACE = THREE.SRGBColorSpace;
@@ -10,21 +11,16 @@ export type ColorManagementSnapshot = {
 };
 
 /**
- * Viewer tone mapping runs in the PostFX composer (ACES via ToneMappingEffect).
- * Keep the WebGLRenderer itself untoned so exports match the live viewport.
+ * Viewer tone mapping runs in the TSL RenderPipeline (ACES via renderOutput).
+ * Keep the renderer itself untoned so exports match the live viewport.
  */
-export function applyViewerColorManagement(
-  renderer: THREE.WebGLRenderer,
-  exposure = 1,
-): void {
+export function applyViewerColorManagement(renderer: ViewerRenderer, exposure = 1): void {
   renderer.outputColorSpace = VIEWER_OUTPUT_COLOR_SPACE;
   renderer.toneMapping = THREE.NoToneMapping;
   renderer.toneMappingExposure = exposure;
 }
 
-export function snapshotColorManagement(
-  renderer: THREE.WebGLRenderer,
-): ColorManagementSnapshot {
+export function snapshotColorManagement(renderer: ViewerRenderer): ColorManagementSnapshot {
   return {
     outputColorSpace: renderer.outputColorSpace,
     toneMapping: renderer.toneMapping,
@@ -33,10 +29,10 @@ export function snapshotColorManagement(
 }
 
 export function restoreColorManagement(
-  renderer: THREE.WebGLRenderer,
+  renderer: ViewerRenderer,
   snapshot: ColorManagementSnapshot,
 ): void {
-  renderer.outputColorSpace = snapshot.outputColorSpace;
+  renderer.outputColorSpace = snapshot.outputColorSpace as typeof renderer.outputColorSpace;
   renderer.toneMapping = snapshot.toneMapping;
   renderer.toneMappingExposure = snapshot.toneMappingExposure;
 }

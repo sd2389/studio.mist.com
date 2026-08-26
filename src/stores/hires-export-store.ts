@@ -1,8 +1,9 @@
 import type * as THREE from "three";
+import type { ViewerRenderer } from "@/lib/gpu/viewer-renderer";
 import { create } from "zustand";
 
 type HiresRefs = {
-  gl: THREE.WebGLRenderer;
+  gl: ViewerRenderer;
   scene: THREE.Scene;
   camera: THREE.Camera;
 };

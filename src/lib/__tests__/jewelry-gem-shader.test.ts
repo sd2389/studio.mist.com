@@ -3,27 +3,22 @@ import * as THREE from "three";
 import {
   applyJewelryGemShader,
   enableJewelryGemSafeMode,
-  isJewelryGemFragmentSource,
-  JEWELRY_GEM_FRAGMENT_MARKER,
   JEWELRY_GEM_SHADER_KEY,
   setJewelryGemTime,
   type JewelryGemShaderOpts,
 } from "@/lib/gem-gpu/jewelry-gem-shader";
 
-function compileFragment(material: THREE.MeshPhysicalMaterial): string {
-  const shader = {
-    uniforms: {} as Record<string, unknown>,
-    vertexShader: "",
-    fragmentShader: `#include <common>
-#include <lights_physical_fragment>
-`,
-  };
-  material.onBeforeCompile?.(shader as THREE.WebGLProgramParametersWithUniforms, {} as THREE.WebGLRenderer);
-  return shader.fragmentShader;
+type NodeSlots = THREE.MeshPhysicalMaterial & {
+  emissiveNode: unknown;
+  specularIntensityNode: unknown;
+};
+
+function nodeSlots(material: THREE.MeshPhysicalMaterial): NodeSlots {
+  return material as NodeSlots;
 }
 
 describe("applyJewelryGemShader", () => {
-  it("tags material userData and installs onBeforeCompile", () => {
+  it("tags material userData and installs TSL node slots", () => {
     const m = new THREE.MeshPhysicalMaterial({ color: 0xffffff, transmission: 1 });
     const opts: JewelryGemShaderOpts = {
       sparkleStrength: 1,
@@ -33,8 +28,10 @@ describe("applyJewelryGemShader", () => {
     };
     applyJewelryGemShader(m, opts);
     expect(m.userData[JEWELRY_GEM_SHADER_KEY]).toBe(true);
-    expect(typeof m.onBeforeCompile).toBe("function");
-    expect(m.customProgramCacheKey).toBeTypeOf("function");
+    expect(nodeSlots(m).emissiveNode).toBeTruthy();
+    expect(nodeSlots(m).specularIntensityNode).toBeTruthy();
+    expect(m.userData.jewelryGemPath).toBe("full");
+    expect(m.userData.jewelryGemSafeMode).toBe(false);
   });
 
   it("sets qualityReduce uniform path without removing jewelry tag", () => {
@@ -47,9 +44,10 @@ describe("applyJewelryGemShader", () => {
     });
     expect(m.userData[JEWELRY_GEM_SHADER_KEY]).toBe(true);
     expect(m.userData.jewelryGemQualityReduce).toBe(true);
+    expect(m.userData.jewelryGemPath).toBe("perf");
   });
 
-  it("enableJewelryGemSafeMode keeps jewelry tag with a distinct simpler GLSL path", () => {
+  it("enableJewelryGemSafeMode keeps jewelry tag with a distinct simpler TSL path", () => {
     const m = new THREE.MeshPhysicalMaterial();
     applyJewelryGemShader(m, {
       sparkleStrength: 1,
@@ -57,22 +55,18 @@ describe("applyJewelryGemShader", () => {
       qualityReduce: false,
       dispersionAmplitude: 0.035,
     });
-    const fullKey = m.customProgramCacheKey!();
-    const fullFrag = compileFragment(m);
-    expect(fullFrag).toMatch(/for\s*\(\s*int\s+i/);
-    expect(fullFrag).toContain("uSparkleStrength");
+    const fullEmissive = nodeSlots(m).emissiveNode;
+    const fullPath = m.userData.jewelryGemPath;
 
     enableJewelryGemSafeMode(m);
     expect(m.userData[JEWELRY_GEM_SHADER_KEY]).toBe(true);
     expect(m.userData.jewelryGemSafeMode).toBe(true);
-    expect(m.customProgramCacheKey!()).toBe("jewelry-gem-safe");
-    expect(m.customProgramCacheKey!()).not.toBe(fullKey);
-
-    const safeFrag = compileFragment(m);
-    expect(safeFrag).toContain(JEWELRY_GEM_FRAGMENT_MARKER);
-    expect(safeFrag).not.toMatch(/for\s*\(\s*int\s+i/);
-    expect(safeFrag).not.toContain("uSparkleStrength");
-    expect(safeFrag).toContain("uFireStrength");
+    expect(m.userData.jewelryGemPath).toBe("safe");
+    expect(m.userData.jewelryGemPath).not.toBe(fullPath);
+    expect(nodeSlots(m).emissiveNode).toBeTruthy();
+    expect(nodeSlots(m).emissiveNode).not.toBe(fullEmissive);
+    expect(m.userData.jewelryGemUniforms.uFireStrength).toBeTruthy();
+    expect(m.userData.jewelryGemUniforms.uSparkleStrength).toBeUndefined();
   });
 
   it("setJewelryGemTime updates uTime on tagged materials", () => {
@@ -86,20 +80,5 @@ describe("applyJewelryGemShader", () => {
     setJewelryGemTime(m, 12.5);
     const uniforms = m.userData.jewelryGemUniforms as { uTime: { value: number } };
     expect(uniforms.uTime.value).toBe(12.5);
-  });
-});
-
-describe("isJewelryGemFragmentSource", () => {
-  // Compile-fallback bridge must gate on this before toast/safe-mode so
-  // non-jewelry WebGL shader errors never degrade gem materials.
-  it("returns true only for jewelry gem fragment markers", () => {
-    expect(isJewelryGemFragmentSource(`uniform float uSparkleStrength;\n`)).toBe(true);
-    expect(isJewelryGemFragmentSource(`// ${JEWELRY_GEM_FRAGMENT_MARKER}\nfloat fire = 1.0;`)).toBe(
-      true,
-    );
-    expect(isJewelryGemFragmentSource("void main() { gl_FragColor = vec4(1.0); }")).toBe(false);
-    expect(isJewelryGemFragmentSource(null)).toBe(false);
-    expect(isJewelryGemFragmentSource(undefined)).toBe(false);
-    expect(isJewelryGemFragmentSource("")).toBe(false);
   });
 });

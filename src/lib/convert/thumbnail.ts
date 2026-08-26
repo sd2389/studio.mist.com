@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { createViewerRenderer } from "@/lib/gpu/viewer-renderer";
 import { fitModelToUnit } from "./stamp-slots";
 
 const THUMB_SIZE = 512;
@@ -45,11 +46,10 @@ export async function generateModelThumbnail(root: THREE.Object3D): Promise<Blob
           return el;
         })();
 
-  const renderer = new THREE.WebGLRenderer({
+  const renderer = await createViewerRenderer({
     canvas,
     antialias: true,
     alpha: false,
-    preserveDrawingBuffer: true,
   });
   renderer.setSize(THUMB_SIZE, THUMB_SIZE, false);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -61,7 +61,6 @@ export async function generateModelThumbnail(root: THREE.Object3D): Promise<Blob
     return await canvasToWebpBlob(canvas);
   } finally {
     renderer.dispose();
-    renderer.forceContextLoss();
     scene.traverse((obj) => {
       if (obj instanceof THREE.Mesh) {
         obj.geometry?.dispose();

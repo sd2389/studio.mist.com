@@ -6,7 +6,7 @@ import { renderWithPostFX } from "@/lib/viewer-postfx-pipeline";
 import { getPostFXComposerRefs } from "@/stores/postfx-composer-store";
 import { useScreenshotStore } from "@/stores/screenshot-store";
 
-/** Registers WebGL canvas capture with the global screenshot store (must live inside `<Canvas>`). */
+/** Registers canvas capture with the global screenshot store (must live inside `<Canvas>`). */
 export function ScreenshotBridge() {
   const gl = useThree((state) => state.gl);
   const setCaptureFn = useScreenshotStore((state) => state.setCaptureFn);
@@ -15,7 +15,7 @@ export function ScreenshotBridge() {
     setCaptureFn(() => {
       const postfx = getPostFXComposerRefs();
       if (postfx) {
-        renderWithPostFX(postfx.composer, postfx.gl);
+        renderWithPostFX(postfx.composer);
         return postfx.gl.domElement.toDataURL("image/png");
       }
       return gl.domElement.toDataURL("image/png");

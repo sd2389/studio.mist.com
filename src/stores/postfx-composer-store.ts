@@ -1,10 +1,10 @@
-import type { EffectComposer } from "postprocessing";
-import type * as THREE from "three";
+import type { ViewerRenderer } from "@/lib/gpu/viewer-renderer";
+import type { ViewerPostFXComposer } from "@/lib/viewer-postfx-pipeline";
 import { create } from "zustand";
 
 type PostFXComposerRefs = {
-  composer: EffectComposer;
-  gl: THREE.WebGLRenderer;
+  composer: ViewerPostFXComposer;
+  gl: ViewerRenderer;
 };
 
 type PostFXComposerState = {

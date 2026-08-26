@@ -1,4 +1,4 @@
-/** Capture / export bridges for WebGL canvas (screenshots, video, hires). */
+/** Capture / export bridges for the WebGPU canvas (screenshots, video, hires). */
 export { HiresExportBridge } from "./ui/HiresExportBridge";
 export { OrbitControlsBridge } from "./ui/OrbitControlsBridge";
 export { RenderFidelityBridge } from "./ui/RenderFidelityBridge";

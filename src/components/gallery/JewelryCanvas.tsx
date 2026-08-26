@@ -1,7 +1,8 @@
 "use client";
 
-import { Canvas } from "@react-three/fiber";
-import { Center, ContactShadows, Environment, OrbitControls } from "@react-three/drei";
+import { Center, Environment, OrbitControls } from "@react-three/drei";
+import { WebGPUCanvas } from "@/lib/gpu/WebGPUCanvas";
+import { ViewerContactShadows } from "@/lib/gpu/ViewerContactShadows";
 import { Suspense, useEffect, useMemo } from "react";
 import * as THREE from "three";
 import { GemGpuDiamondShimmer } from "@/components/DiamondGem";
@@ -68,12 +69,11 @@ export function JewelryCanvas({ piece, preset, autoRotate, lighting }: JewelryCa
   const contactShadow = CONTACT_SHADOW_OPACITY[lighting];
 
   return (
-    <Canvas
+    <WebGPUCanvas
       className="h-full w-full touch-none"
       shadows
       dpr={[1, 2]}
       camera={{ position: [0, 0.35, 2.2], fov: 45, near: 0.01, far: 200 }}
-      gl={{ alpha: true, preserveDrawingBuffer: true, antialias: true, toneMappingExposure: exposure }}
     >
       <color attach="background" args={[bg]} />
       <ambientLight intensity={ambient} />
@@ -91,7 +91,7 @@ export function JewelryCanvas({ piece, preset, autoRotate, lighting }: JewelryCa
           <primitive object={root} />
         </Center>
         <Environment files={hdrFile} background={false} />
-        <ContactShadows
+        <ViewerContactShadows
           position={[0, -0.55, 0]}
           color="#0a0a0a"
           opacity={contactShadow}
@@ -117,6 +117,6 @@ export function JewelryCanvas({ piece, preset, autoRotate, lighting }: JewelryCa
         <VideoCaptureBridge />
         <OrbitControlsBridge />
       </Suspense>
-    </Canvas>
+    </WebGPUCanvas>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { Center, Environment, OrbitControls } from "@react-three/drei";
-import { Canvas } from "@react-three/fiber";
+import { WebGPUCanvas } from "@/lib/gpu/WebGPUCanvas";
 import Link from "next/link";
 import { Suspense, useEffect, useMemo } from "react";
 import * as THREE from "three";
@@ -45,10 +45,9 @@ export function JewelryTile({ id, label, description }: Props) {
           <span className="absolute left-4 top-4 z-10 border border-white/20 bg-black/30 px-2.5 py-1 text-[8px] uppercase tracking-[0.14em] text-white/60 backdrop-blur">
             Live 3D
           </span>
-          <Canvas
+          <WebGPUCanvas
             className="h-full w-full"
             camera={{ position: [1.6, 0.9, 1.6], fov: 38, near: 0.01, far: 50 }}
-            gl={{ alpha: true, antialias: true, toneMappingExposure: 0.95 }}
             dpr={[1, 2]}
           >
             <ambientLight intensity={0.4} />
@@ -67,7 +66,7 @@ export function JewelryTile({ id, label, description }: Props) {
                 autoRotateSpeed={1.1}
               />
             </Suspense>
-          </Canvas>
+          </WebGPUCanvas>
         </div>
         <CardContent className="space-y-2 p-5">
           <p className="text-2xl font-light tracking-[-0.05em] text-black">

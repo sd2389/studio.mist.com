@@ -2,7 +2,7 @@
 
 import { useGLTF } from "@react-three/drei";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { modelExtFromUrl } from "@/lib/model-key";
+import { modelExtFromUrl, viewerIdFromModelKey } from "@/lib/model-key";
 import { AiVisualsModal } from "@/components/modals/AiVisualsModal";
 import { ExportModal } from "@/components/modals/ExportModal";
 import { HiResExportModal } from "@/components/modals/HiResExportModal";
@@ -245,7 +245,9 @@ export function ViewerShell({
           <EmbedChrome
             modelId={modelId}
             editorHref={
-              initialScene?.id ? `/model/${initialScene.id}` : undefined
+              initialScene?.model_key
+                ? `/viewer/${encodeURIComponent(viewerIdFromModelKey(initialScene.model_key))}`
+                : undefined
             }
             displayName={displayName}
             brandingText={embedSettings?.brandingText}

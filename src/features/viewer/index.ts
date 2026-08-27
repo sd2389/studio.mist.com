@@ -7,3 +7,4 @@ export { StudioTopBar } from "./ui/StudioTopBar";
 export { StudioPrimaryBar } from "./ui/StudioPrimaryBar";
 export { ZoomControls } from "./ui/ZoomControls";
 export { EmbedChrome } from "./ui/EmbedChrome";
+export { EmbedShopperMaterials } from "./ui/EmbedShopperMaterials";

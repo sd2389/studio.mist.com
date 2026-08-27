@@ -13,7 +13,7 @@ export const DEFAULT_EMBED_SETTINGS: Required<EmbedSettings> = {
   showTitle: true,
   brandingText: null,
   showZoomControls: true,
-  showStudioLink: true,
+  showStudioLink: false,
 };
 
 function parseBool(value: string | undefined, fallback: boolean): boolean {

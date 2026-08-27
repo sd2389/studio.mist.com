@@ -43,7 +43,7 @@ type StudioSidebarProps = {
   onOpenExport: () => void;
   onOpenHiResExport: () => void;
   onOpenVideo360: () => void;
-  chrome?: "desktop" | "sheet";
+  chrome?: "desktop" | "sheet" | "responsive";
   className?: string;
 };
 
@@ -92,26 +92,44 @@ export function StudioSidebar({
   const currentColor = resolveSelectionSwatchColor(selectedPresetForActiveSlot);
   const currentIsGem = resolveSelectionIsGem(selectedPresetForActiveSlot);
 
+  const showNowShowing = chrome !== "sheet";
+  const showTabs = chrome !== "sheet";
+  const nowShowingClass = chrome === "responsive" ? "hidden md:block" : undefined;
+  const tabsClass = chrome === "responsive" ? "hidden md:block" : undefined;
+
   return (
     <div className={cn("flex h-full flex-col overflow-hidden", className)}>
-      <NowShowingCard
-        preset={selectedPresetForActiveSlot}
-        currentColor={currentColor}
-        currentIsGem={currentIsGem}
-        activeSlot={resolvedActiveSlot}
-        activeSlotCount={activePhysicalSlots.length}
-        onRevert={() => {
-          for (const slot of activePhysicalSlots) setSlotPreset(slot, "original");
-          setPreset("original");
-        }}
-      />
+      {chrome === "desktop" || chrome === "responsive" ? (
+        <p className="hidden shrink-0 px-4 pt-3 text-[11px] font-medium text-black/70 md:block">
+          Studio
+        </p>
+      ) : null}
 
-      {chrome === "desktop" ? (
-        <StudioPrimaryBar
-          active={panel}
-          onChange={handlePanelChange}
-          className="border-b border-black/10"
-        />
+      {showNowShowing ? (
+        <div className={nowShowingClass}>
+          <NowShowingCard
+            preset={selectedPresetForActiveSlot}
+            currentColor={currentColor}
+            currentIsGem={currentIsGem}
+            activeSlot={resolvedActiveSlot}
+            activeSlotCount={activePhysicalSlots.length}
+            onRevert={() => {
+              for (const slot of activePhysicalSlots) setSlotPreset(slot, "original");
+              setPreset("original");
+            }}
+          />
+        </div>
+      ) : null}
+
+      {showTabs ? (
+        <div className={tabsClass}>
+          <StudioPrimaryBar
+            active={panel}
+            onChange={handlePanelChange}
+            layout="tabs"
+            className="border-b border-black/10"
+          />
+        </div>
       ) : null}
 
       {panel === "metal" ? (

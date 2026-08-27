@@ -56,4 +56,19 @@ describe("studio primary IA", () => {
     expect(embedBlock.includes("shopper")).toBe(false);
     expect(embedBlock.includes("MetalPicker") || embedBlock.includes("shopper dock")).toBe(false);
   });
+
+  it("studio shell mounts a single sidebar and a collapsible phone tab bar", () => {
+    const shell = readUi("ViewerShell.tsx");
+    expect(shell.split("<StudioSidebar").length - 1).toBe(1);
+    expect(shell.includes("collapsible")).toBe(true);
+    expect(shell.includes("max-h-[50vh]")).toBe(true);
+    expect(shell.includes("chrome=\"responsive\"")).toBe(true);
+  });
+
+  it("metal tab exposes finish chips from the shared finish catalog", () => {
+    const metal = readUi("MetalPickerPanel.tsx");
+    const finishes = readUi("FinishChipRow.tsx");
+    expect(metal.includes("FinishChipRow")).toBe(true);
+    expect(finishes.includes("FINISHES")).toBe(true);
+  });
 });

@@ -12,17 +12,75 @@ type MaterialSwatchProps = {
   selected?: boolean;
   onClick?: () => void;
   className?: string;
+  /** Paper-stage disc grid for Studio catalogs. Default keeps the card chip. */
+  variant?: "card" | "paper";
 };
 
 /**
- * Two-row chip: the colour disc is the primary visual anchor; label sits beneath in
- * compact sans. Selected state lights a 2px ring in the swatch's own hex so the
- * chip glows in its own colour — the gallery-card move.
+ * Colour swatch with label. `paper` is the Studio catalog disc; `card` is the
+ * bordered chip used by denser grids that still want a contained tile.
  */
-export function MaterialSwatch({ id, label, selected, onClick, className }: MaterialSwatchProps) {
+export function MaterialSwatch({
+  id,
+  label,
+  selected,
+  onClick,
+  className,
+  variant = "card",
+}: MaterialSwatchProps) {
   const color = getPresetSwatchColor(id);
   const isGem = isTransmissive(id);
   const isDark = id === "diamond-black" || id === "titanium";
+
+  if (variant === "paper") {
+    return (
+      <motion.button
+        type="button"
+        onClick={onClick}
+        whileHover={{ y: -1 }}
+        whileTap={{ scale: 0.97 }}
+        transition={{ type: "spring", stiffness: 380, damping: 26 }}
+        className={cn(
+          "group relative flex flex-col items-center gap-1.5 px-0.5 py-1 text-center",
+          className,
+        )}
+        aria-pressed={selected}
+        title={label}
+      >
+        <span
+          className={cn(
+            "relative grid size-10 place-items-center rounded-full transition-shadow",
+            "shadow-[inset_0_2px_4px_rgba(255,255,255,0.45),inset_0_-3px_6px_rgba(0,0,0,0.15)]",
+          )}
+          style={{
+            backgroundColor: color,
+            boxShadow: selected
+              ? `0 0 0 2px #F4F2EE, 0 0 0 3.5px ${color}, inset 0 2px 4px rgba(255,255,255,0.45), inset 0 -3px 6px rgba(0,0,0,0.15)`
+              : undefined,
+          }}
+        >
+          {selected ? (
+            <Check
+              className={cn(
+                "size-3.5 drop-shadow",
+                isDark ? "text-white" : "text-black/85",
+              )}
+              strokeWidth={3}
+              aria-hidden
+            />
+          ) : null}
+        </span>
+        <span
+          className={cn(
+            "line-clamp-2 max-w-[4.5rem] text-[9.5px] font-medium leading-tight tracking-tight text-black/55",
+            selected && "text-black",
+          )}
+        >
+          {label}
+        </span>
+      </motion.button>
+    );
+  }
 
   return (
     <motion.button

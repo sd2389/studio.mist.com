@@ -59,7 +59,7 @@ export function StudioTopBar({ modelId, sku }: StudioTopBarProps) {
           type="button"
           variant="outline"
           size="sm"
-          className="h-8 rounded-md border-black/15 bg-transparent px-2 text-[10px] font-medium uppercase tracking-[0.1em] text-black/65 shadow-none hover:bg-white hover:text-black"
+          className="hidden h-8 rounded-md border-black/15 bg-transparent px-2 text-[10px] font-medium uppercase tracking-[0.1em] text-black/65 shadow-none hover:bg-white hover:text-black md:inline-flex"
           onClick={savePreset}
         >
           <Save className="size-3.5" aria-hidden />
@@ -69,7 +69,7 @@ export function StudioTopBar({ modelId, sku }: StudioTopBarProps) {
           type="button"
           variant="ghost"
           size="sm"
-          className="h-8 rounded-md px-2 text-[10px] font-medium uppercase tracking-[0.1em] text-black/65 hover:bg-black/[0.04] hover:text-black"
+          className="hidden h-8 rounded-md px-2 text-[10px] font-medium uppercase tracking-[0.1em] text-black/65 hover:bg-black/[0.04] hover:text-black md:inline-flex"
           onClick={() => void shareEmbed()}
           disabled={!canShare}
           title={
@@ -79,7 +79,7 @@ export function StudioTopBar({ modelId, sku }: StudioTopBarProps) {
           }
         >
           <Share2 className="size-3.5" aria-hidden />
-          <span className="hidden sm:inline">Share</span>
+          <span>Share</span>
         </Button>
       </div>
       {toast ? (

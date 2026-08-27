@@ -9,12 +9,12 @@ import { HiResExportModal } from "@/components/modals/HiResExportModal";
 import { Video360Modal } from "@/components/modals/Video360Modal";
 import { ViewerCanvas } from "./ViewerCanvas";
 import { EmbedChrome } from "./EmbedChrome";
-import { StudioCatalogSheet } from "./StudioCatalogSheet";
 import { StudioPrimaryBar } from "./StudioPrimaryBar";
 import { StudioSidebar } from "./StudioSidebar";
 import { StudioTopBar } from "./StudioTopBar";
 import { ZoomControls } from "./ZoomControls";
 import { useStudioPrimaryPanel } from "./useStudioPrimaryPanel";
+import { cn } from "@/lib/utils";
 import type { EmbedSettings } from "@/lib/embed-settings";
 import { resolveModelUrl } from "@/lib/model-url";
 import { getSceneByViewerId, updateSceneByViewerId } from "@/features/scene";
@@ -270,12 +270,22 @@ export function ViewerShell({
 
   return (
     <>
-      <div className="studio-stage flex h-[100dvh] overflow-hidden bg-[#F4F2EE] text-[#212121]">
-        <aside className="hidden h-full w-[280px] shrink-0 flex-col border-r border-black/10 bg-[#F4F2EE] md:flex">
-          <StudioSidebar chrome="desktop" {...sidebarProps} />
+      <div className="studio-stage flex h-[100dvh] flex-col overflow-hidden bg-[#F4F2EE] text-[#212121] md:flex-row">
+        <aside
+          className={cn(
+            "flex min-h-0 flex-col border-black/10 bg-[#F4F2EE]",
+            "order-2 max-h-[50vh] border-t",
+            "md:order-1 md:h-full md:max-h-none md:w-[280px] md:shrink-0 md:border-r md:border-t-0",
+            panel === null && "hidden md:flex",
+          )}
+        >
+          <div className="flex shrink-0 justify-center pb-1 pt-2 md:hidden">
+            <div className="h-1 w-10 rounded-full bg-black/15" aria-hidden />
+          </div>
+          <StudioSidebar chrome="responsive" className="min-h-0 flex-1" {...sidebarProps} />
         </aside>
 
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div className="order-1 flex min-h-0 min-w-0 flex-1 flex-col md:order-2">
           <div className="h-[52px] shrink-0">
             <StudioTopBar modelId={modelId} sku={sceneSku} />
           </div>
@@ -290,19 +300,14 @@ export function ViewerShell({
             />
             <ZoomControls />
           </div>
-          <StudioCatalogSheet open={panel !== null}>
-            <StudioSidebar
-              chrome="sheet"
-              className="max-h-[calc(50vh-20px)]"
-              {...sidebarProps}
-            />
-          </StudioCatalogSheet>
-          <StudioPrimaryBar
-            active={panel}
-            onChange={setPanel}
-            className="border-t border-black/10 md:hidden"
-          />
         </div>
+
+        <StudioPrimaryBar
+          active={panel}
+          onChange={setPanel}
+          collapsible
+          className="order-3 border-t border-black/10 md:hidden"
+        />
       </div>
 
       <AiVisualsModal

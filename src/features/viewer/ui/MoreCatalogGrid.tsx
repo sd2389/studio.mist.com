@@ -210,6 +210,7 @@ export function MoreCatalogGrid({
             <div className="grid grid-cols-3 gap-1.5">
               {group.items.map((item) => (
                 <MaterialSwatch
+                  variant="paper"
                   key={item.id}
                   id={item.id}
                   label={item.label}

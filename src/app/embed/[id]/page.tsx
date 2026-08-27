@@ -11,7 +11,8 @@ type EmbedPageProps = {
 };
 
 export default async function EmbedPage({ params, searchParams }: EmbedPageProps) {
-  const flags = await fetchFeatureFlagsServer();
+  // Fail open when the flags service is unreachable (matches isFeatureEnabled(null)).
+  const flags = await fetchFeatureFlagsServer().catch(() => null);
   if (!isFeatureEnabled(flags, "embed")) {
     return <FeatureDisabledPage title="Embed unavailable" />;
   }

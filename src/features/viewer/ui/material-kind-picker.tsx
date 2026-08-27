@@ -66,7 +66,7 @@ export function MaterialKindPicker({
         {kindSlotIds.length > 0 ? (
           <div className="rounded-2xl border border-border/60 bg-card/60 p-3">
             <div className="mb-2 flex items-baseline justify-between gap-2">
-              <h4 className="font-display text-[12px] italic leading-none text-foreground/95">
+              <h4 className="text-[10px] font-medium uppercase tracking-[0.16em] text-foreground/80">
                 {kind === "gem" ? "Gem slots" : "Metal slots"}
               </h4>
               <span className="text-[9px] font-medium uppercase tracking-[0.18em] text-muted-foreground/80">
@@ -95,7 +95,7 @@ export function MaterialKindPicker({
               aria-label={group.title}
             >
               <div className="mb-2.5 flex items-baseline justify-between gap-2">
-                <h3 className="font-display text-[13px] italic leading-none text-foreground/95">
+                <h3 className="text-[10.5px] font-medium uppercase tracking-[0.16em] text-foreground/80">
                   {group.title}
                 </h3>
                 {group.tagline ? (

@@ -55,7 +55,7 @@ export function MoreCatalogGrid({
           aria-label={`${resolvedActiveSlot} persisted materials`}
         >
           <div className="mb-2.5 flex items-baseline justify-between gap-2">
-            <h3 className="font-display text-[13px] italic leading-none text-foreground/95">
+            <h3 className="text-[10.5px] font-medium uppercase tracking-[0.16em] text-foreground/80">
               {resolvedActiveSlot}
             </h3>
             <span className="text-[9px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
@@ -125,7 +125,7 @@ export function MoreCatalogGrid({
           aria-label={`${resolvedActiveSlot} source materials`}
         >
           <div className="mb-2.5 flex items-baseline justify-between gap-2">
-            <h3 className="font-display text-[13px] italic leading-none text-foreground/95">
+            <h3 className="text-[10.5px] font-medium uppercase tracking-[0.16em] text-foreground/80">
               {resolvedActiveSlot}
             </h3>
             <span className="text-[9px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
@@ -198,7 +198,7 @@ export function MoreCatalogGrid({
             aria-label={group.title}
           >
             <div className="mb-2.5 flex items-baseline justify-between gap-2">
-              <h3 className="font-display text-[13px] italic leading-none text-foreground/95">
+              <h3 className="text-[10.5px] font-medium uppercase tracking-[0.16em] text-foreground/80">
                 {group.title}
               </h3>
               {group.tagline ? (

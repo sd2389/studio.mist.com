@@ -140,7 +140,7 @@ export function ExportSharePanel({
       )}
     >
       <section className="space-y-2">
-        <h3 className="font-display text-[13px] italic leading-none text-foreground/95">
+        <h3 className="text-[10.5px] font-medium uppercase tracking-[0.16em] text-foreground/80">
           Export & share
         </h3>
         <Button
@@ -217,7 +217,7 @@ export function ExportSharePanel({
       </section>
 
       <section className="space-y-2">
-        <h3 className="font-display text-[13px] italic leading-none text-foreground/95">
+        <h3 className="text-[10.5px] font-medium uppercase tracking-[0.16em] text-foreground/80">
           Downloads
         </h3>
         <Button

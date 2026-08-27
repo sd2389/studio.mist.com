@@ -37,48 +37,39 @@ export function StudioTopBar({ modelId, sku }: StudioTopBarProps) {
   }
 
   return (
-    <header className="relative z-50 grid h-[72px] shrink-0 grid-cols-[78px_1fr_auto] border-b border-black/10 bg-white/55 text-[#212121] backdrop-blur-2xl">
+    <header className="relative z-50 flex h-[52px] shrink-0 items-center gap-2 border-b border-black/10 bg-[#F4F2EE] px-2 text-[#212121] sm:gap-3 sm:px-3">
       <Link
         href="/dashboard"
-        className="grid place-items-center border-r border-black/10 text-black"
+        className="grid size-8 shrink-0 place-items-center rounded-md text-black/55 transition hover:bg-black/[0.04] hover:text-black"
         aria-label="Back to workshop"
       >
-        <span className="size-2.5 rotate-45 border border-black" />
+        <ChevronLeft className="size-4" aria-hidden />
       </Link>
-      <div className="flex min-w-0 flex-1 items-center gap-3">
-        <Link
-          href="/dashboard"
-          className="ml-4 grid size-8 shrink-0 place-items-center rounded-full border border-black/10 text-black/45 transition hover:bg-white/60 hover:text-black"
-          aria-label="Back to workshop"
-        >
-          <ChevronLeft className="size-4" aria-hidden />
-        </Link>
-        <div className="min-w-0">
-          <p className="truncate text-[11px] font-semibold uppercase tracking-[0.1em] text-black">
-            {sceneDisplayName(modelId)}
-          </p>
-          <p className="mt-1 truncate text-[8px] font-medium uppercase tracking-[0.13em] text-black/35">
-            {preset} · {lighting}
-          </p>
-        </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[13px] font-medium tracking-tight text-black">
+          {sceneDisplayName(modelId)}
+        </p>
+        <p className="truncate text-[10px] text-black/40">
+          {preset} · {lighting}
+        </p>
       </div>
-      <div className="flex shrink-0 items-center gap-1.5 px-4 sm:gap-2">
+      <div className="flex shrink-0 items-center gap-1 sm:gap-1.5">
         <QualityMenu />
         <Button
           type="button"
           variant="outline"
           size="sm"
-          className="rounded-full border-black/10 bg-white/35 text-[9px] uppercase tracking-[0.1em] text-black/60 hover:bg-white hover:text-black"
+          className="h-8 rounded-md border-black/15 bg-transparent px-2 text-[10px] font-medium uppercase tracking-[0.1em] text-black/65 shadow-none hover:bg-white hover:text-black"
           onClick={savePreset}
         >
-          <Save className="size-4" aria-hidden />
+          <Save className="size-3.5" aria-hidden />
           <span className="hidden sm:inline">Save preset</span>
         </Button>
         <Button
           type="button"
           variant="ghost"
           size="sm"
-          className="rounded-full text-[9px] uppercase tracking-[0.1em] text-black hover:bg-white/60"
+          className="h-8 rounded-md px-2 text-[10px] font-medium uppercase tracking-[0.1em] text-black/65 hover:bg-black/[0.04] hover:text-black"
           onClick={() => void shareEmbed()}
           disabled={!canShare}
           title={
@@ -87,13 +78,13 @@ export function StudioTopBar({ modelId, sku }: StudioTopBarProps) {
               : "Publish or set a SKU before embedding"
           }
         >
-          <Share2 className="size-4" aria-hidden />
+          <Share2 className="size-3.5" aria-hidden />
           <span className="hidden sm:inline">Share</span>
         </Button>
       </div>
       {toast ? (
         <p
-          className="glass-panel absolute left-1/2 top-[4.8rem] z-50 -translate-x-1/2 rounded-full px-4 py-2 text-xs text-black"
+          className="absolute left-1/2 top-[calc(100%+8px)] z-50 -translate-x-1/2 rounded-md border border-black/10 bg-white px-3 py-1.5 text-xs text-black shadow-sm"
           role="status"
         >
           {toast}

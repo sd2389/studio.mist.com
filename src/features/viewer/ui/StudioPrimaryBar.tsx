@@ -1,6 +1,6 @@
 "use client";
 
-import { CircleEllipsis, Diamond, Gem, Lightbulb, Send } from "lucide-react";
+import { Diamond, Ellipsis, Share, Sun } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export type StudioPrimaryPanel =
@@ -11,12 +11,34 @@ export type StudioPrimaryPanel =
   | "more"
   | null;
 
+function RingsIcon({
+  className,
+  strokeWidth = 1.6,
+}: {
+  className?: string;
+  strokeWidth?: number;
+}) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={strokeWidth}
+      className={className}
+      aria-hidden
+    >
+      <circle cx="9" cy="12" r="5.25" />
+      <circle cx="15" cy="12" r="5.25" />
+    </svg>
+  );
+}
+
 const CONTROLS = [
-  { id: "metal", label: "Metal", icon: CircleEllipsis },
+  { id: "metal", label: "Metal", icon: RingsIcon },
   { id: "gem", label: "Gem", icon: Diamond },
-  { id: "light", label: "Light", icon: Lightbulb },
-  { id: "export", label: "Export", icon: Send },
-  { id: "more", label: "More", icon: Gem },
+  { id: "light", label: "Light", icon: Sun },
+  { id: "export", label: "Export", icon: Share },
+  { id: "more", label: "More", icon: Ellipsis },
 ] as const;
 
 type StudioPrimaryBarProps = {
@@ -33,7 +55,7 @@ export function StudioPrimaryBar({
   return (
     <div
       className={cn(
-        "grid h-auto shrink-0 grid-cols-5 border-b border-black/10 bg-white/35",
+        "grid h-auto shrink-0 grid-cols-5 bg-[#F4F2EE]",
         className,
       )}
       role="tablist"
@@ -49,15 +71,19 @@ export function StudioPrimaryBar({
             role="tab"
             aria-selected={isActive}
             onClick={() => onChange(isActive ? null : control.id)}
-            className={cn(
-              "flex min-w-0 flex-col items-center gap-1.5 border-r border-black/10 px-1 py-3 text-[8px] font-medium uppercase tracking-[0.11em] transition-all last:border-r-0",
-              isActive
-                ? "bg-[#212121] text-white"
-                : "border-transparent text-black/35 hover:bg-white/55 hover:text-black/70",
-            )}
+            className="flex min-w-0 items-center justify-center px-1 py-1.5"
           >
-            <Icon className="size-3.5" strokeWidth={1.6} aria-hidden />
-            {control.label}
+            <span
+              className={cn(
+                "flex w-full flex-col items-center gap-1 rounded-md px-1 py-1.5 text-[8px] font-medium uppercase tracking-[0.11em] transition-colors",
+                isActive
+                  ? "bg-black text-white"
+                  : "text-black/40 hover:bg-black/[0.04] hover:text-black/70",
+              )}
+            >
+              <Icon className="size-3.5" strokeWidth={1.6} />
+              {control.label}
+            </span>
           </button>
         );
       })}

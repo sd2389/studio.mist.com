@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { SlotMaterialRef } from "@/lib/library/custom-material-ref";
@@ -37,10 +37,13 @@ type StudioSidebarProps = {
   modelId: string;
   sku?: string | null;
   modelConfig?: PersistedModelConfig;
+  panel?: StudioPrimaryPanel;
+  onPanelChange?: (panel: StudioPrimaryPanel) => void;
   onOpenAi: () => void;
   onOpenExport: () => void;
   onOpenHiResExport: () => void;
   onOpenVideo360: () => void;
+  chrome?: "desktop" | "sheet";
   className?: string;
 };
 
@@ -48,14 +51,23 @@ export function StudioSidebar({
   modelId,
   sku,
   modelConfig = buildModelConfigFromSlots([]),
+  panel: panelProp,
+  onPanelChange,
   onOpenAi,
   onOpenExport,
   onOpenHiResExport,
   onOpenVideo360,
+  chrome = "desktop",
   className,
 }: StudioSidebarProps) {
-  const [panel, setPanel] = useState<StudioPrimaryPanel>("metal");
+  const [internalPanel, setInternalPanel] = useState<StudioPrimaryPanel>("metal");
+  const panel = panelProp ?? internalPanel;
   const [activeSlot, setActiveSlot] = useState<SlotId>("Metal 1");
+
+  function handlePanelChange(next: StudioPrimaryPanel) {
+    if (panelProp === undefined) setInternalPanel(next);
+    onPanelChange?.(next);
+  }
 
   const setPreset = useMaterialPresetStore((s) => s.setPreset);
   const setSlotPreset = useMaterialPresetStore((s) => s.setSlotPreset);
@@ -67,31 +79,21 @@ export function StudioSidebar({
     selectedPresetForActiveSlot,
   } = useStudioSlotContext({ modelConfig, activeSlot });
 
-  function handlePanelChange(next: StudioPrimaryPanel) {
-    setPanel(next);
-    if (next === "metal") {
+  useEffect(() => {
+    if (panel === "metal") {
       const metals = filterSlotsByKind(allSlotIds, "metal");
       if (metals.length && slotKind(activeSlot) !== "metal") setActiveSlot(metals[0]);
-    } else if (next === "gem") {
+    } else if (panel === "gem") {
       const gems = filterSlotsByKind(allSlotIds, "gem");
       if (gems.length && slotKind(activeSlot) !== "gem") setActiveSlot(gems[0]);
     }
-  }
+  }, [activeSlot, allSlotIds, panel]);
 
   const currentColor = resolveSelectionSwatchColor(selectedPresetForActiveSlot);
   const currentIsGem = resolveSelectionIsGem(selectedPresetForActiveSlot);
 
   return (
     <div className={cn("flex h-full flex-col overflow-hidden", className)}>
-      <div className="flex shrink-0 items-baseline justify-between gap-3 border-b border-border/60 px-5 pb-3 pt-4">
-        <span className="font-display text-[15px] italic leading-none tracking-tight text-foreground">
-          DevJewels
-        </span>
-        <span className="font-mono text-[9px] uppercase tracking-[0.22em] text-muted-foreground">
-          atelier
-        </span>
-      </div>
-
       <NowShowingCard
         preset={selectedPresetForActiveSlot}
         currentColor={currentColor}
@@ -104,7 +106,13 @@ export function StudioSidebar({
         }}
       />
 
-      <StudioPrimaryBar active={panel} onChange={handlePanelChange} />
+      {chrome === "desktop" ? (
+        <StudioPrimaryBar
+          active={panel}
+          onChange={handlePanelChange}
+          className="border-b border-black/10"
+        />
+      ) : null}
 
       {panel === "metal" ? (
         <MetalPickerPanel
@@ -174,53 +182,37 @@ function NowShowingCard({
   const slotBadge = buildSlotBadge(activeSlot, activeSlotCount);
 
   return (
-    <div className="shrink-0 px-5 pb-4 pt-4">
-      <div className="relative overflow-hidden rounded-2xl border border-border/60 bg-gradient-to-br from-card via-card to-muted/50 px-4 py-3.5 shadow-sm">
+    <div className="shrink-0 border-b border-black/10 px-4 py-3">
+      <div className="flex items-center gap-3">
         <div
-          aria-hidden
-          className="pointer-events-none absolute -right-10 -top-10 size-32 rounded-full blur-3xl"
-          style={{ backgroundColor: `${currentColor}45` }}
+          className="size-8 shrink-0 rounded-[2px] border border-black/10"
+          style={{ backgroundColor: currentColor }}
+          title={currentIsGem ? "Gem" : "Metal"}
         />
-        <div className="relative flex items-center gap-3">
-          <div
+        <div className="min-w-0 flex-1">
+          <p className="text-[9px] font-medium uppercase tracking-[0.16em] text-black/40">
+            Now showing
+          </p>
+          <p className="truncate text-[13px] font-medium text-black">{name}</p>
+          <p className="truncate text-[10px] text-black/40">{group}</p>
+        </div>
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <span className="text-[9px] font-medium uppercase tracking-[0.14em] text-black/35">
+            {slotBadge}
+          </span>
+          <button
+            type="button"
+            onClick={onRevert}
+            disabled={isOriginal}
             className={cn(
-              "relative grid size-11 shrink-0 place-items-center",
-              currentIsGem ? "rounded-lg rotate-45" : "rounded-full",
-              "shadow-[inset_0_2px_4px_rgba(255,255,255,0.55),inset_0_-3px_8px_rgba(0,0,0,0.2)]",
+              "grid size-7 place-items-center rounded-md border border-black/10 text-black/45 transition-colors",
+              "hover:border-black/25 hover:text-black disabled:cursor-not-allowed disabled:opacity-30",
             )}
-            style={{
-              backgroundColor: currentColor,
-              boxShadow: `0 0 0 1px var(--background), 0 0 0 3px ${currentColor}, 0 6px 14px -6px ${currentColor}80, inset 0 2px 4px rgba(255,255,255,0.55), inset 0 -3px 8px rgba(0,0,0,0.2)`,
-            }}
-          />
-          <div className="min-w-0 flex-1">
-            <p className="text-[9.5px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-              Now showing
-            </p>
-            <p className="mt-0.5 font-display text-[17px] italic leading-tight tracking-tight text-foreground">
-              {name}
-            </p>
-            <p className="text-[10.5px] text-muted-foreground">{group}</p>
-          </div>
-          <div className="flex shrink-0 flex-col items-end gap-1.5">
-            <span className="rounded-full border border-foreground/20 bg-background/90 px-2 py-0.5 text-[9px] font-medium uppercase tracking-[0.16em] text-foreground/75">
-              {slotBadge}
-            </span>
-            <button
-              type="button"
-              onClick={onRevert}
-              disabled={isOriginal}
-              className={cn(
-                "grid size-8 place-items-center rounded-full border transition-colors",
-                "border-border/70 bg-background text-muted-foreground",
-                "hover:border-foreground/40 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30",
-              )}
-              title={isOriginal ? "Already showing the original materials" : "Revert to original"}
-              aria-label="Revert to original"
-            >
-              <RotateCcw className="size-3.5" aria-hidden />
-            </button>
-          </div>
+            title={isOriginal ? "Already showing the original materials" : "Revert to original"}
+            aria-label="Revert to original"
+          >
+            <RotateCcw className="size-3.5" aria-hidden />
+          </button>
         </div>
       </div>
     </div>

@@ -33,7 +33,7 @@ export function MoreSceneControls({
   return (
     <>
       <section>
-        <h3 className="mb-2.5 font-display text-[13px] italic leading-none text-foreground/95">
+        <h3 className="mb-2.5 text-[10.5px] font-medium uppercase tracking-[0.16em] text-foreground/80">
           Render quality
         </h3>
         <div className="grid grid-cols-2 gap-1.5">
@@ -71,7 +71,7 @@ export function MoreSceneControls({
       </section>
 
       <section className="space-y-2.5">
-        <h3 className="font-display text-[13px] italic leading-none text-foreground/95">
+        <h3 className="text-[10.5px] font-medium uppercase tracking-[0.16em] text-foreground/80">
           Scene buckets
         </h3>
         <div className="space-y-2">
@@ -122,7 +122,7 @@ export function MoreSceneControls({
       </section>
 
       <section className="space-y-2.5">
-        <h3 className="font-display text-[13px] italic leading-none text-foreground/95">Camera</h3>
+        <h3 className="text-[10.5px] font-medium uppercase tracking-[0.16em] text-foreground/80">Camera</h3>
         <div className="flex items-center justify-between gap-3 rounded-2xl border border-border/60 bg-muted/30 px-4 py-3">
           <Label htmlFor="auto-rotate" className="cursor-pointer text-sm text-foreground">
             Auto-rotate

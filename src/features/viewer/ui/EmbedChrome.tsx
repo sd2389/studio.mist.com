@@ -48,12 +48,12 @@ export function EmbedChrome({
   }, []);
 
   return (
-    <div className="pointer-events-auto absolute left-0 right-0 top-0 z-20 flex h-12 items-center justify-between gap-2 border-b border-border bg-card px-3">
+    <div className="pointer-events-auto absolute left-0 right-0 top-0 z-20 flex h-12 items-center justify-between gap-2 border-b border-black/10 bg-[#F4F2EE] px-3 text-[#212121]">
       <div className="min-w-0">
         {title ? (
-          <p className="truncate text-sm font-medium text-foreground">{title}</p>
+          <p className="truncate text-sm font-medium text-black">{title}</p>
         ) : (
-          <p className="truncate text-sm font-medium text-muted-foreground">DevJewels Studio</p>
+          <p className="truncate text-sm font-medium text-black/45">DevJewels Studio</p>
         )}
       </div>
       <div className="flex shrink-0 items-center gap-1">
@@ -61,7 +61,7 @@ export function EmbedChrome({
           type="button"
           variant="ghost"
           size="icon-sm"
-          className="text-muted-foreground hover:text-foreground"
+          className="text-black/45 hover:bg-black/[0.04] hover:text-black"
           onClick={() => void toggleFs()}
           aria-label={fs ? "Exit fullscreen" : "Enter fullscreen"}
         >
@@ -73,7 +73,7 @@ export function EmbedChrome({
             aria-label="Open full studio"
             className={cn(
               buttonVariants({ variant: "ghost", size: "icon-sm" }),
-              "text-muted-foreground hover:text-foreground",
+              "text-black/45 hover:bg-black/[0.04] hover:text-black",
             )}
           >
             <Sparkles className="size-4" />

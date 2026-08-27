@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 import { inspectModelFromFile } from "@/lib/convert/to-glb";
 import type { LoadedModel } from "@/lib/convert/types";
+import { viewerIdFromModelKey } from "@/lib/model-key";
 import {
   buildModelConfigFromSlots,
   getDefaultSceneSettings,
@@ -235,9 +236,9 @@ export function useUploadModelFlow() {
         },
       });
       setSaveProgress(100);
-      setSaveMessage("Opening editor…");
+      setSaveMessage("Opening studio…");
       logClientEvent("upload.save.done", { sceneId: result.sceneId, sku: trimmedSku });
-      router.push(`/model/${result.sceneId}`);
+      router.push(`/viewer/${encodeURIComponent(viewerIdFromModelKey(result.modelKey))}`);
     } catch (err) {
       captureClientException(err, { stage: "upload.save", sku: trimmedSku });
       const message = err instanceof Error ? err.message : "Save failed";

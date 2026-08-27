@@ -1,26 +1,20 @@
 "use client";
 
 import { useGLTF } from "@react-three/drei";
-import { motion } from "framer-motion";
-import { SlidersHorizontal } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { modelExtFromUrl } from "@/lib/model-key";
+import { modelExtFromUrl, viewerIdFromModelKey } from "@/lib/model-key";
 import { AiVisualsModal } from "@/components/modals/AiVisualsModal";
 import { ExportModal } from "@/components/modals/ExportModal";
 import { HiResExportModal } from "@/components/modals/HiResExportModal";
 import { Video360Modal } from "@/components/modals/Video360Modal";
-import { Button } from "@/components/ui/button";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
 import { ViewerCanvas } from "./ViewerCanvas";
 import { EmbedChrome } from "./EmbedChrome";
+import { StudioPrimaryBar } from "./StudioPrimaryBar";
 import { StudioSidebar } from "./StudioSidebar";
 import { StudioTopBar } from "./StudioTopBar";
 import { ZoomControls } from "./ZoomControls";
+import { useStudioPrimaryPanel } from "./useStudioPrimaryPanel";
+import { cn } from "@/lib/utils";
 import type { EmbedSettings } from "@/lib/embed-settings";
 import { resolveModelUrl } from "@/lib/model-url";
 import { getSceneByViewerId, updateSceneByViewerId } from "@/features/scene";
@@ -80,12 +74,12 @@ export function ViewerShell({
   const [sceneLoaded, setSceneLoaded] = useState(false);
   const applyingPersistedState = useRef(false);
   const persistTimer = useRef<number | null>(null);
+  const { panel, setPanel } = useStudioPrimaryPanel("metal");
 
   const [aiOpen, setAiOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [hiResOpen, setHiResOpen] = useState(false);
   const [video360Open, setVideo360Open] = useState(false);
-  const [mobileControlsOpen, setMobileControlsOpen] = useState(false);
 
   useEffect(() => {
     const ext = modelExtFromUrl(modelUrl);
@@ -227,6 +221,18 @@ export function ViewerShell({
     }, 350);
   }, [modelId, persistPayload, sceneLoaded]);
 
+  const sidebarProps = {
+    modelId,
+    sku: sceneSku,
+    modelConfig,
+    panel,
+    onPanelChange: setPanel,
+    onOpenAi: () => setAiOpen(true),
+    onOpenExport: () => setExportOpen(true),
+    onOpenHiResExport: () => setHiResOpen(true),
+    onOpenVideo360: () => setVideo360Open(true),
+  };
+
   if (variant === "embed") {
     const embedAutoRotate = embedSettings?.autoRotate ?? autoRotate;
     const showChrome = embedSettings?.showChrome ?? true;
@@ -234,12 +240,14 @@ export function ViewerShell({
     const chromeOffset = showChrome ? "top-12" : "top-0";
 
     return (
-      <div className="relative h-[100dvh] w-full overflow-hidden bg-white">
+      <div className="studio-stage relative h-[100dvh] w-full overflow-hidden bg-[#F4F2EE]">
         {showChrome ? (
           <EmbedChrome
             modelId={modelId}
             editorHref={
-              initialScene?.id ? `/model/${initialScene.id}` : undefined
+              initialScene?.model_key
+                ? `/viewer/${encodeURIComponent(viewerIdFromModelKey(initialScene.model_key))}`
+                : undefined
             }
             displayName={displayName}
             brandingText={embedSettings?.brandingText}
@@ -256,7 +264,7 @@ export function ViewerShell({
             modelConfig={modelConfig}
             sceneSettings={resolvedSceneSettings}
           />
-          {showZoomControls ? <ZoomControls /> : null}
+          {showZoomControls ? <ZoomControls variant="embed" /> : null}
         </div>
       </div>
     );
@@ -264,27 +272,26 @@ export function ViewerShell({
 
   return (
     <>
-      <div className="relative h-[100dvh] overflow-hidden bg-[#eaeff5] text-foreground">
-        <aside className="glass-panel absolute bottom-20 left-24 top-[94px] z-40 hidden w-[340px] overflow-hidden rounded-[1.75rem] lg:flex">
-          <StudioSidebar
-            modelId={modelId}
-            sku={sceneSku}
-            modelConfig={modelConfig}
-            onOpenAi={() => setAiOpen(true)}
-            onOpenExport={() => setExportOpen(true)}
-            onOpenHiResExport={() => setHiResOpen(true)}
-            onOpenVideo360={() => setVideo360Open(true)}
-          />
+      <div className="studio-stage flex h-[100dvh] flex-col overflow-hidden bg-[#F4F2EE] text-[#212121] md:flex-row">
+        <aside
+          className={cn(
+            "flex min-h-0 flex-col border-black/10 bg-[#F4F2EE]",
+            "order-2 max-h-[50vh] border-t",
+            "md:order-1 md:h-full md:max-h-none md:w-[280px] md:shrink-0 md:border-r md:border-t-0",
+            panel === null && "hidden md:flex",
+          )}
+        >
+          <div className="flex shrink-0 justify-center pb-1 pt-2 md:hidden">
+            <div className="h-1 w-10 rounded-full bg-black/15" aria-hidden />
+          </div>
+          <StudioSidebar chrome="responsive" className="min-h-0 flex-1" {...sidebarProps} />
         </aside>
 
-        <div className="absolute inset-0 flex min-h-0 min-w-0 flex-col bg-studio-canvas">
-          <StudioTopBar modelId={modelId} sku={sceneSku} />
-          <motion.div
-            className="relative min-h-0 flex-1"
-            initial={{ opacity: 0.88, scale: 0.995 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-          >
+        <div className="order-1 flex min-h-0 min-w-0 flex-1 flex-col md:order-2">
+          <div className="h-[52px] shrink-0">
+            <StudioTopBar modelId={modelId} sku={sceneSku} />
+          </div>
+          <div className="relative min-h-0 flex-1 bg-studio-canvas">
             <ViewerCanvas
               modelUrl={modelUrl}
               preset={preset}
@@ -294,68 +301,16 @@ export function ViewerShell({
               sceneSettings={resolvedSceneSettings}
             />
             <ZoomControls />
-            <p className="pointer-events-none absolute bottom-6 left-24 hidden text-[8px] uppercase tracking-[0.16em] text-black/45 lg:block">
-              ● Real-time &nbsp;&nbsp; Perspective / 50mm &nbsp;&nbsp; Quality /
-              High
-            </p>
-            <p className="pointer-events-none absolute right-7 top-24 hidden text-[8px] uppercase tracking-[0.2em] text-black/35 [writing-mode:vertical-rl] lg:block">
-              Object / {modelId} / DevJewels
-            </p>
-          </motion.div>
+          </div>
         </div>
-        <Button
-          type="button"
-          onClick={() => setExportOpen(true)}
-          className="absolute bottom-7 right-7 z-50 hidden size-28 rounded-full bg-[#212121] text-[9px] font-semibold uppercase tracking-[0.12em] text-white hover:bg-black lg:grid"
-        >
-          Export ↗
-        </Button>
+
+        <StudioPrimaryBar
+          active={panel}
+          onChange={setPanel}
+          collapsible
+          className="order-3 border-t border-black/10 md:hidden"
+        />
       </div>
-
-      <Button
-        type="button"
-        size="lg"
-        className="fixed bottom-5 left-4 z-50 gap-2 rounded-full border border-black/10 bg-[#212121] text-white shadow-2xl lg:hidden"
-        onClick={() => setMobileControlsOpen(true)}
-      >
-        <SlidersHorizontal className="size-4" aria-hidden />
-        Controls
-      </Button>
-
-      <Sheet open={mobileControlsOpen} onOpenChange={setMobileControlsOpen}>
-        <SheetContent
-          side="bottom"
-          className="h-[min(85dvh,640px)] rounded-t-[2rem] border-black/10 bg-[#eaeff5] p-0 text-black sm:h-[min(80dvh,720px)]"
-        >
-          <SheetHeader className="border-b border-border px-4 py-3 text-left">
-            <SheetTitle className="text-base font-semibold text-foreground">
-              Studio controls
-            </SheetTitle>
-          </SheetHeader>
-          <StudioSidebar
-            className="max-h-[calc(min(85dvh,640px)-56px)] sm:max-h-[calc(min(80dvh,720px)-56px)]"
-            modelId={modelId}
-            sku={sceneSku}
-            modelConfig={modelConfig}
-            onOpenAi={() => {
-              setMobileControlsOpen(false);
-              setAiOpen(true);
-            }}
-            onOpenExport={() => {
-              setMobileControlsOpen(false);
-              setExportOpen(true);
-            }}
-            onOpenHiResExport={() => {
-              setMobileControlsOpen(false);
-              setHiResOpen(true);
-            }}
-            onOpenVideo360={() => {
-              setMobileControlsOpen(false);
-              setVideo360Open(true);
-            }}
-          />
-        </SheetContent>
-      </Sheet>
 
       <AiVisualsModal
         open={aiOpen}

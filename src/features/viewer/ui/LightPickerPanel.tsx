@@ -15,7 +15,7 @@ export function LightPickerPanel({ className }: LightPickerPanelProps) {
   return (
     <div className={cn("flex min-h-0 flex-1 flex-col overflow-y-auto px-5 pb-5 pt-4", className)}>
       <section>
-        <h3 className="mb-2.5 font-display text-[13px] italic leading-none text-foreground/95">
+        <h3 className="mb-2.5 text-[10.5px] font-medium uppercase tracking-[0.16em] text-foreground/80">
           Lighting
         </h3>
         <div className="grid grid-cols-3 gap-1.5">

@@ -2,7 +2,7 @@ import type { Scene } from "@/features/scene";
 import { viewerIdFromModelKey } from "@/lib/model-key";
 
 export function viewerHref(scene: Scene) {
-  return `/model/${scene.id}`;
+  return `/viewer/${encodeURIComponent(viewerIdFromModelKey(scene.model_key))}`;
 }
 
 export function embedHref(scene: Scene) {

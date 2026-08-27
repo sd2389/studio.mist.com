@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
 import { fetchSceneByViewerIdServer } from "@/lib/api/server-fetch";
 import { ViewerShell } from "@/features/viewer";
 
@@ -18,10 +17,6 @@ export async function generateMetadata({ params }: ViewerPageProps): Promise<Met
 export default async function ViewerPage({ params }: ViewerPageProps) {
   const { id } = await params;
   const initialScene = await fetchSceneByViewerIdServer(id).catch(() => null);
-
-  if (initialScene?.id) {
-    redirect(`/model/${initialScene.id}`);
-  }
 
   return <ViewerShell modelId={id} variant="studio" initialScene={initialScene} />;
 }

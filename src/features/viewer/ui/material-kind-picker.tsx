@@ -62,14 +62,14 @@ export function MaterialKindPicker({
 
   return (
     <div className={cn("flex min-h-0 flex-1 flex-col gap-0 overflow-hidden", className)}>
-      <div className="space-y-3 px-5 pt-4">
+      <div className="space-y-3 px-4 pt-3">
         {kindSlotIds.length > 0 ? (
-          <div className="rounded-2xl border border-border/60 bg-card/60 p-3">
+          <div className="rounded-md border border-black/10 bg-white/40 p-2.5">
             <div className="mb-2 flex items-baseline justify-between gap-2">
-              <h4 className="font-display text-[12px] italic leading-none text-foreground/95">
+              <h4 className="text-[10px] font-medium uppercase tracking-[0.16em] text-black/70">
                 {kind === "gem" ? "Gem slots" : "Metal slots"}
               </h4>
-              <span className="text-[9px] font-medium uppercase tracking-[0.18em] text-muted-foreground/80">
+              <span className="text-[9px] font-medium uppercase tracking-[0.18em] text-black/35">
                 Target
               </span>
             </div>
@@ -82,9 +82,12 @@ export function MaterialKindPicker({
             />
           </div>
         ) : null}
+        <p className="text-[10px] font-medium uppercase tracking-[0.16em] text-black/40">
+          Catalog
+        </p>
       </div>
 
-      <div className="mt-4 flex-1 overflow-y-auto px-5 pb-5">
+      <div className="mt-1 flex-1 overflow-y-auto px-4 pb-4">
         <div className="space-y-5">
           {groups.map((group, gi) => (
             <motion.section
@@ -94,17 +97,17 @@ export function MaterialKindPicker({
               transition={{ delay: gi * 0.025, duration: 0.25 }}
               aria-label={group.title}
             >
-              <div className="mb-2.5 flex items-baseline justify-between gap-2">
-                <h3 className="font-display text-[13px] italic leading-none text-foreground/95">
+              <div className="mb-2 flex items-baseline justify-between gap-2">
+                <h3 className="text-[10.5px] font-medium uppercase tracking-[0.16em] text-black/70">
                   {group.title}
                 </h3>
                 {group.tagline ? (
-                  <span className="text-[9px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                  <span className="text-[9px] font-medium uppercase tracking-[0.16em] text-black/35">
                     {group.tagline}
                   </span>
                 ) : null}
               </div>
-              <div className="grid grid-cols-3 gap-1.5">
+              <div className="grid grid-cols-4 gap-1 sm:grid-cols-5">
                 {group.items.map((item) => {
                   const selected =
                     selectedPresetForActiveSlot === item.id ||
@@ -116,6 +119,7 @@ export function MaterialKindPicker({
                       label={item.label}
                       selected={selected}
                       onClick={() => applyPreset(item.id)}
+                      variant="paper"
                     />
                   );
                 })}

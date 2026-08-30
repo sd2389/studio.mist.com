@@ -1,0 +1,10 @@
+# Default owner
+* @sd2389
+
+# Security- and deployment-sensitive areas
+/.github/ @sd2389
+/backend/ @sd2389
+/scripts/render-worker/ @sd2389
+/Dockerfile @sd2389
+/docker-compose.yml @sd2389
+/.env.example @sd2389

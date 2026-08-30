@@ -1,4 +1,4 @@
-# DevJewels Studio
+# Mist Studio
 
 Browser-based jewelry rendering studio. CAD upload → photoreal renders → 360 video → embed.
 
@@ -133,7 +133,7 @@ set in the backend — see `docker-compose.override.yml` below) and
 #        environment:
 #          RENDER_WORKER_TOKEN: smoketoken
 
-# 2. Seed a smoke job (creates or reuses smoke@devjewels.test with 5 render credits):
+# 2. Seed a smoke job (creates or reuses smoke@Mist.test with 5 render credits):
 docker compose exec backend python -m scripts.seed_smoke_job
 
 # 3. Run the worker (one job then exit):

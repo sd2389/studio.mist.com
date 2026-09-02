@@ -1,7 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { fetchMe } from "@/lib/auth/client";
+import { isAuthRequiredError } from "@/lib/auth/is-auth-required-error";
 import { inspectModelFromFile } from "@/lib/convert/to-glb";
 import type { LoadedModel } from "@/lib/convert/types";
 import { viewerIdFromModelKey } from "@/lib/model-key";
@@ -87,6 +89,10 @@ export function useUploadModelFlow() {
   const [saveProgress, setSaveProgress] = useState(0);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [decimated, setDecimated] = useState(false);
+  const [authDialogOpen, setAuthDialogOpen] = useState(false);
+  const pendingSaveAfterAuthRef = useRef(false);
+  /** Serializes Save: acquired before fetchMe, held through auth dialog / persist. */
+  const saveFlowActiveRef = useRef(false);
 
   const hiddenSlots = useMemo(
     () => new Set(layers.filter((layer) => !layer.visible).map((layer) => layer.slotId)),
@@ -106,6 +112,9 @@ export function useUploadModelFlow() {
     setSaveProgress(0);
     setSaveMessage(null);
     setDecimated(false);
+    setAuthDialogOpen(false);
+    pendingSaveAfterAuthRef.current = false;
+    saveFlowActiveRef.current = false;
   }, []);
 
   const ingestFile = useCallback(async (file: File) => {
@@ -198,18 +207,19 @@ export function useUploadModelFlow() {
     setDecimated(true);
   }, [parsed]);
 
-  const handleSave = useCallback(async () => {
+  const requestSignInForSave = useCallback(() => {
+    pendingSaveAfterAuthRef.current = true;
+    setAuthDialogOpen(true);
+    setPhase("ready");
+    setSaveMessage(null);
+    setSaveProgress(0);
+    setError(null);
+  }, []);
+
+  const persistReadyModel = useCallback(async () => {
     if (!parsed) return;
     const trimmedName = metadata.name.trim();
     const trimmedSku = metadata.sku.trim();
-    if (!trimmedName) {
-      setError("Name is required.");
-      return;
-    }
-    if (!trimmedSku) {
-      setSkuError("SKU is required.");
-      return;
-    }
 
     setPhase("saving");
     setError(null);
@@ -240,6 +250,10 @@ export function useUploadModelFlow() {
       logClientEvent("upload.save.done", { sceneId: result.sceneId, sku: trimmedSku });
       router.push(`/viewer/${encodeURIComponent(viewerIdFromModelKey(result.modelKey))}`);
     } catch (err) {
+      if (isAuthRequiredError(err)) {
+        requestSignInForSave();
+        return;
+      }
       captureClientException(err, { stage: "upload.save", sku: trimmedSku });
       const message = err instanceof Error ? err.message : "Save failed";
       if (/sku/i.test(message) && /exist/i.test(message)) setSkuError(message);
@@ -248,7 +262,63 @@ export function useUploadModelFlow() {
       setSaveMessage(null);
       setSaveProgress(0);
     }
-  }, [layers, metadata, parsed, router]);
+  }, [layers, metadata, parsed, requestSignInForSave, router]);
+
+  const handleSave = useCallback(async () => {
+    if (!parsed) return;
+    const trimmedName = metadata.name.trim();
+    const trimmedSku = metadata.sku.trim();
+    if (!trimmedName) {
+      setError("Name is required.");
+      return;
+    }
+    if (!trimmedSku) {
+      setSkuError("SKU is required.");
+      return;
+    }
+    if (saveFlowActiveRef.current) return;
+    saveFlowActiveRef.current = true;
+
+    try {
+      await fetchMe();
+    } catch (err) {
+      if (isAuthRequiredError(err)) {
+        requestSignInForSave();
+        return;
+      }
+      saveFlowActiveRef.current = false;
+      setError(err instanceof Error ? err.message : "Could not verify session");
+      return;
+    }
+
+    try {
+      await persistReadyModel();
+    } finally {
+      if (!pendingSaveAfterAuthRef.current) {
+        saveFlowActiveRef.current = false;
+      }
+    }
+  }, [metadata.name, metadata.sku, parsed, persistReadyModel, requestSignInForSave]);
+
+  const handleAuthDialogOpenChange = useCallback((open: boolean) => {
+    setAuthDialogOpen(open);
+    if (!open) {
+      pendingSaveAfterAuthRef.current = false;
+      saveFlowActiveRef.current = false;
+    }
+  }, []);
+
+  const handleAuthSuccess = useCallback(() => {
+    setAuthDialogOpen(false);
+    const shouldRetry = pendingSaveAfterAuthRef.current;
+    pendingSaveAfterAuthRef.current = false;
+    if (!shouldRetry) return;
+    void persistReadyModel().finally(() => {
+      if (!pendingSaveAfterAuthRef.current) {
+        saveFlowActiveRef.current = false;
+      }
+    });
+  }, [persistReadyModel]);
 
   return {
     phase,
@@ -260,6 +330,7 @@ export function useUploadModelFlow() {
     skuError,
     saveProgress,
     saveMessage,
+    authDialogOpen,
     hiddenSlots,
     slotIds,
     showPolyWarning,
@@ -271,5 +342,7 @@ export function useUploadModelFlow() {
     handleToggleVisibility,
     handleDecimate,
     handleSave,
+    handleAuthDialogOpenChange,
+    handleAuthSuccess,
   };
 }

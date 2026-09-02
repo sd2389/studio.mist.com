@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -163,9 +163,12 @@ export function ProfileShell({ initialUser, initialBilling }: ProfileShellProps)
                     Manage billing
                   </Button>
                 ) : null}
-                <Button variant="outline" asChild>
-                  <Link href="/pricing">View all plans</Link>
-                </Button>
+                <Link
+                  href="/pricing"
+                  className={buttonVariants({ variant: "outline" })}
+                >
+                  View all plans
+                </Link>
               </div>
             </CardContent>
           </Card>

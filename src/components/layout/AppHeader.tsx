@@ -3,7 +3,7 @@
 import { LogOut, User } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -65,29 +65,29 @@ export function AppHeader({ userEmail, showAdminLink }: AppHeaderProps) {
           </FeatureGate>
 
           <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-2 rounded-full border-black/10 bg-[#eaeff5]/70 px-4 shadow-none"
-              >
-                <User className="size-4" />
-                <span className="hidden max-w-[140px] truncate sm:inline">
-                  {userEmail ?? "Account"}
-                </span>
-              </Button>
+            {/* base-ui Trigger renders a <button>; asChild is not supported */}
+            <DropdownMenuTrigger
+              className={cn(
+                buttonVariants({ variant: "outline", size: "sm" }),
+                "gap-2 rounded-full border-black/10 bg-[#eaeff5]/70 px-4 shadow-none",
+              )}
+            >
+              <User className="size-4" />
+              <span className="hidden max-w-[140px] truncate sm:inline">
+                {userEmail ?? "Account"}
+              </span>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuItem asChild>
-                <Link href="/profile">Profile</Link>
+              <DropdownMenuItem onClick={() => router.push("/profile")}>
+                Profile
               </DropdownMenuItem>
               {showAdminLink ? (
-                <DropdownMenuItem asChild>
-                  <Link href="/admin">Admin console</Link>
+                <DropdownMenuItem onClick={() => router.push("/admin")}>
+                  Admin console
                 </DropdownMenuItem>
               ) : null}
-              <DropdownMenuItem asChild>
-                <Link href="/contact">Contact us</Link>
+              <DropdownMenuItem onClick={() => router.push("/contact")}>
+                Contact us
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem

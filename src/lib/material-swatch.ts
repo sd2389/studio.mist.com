@@ -1,6 +1,9 @@
 import { isCatalogMaterialRef, parseCatalogMaterialSlug } from "@/lib/catalog/catalog-material-ref";
 import { GEM_CONFIGS, isGemPresetId } from "@/lib/gem-gpu/gem-configs";
-import type { SlotMaterialRef } from "@/lib/library/custom-material-ref";
+import {
+  isCustomMaterialRef,
+  type SlotMaterialRef,
+} from "@/lib/library/custom-material-ref";
 import { useCatalogParamsStore } from "@/stores/catalog-params-store";
 import type { MaterialPresetId } from "@/stores/material-preset-store";
 
@@ -68,6 +71,7 @@ export function getPresetSwatchColor(id: MaterialPresetId | SlotMaterialRef): st
     return "#9CA3AF";
   }
   if (isGemPresetId(id) && GEM_CONFIGS[id]) return GEM_CONFIGS[id].baseColor;
+  if (isCustomMaterialRef(id)) return "#9CA3AF";
   return METAL_HEX[id] ?? "#9CA3AF";
 }
 

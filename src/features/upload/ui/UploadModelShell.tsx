@@ -52,7 +52,7 @@ export function UploadModelShell() {
               href="/dashboard"
               className="inline-flex text-[9px] uppercase tracking-[0.14em] text-black/45 transition-colors hover:text-black"
             >
-              DevJewels Studio
+              MIST Studio
             </Link>
             <h1 className="mt-3 text-[clamp(3rem,6vw,6rem)] font-light leading-[0.78] tracking-[-0.075em] text-black">
               Drop your <strong className="font-semibold">CAD.</strong>

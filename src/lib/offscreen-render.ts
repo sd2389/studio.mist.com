@@ -62,7 +62,7 @@ export async function renderAtResolution(opts: RenderOpts): Promise<Blob> {
     height,
     transparent = false,
     pixelRatio = 1,
-    exposure = gl.toneMappingExposure || 1,
+    exposure = gl.toneMappingExposure ?? 1,
     postfxConfig = DEFAULT_VIEWER_POSTFX,
     format = "png",
     jpegQuality = 0.92,
@@ -82,42 +82,29 @@ export async function renderAtResolution(opts: RenderOpts): Promise<Blob> {
   renderer.setSize(width, height, false);
   applyViewerColorManagement(renderer, exposure);
 
-  let prevAspect: number | null = null;
-  if (camera instanceof THREE.PerspectiveCamera) {
-    prevAspect = camera.aspect;
-    camera.aspect = width / height;
-    camera.updateProjectionMatrix();
+  // Export owns its camera and scene container. The live viewport can keep
+  // rendering while PNG/JPEG encoding is asynchronous.
+  const exportScene = scene.clone(true);
+  const exportCamera = camera.clone();
+  if (exportCamera instanceof THREE.PerspectiveCamera) {
+    exportCamera.aspect = width / height;
+    exportCamera.updateProjectionMatrix();
   }
-
-  const prevBg = scene.background;
   if (transparent) {
     renderer.setClearColor(0x000000, 0);
-    scene.background = null;
+    exportScene.background = null;
   }
 
-  const { composer, dispose } = createViewerPostFXComposer(
-    renderer,
-    scene,
-    camera,
-    width,
-    height,
-    postfxConfig,
-    exposure,
-  );
-
+  let disposePipeline: (() => void) | undefined;
   try {
+    const { composer, dispose } = createViewerPostFXComposer(
+      renderer, exportScene, exportCamera, width, height, postfxConfig, exposure,
+    );
+    disposePipeline = dispose;
     renderWithPostFX(composer);
-    const blob = await toBlob(canvas, mimeType, blobQuality);
-    return blob;
+    return await toBlob(canvas, mimeType, blobQuality);
   } finally {
-    dispose();
-    if (transparent) {
-      scene.background = prevBg;
-    }
-    if (prevAspect !== null && camera instanceof THREE.PerspectiveCamera) {
-      camera.aspect = prevAspect;
-      camera.updateProjectionMatrix();
-    }
+    disposePipeline?.();
     renderer.dispose();
   }
 }

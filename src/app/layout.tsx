@@ -21,7 +21,7 @@ const fraunces = Fraunces({
 });
 
 export const metadata: Metadata = {
-  title: "DevJewels Studio · Jewelry renderer",
+  title: "MIST Studio · Jewelry renderer",
   description: "CAD to campaign — luxury 3D jewelry renders, AI backgrounds, and embeds",
 };
 

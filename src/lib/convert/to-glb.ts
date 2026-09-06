@@ -4,6 +4,7 @@ import { glbFilenameFrom, loadModelFromFile } from "./load-model";
 import { simplifyMaterialsForExport } from "./simplify-for-export";
 import { fitModelToUnit, stampSlotMetadata } from "./stamp-slots";
 import { generateModelThumbnail } from "./thumbnail";
+import { cloneOwnedModel } from "./clone-owned-model";
 import type { ConvertToGlbOptions, ConvertToGlbResult, LoadedModel } from "./types";
 
 const COMPRESS_MAX_BYTES = 12 * 1024 * 1024;
@@ -64,12 +65,16 @@ export async function convertUploadToGlb(
 
   const thumbnail = generateThumbnail ? await generateModelThumbnail(loaded.root) : null;
 
-  const exportRoot = loaded.root.clone(true);
+  const exportRoot = cloneOwnedModel(loaded.root);
   stampSlotMetadata(exportRoot, { slotTokens, materialProps });
   simplifyMaterialsForExport(exportRoot);
 
-  let glbBuffer = await exportSceneToGlb(exportRoot);
-  disposeObject3D(exportRoot);
+  let glbBuffer: ArrayBuffer;
+  try {
+    glbBuffer = await exportSceneToGlb(exportRoot);
+  } finally {
+    disposeObject3D(exportRoot);
+  }
 
   if (
     compress &&

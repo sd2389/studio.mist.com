@@ -1,9 +1,9 @@
-# Mist Studio
+# MIST Studio
 
 Browser-based jewelry rendering studio. CAD upload → photoreal renders → 360 video → embed.
 
 ## Stack
-- Next.js 16 (App Router) + React 19, Three.js r184 (R3F + drei + postprocessing)
+- Next.js 16 (App Router) + React 19, Three.js r184 (R3F + drei + TSL RenderPipeline; WebGPU first with WebGL2 fallback)
 - Zustand + Tailwind v4 + shadcn
 - FastAPI + SQLAlchemy + **PostgreSQL 16** (Alembic migrations)
 - Mediabunny for MP4 muxing
@@ -30,7 +30,9 @@ That's it. 3 containers come up in order:
 
 Open http://localhost:3000.
 
-Total memory: ~200 MB across all 3 containers (vs ~1–2 GB for `npm run dev` on the host).
+The bundled solitaire at `/viewer/mist-solitaire` is available without signing in. Create an account to upload and save your own CAD designs. GPU memory use depends on the model and selected preview quality.
+
+If port 5433 is already in use, set `STUDIO_POSTGRES_PORT` to an unused port before starting Compose. The backend uses the internal database service and is unaffected by this host port.
 
 ### Common commands
 ```bash
@@ -196,3 +198,20 @@ install.  Point `RENDER_API_URL` at the production backend and set
 | `PUBLIC_API_BASE` | backend | `http://localhost:8765` | Absolute base for `result_url` in AI BG responses |
 | `CORS_ORIGINS` | backend | `localhost:3000,127.0.0.1:3000` | Comma-separated CORS allowlist |
 | `RENDER_WORKER_TOKEN` | backend | — | Shared secret for render worker auth (`POST /render-jobs/claim`) |
+
+
+## Release checks
+
+```bash
+npm ci
+npm run lint
+npm run check:boundaries
+npm test
+npm run build
+```
+
+For backend integration tests, install `backend/requirements-dev.txt` in a virtual environment and run `python -m pytest` from `backend/`. Clean PostgreSQL setup uses `alembic upgrade head` (also run by the backend container).
+
+Private CAD models and renders load through an authenticated app route. Set backend `APP_PUBLIC_URL` to the browser-facing app origin, including its port during local development. Published SKU models retain public embed URLs.
+
+The homepage and bundled demo need no AI or billing credentials. Paid checkout, email delivery, and AI providers require their corresponding environment settings; local Compose uses the AI stub.

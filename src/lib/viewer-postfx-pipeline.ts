@@ -87,6 +87,11 @@ export function createViewerPostFXComposer(
 ): ViewerPostFXHandle {
   applyViewerColorManagement(renderer, exposure);
 
+  if (config.enabled === false) {
+    const composer = { render: () => renderer.render(scene, camera), dispose: () => {} };
+    return { composer, dispose: composer.dispose };
+  }
+
   const pipeline = new RenderPipeline(renderer);
   pipeline.outputColorTransform = false;
   pipeline.outputNode = buildOutputNode(scene, camera, config);

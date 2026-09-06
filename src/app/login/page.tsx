@@ -3,7 +3,7 @@ import { Suspense } from "react";
 import { LoginForm } from "@/features/auth";
 
 export const metadata: Metadata = {
-  title: "Sign in · DevJewels Studio",
+  title: "Sign in · MIST Studio",
 };
 
 export default function LoginPage() {

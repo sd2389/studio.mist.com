@@ -3,14 +3,14 @@ import Link from "next/link";
 import { LegalPageShell } from "@/components/legal/LegalPageShell";
 
 export const metadata: Metadata = {
-  title: "Refund Policy · DevJewels Studio",
+  title: "Refund Policy · MIST Studio",
 };
 
 export default function RefundPage() {
   return (
     <LegalPageShell title="Refund Policy" updated="June 6, 2026">
       <p>
-        We want you to be satisfied with DevJewels Studio. This Refund Policy explains how
+        We want you to be satisfied with MIST Studio. This Refund Policy explains how
         subscription and top-up purchases are handled.
       </p>
       <h2>Subscriptions</h2>

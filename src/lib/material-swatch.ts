@@ -68,7 +68,7 @@ export function getPresetSwatchColor(id: MaterialPresetId | SlotMaterialRef): st
     return "#9CA3AF";
   }
   if (isGemPresetId(id) && GEM_CONFIGS[id]) return GEM_CONFIGS[id].baseColor;
-  return METAL_HEX[id] ?? "#9CA3AF";
+  return (METAL_HEX as Partial<Record<string, string>>)[id] ?? "#9CA3AF";
 }
 
 /** Whether the preset is transmissive (gem-shaped chip) or opaque (metal-shaped chip). */

@@ -34,13 +34,13 @@ export function DashboardSceneSettingsDialog({
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    if (scene) {
-      setMetadata(metadataFromScene(scene));
-      setSkuError(null);
-      setStatus(null);
-    }
-  }, [scene]);
+  const [previousScene, setPreviousScene] = useState<Scene | null>(null);
+  if (previousScene !== scene) {
+    setPreviousScene(scene);
+    setMetadata(scene ? metadataFromScene(scene) : null);
+    setSkuError(null);
+    setStatus(null);
+  }
 
   async function handleUpdate() {
     if (!scene || !metadata) return;

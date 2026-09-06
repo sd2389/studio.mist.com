@@ -27,6 +27,7 @@ export async function captureAll(outDir) {
       await page.goto(url, { waitUntil: "domcontentloaded" });
       await page.waitForFunction(
         () => window.__HARNESS_STATE__ === "ready" || String(window.__HARNESS_STATE__).startsWith("error"),
+        undefined,
         { timeout: 120_000 },
       );
       const state = await page.evaluate(() => window.__HARNESS_STATE__);

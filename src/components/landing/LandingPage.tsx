@@ -1,266 +1,49 @@
-import {
-  ArrowDown,
-  ArrowDownRight,
-  ArrowUpRight,
-  Menu,
-  Sparkles,
-} from "lucide-react";
-import Image from "next/image";
-import Link from "next/link";
+import { ArrowUpRight, Box, ImageIcon, MonitorSmartphone, Sun, Video } from 'lucide-react';
+import Image from 'next/image';
+import Link from 'next/link';
+import { LandingExperience } from './LandingExperience';
+import './landing.css';
 
-const capabilities = [
-  {
-    number: "01",
-    title: "Precious materials",
-    copy: "Gold, platinum, diamonds, and custom finishes calibrated in real time.",
-    href: "/viewer/clearcoat",
-  },
-  {
-    number: "02",
-    title: "Studio lighting",
-    copy: "Direct every reflection with jewelry-specific environments and controls.",
-    href: "/gallery",
-  },
-  {
-    number: "03",
-    title: "Campaign output",
-    copy: "Create stills, motion, embeds, and AI scenes from one approved object.",
-    href: "/signup",
-  },
+const workflow = [
+  ['01', 'Bring your design.', 'Upload a GLB, GLTF, OBJ, STL, or Rhino 3DM model. Keep the creative work you already did.', 'workflow-cad', 'A detailed blue wireframe of a solitaire ring'],
+  ['02', 'Make it yours.', 'Choose metals and gemstones independently. Set the finish, lighting, and camera angle.', 'workflow-materials', 'A yellow gold diamond ring beside sapphire and emerald gemstones'],
+  ['03', 'Show every detail.', 'Create images and turntables, or share an interactive view of your published design.', 'workflow-render', 'A polished platinum diamond solitaire on a dark studio surface'],
 ];
 
 export function LandingPage() {
   return (
-    <div className="min-h-dvh bg-white text-[#212121] selection:bg-[#212121] selection:text-white">
-      <main className="p-2.5 sm:p-4">
-        <section className="ice-panel relative min-h-[760px] overflow-hidden lg:min-h-[calc(100dvh-32px)]">
-          <header className="relative z-30 flex h-[78px] items-center justify-between px-5 sm:px-8 lg:px-12">
-            <Link href="/" className="flex items-center gap-3">
-              <span className="grid size-8 place-items-center rounded-full border border-black/15">
-                <span className="size-2.5 rotate-45 border border-black" />
-              </span>
-              <span className="text-[11px] font-semibold uppercase leading-[0.9] tracking-[-0.025em]">
-                DevJewels
-                <span className="block font-light text-black/45">Studio</span>
-              </span>
-            </Link>
-
-            <nav className="hidden items-center gap-8 text-[10px] md:flex">
-              <Link href="/" className="border-b border-black pb-1">
-                Home
-              </Link>
-              <Link href="/gallery" className="text-black/55 hover:text-black">
-                Gallery
-              </Link>
-              <Link href="/stones" className="text-black/55 hover:text-black">
-                Materials
-              </Link>
-              <Link href="/pricing" className="text-black/55 hover:text-black">
-                Pricing
-              </Link>
-            </nav>
-
-            <div className="flex items-center gap-3">
-              <Link
-                href="/login"
-                className="hidden text-[10px] text-black/65 sm:inline"
-              >
-                Sign in
-              </Link>
-              <Link
-                href="/signup"
-                className="rounded-full bg-[#212121] px-5 py-3 text-[9px] font-semibold uppercase tracking-[0.08em] text-white"
-              >
-                Start creating
-              </Link>
-              <Link
-                href="/gallery"
-                className="grid size-10 place-items-center rounded-full bg-white/45 md:hidden"
-                aria-label="Open jewelry gallery"
-              >
-                <Menu className="size-4" aria-hidden />
-              </Link>
-            </div>
-          </header>
-
-          <div className="absolute inset-x-0 top-[78px] z-20 grid px-5 sm:px-8 lg:grid-cols-12 lg:px-12">
-            <h1 className="max-w-4xl text-[clamp(3rem,5.8vw,6.7rem)] font-light leading-[0.86] tracking-[-0.075em] lg:col-span-8">
-              Jewelry visualization
-              <span className="text-black/20"> technology</span>
-              <span className="block pl-[18%]">
-                for a <strong className="font-semibold">brilliant</strong>
-              </span>
-              <span className="block pl-[48%]">and confident launch.</span>
-            </h1>
-          </div>
-
-          <div className="absolute inset-x-0 bottom-0 top-[180px]">
-            <Image
-              src="/images/devjewels-ice-ring.png"
-              alt="A platinum diamond ring rendered inside DevJewels Studio"
-              fill
-              priority
-              sizes="100vw"
-              className="object-cover object-center mix-blend-multiply"
-            />
-            <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-[#eaeff5]/70" />
-          </div>
-
-          <div className="absolute bottom-8 left-5 z-20 max-w-[245px] sm:left-8 lg:bottom-12 lg:left-12">
-            <p className="text-[10px] leading-4 text-black/55">
-              One browser-based production environment for configuring,
-              lighting, rendering, and publishing fine jewelry.
-            </p>
-            <Link
-              href="/viewer/clearcoat"
-              className="mt-5 inline-flex items-center gap-3 rounded-full bg-[#212121] px-5 py-3 text-[9px] font-semibold uppercase tracking-[0.08em] text-white"
-            >
-              Enter the studio
-              <ArrowDownRight className="size-3.5" aria-hidden />
-            </Link>
-          </div>
-
-          <div className="absolute bottom-8 right-5 z-20 hidden items-end gap-8 sm:flex sm:right-8 lg:bottom-12 lg:right-12">
-            <div>
-              <p className="text-5xl font-light tracking-[-0.07em]">12</p>
-              <p className="text-[8px] uppercase tracking-[0.14em] text-black/45">
-                Output modes
-              </p>
-            </div>
-            <div>
-              <p className="text-5xl font-light tracking-[-0.07em]">04</p>
-              <p className="text-[8px] uppercase tracking-[0.14em] text-black/45">
-                Core workflows
-              </p>
-            </div>
-            <a
-              href="#platform"
-              className="grid size-12 place-items-center rounded-full border border-black/15"
-              aria-label="Discover the platform"
-            >
-              <ArrowDown className="size-4" aria-hidden />
-            </a>
-          </div>
-
-          <div className="absolute left-[49%] top-[57%] z-20 hidden lg:block">
-            <span className="absolute left-0 top-2 h-px w-28 origin-left -rotate-12 bg-white" />
-            <span className="grid size-4 place-items-center rounded-full border border-white bg-white/40">
-              <span className="size-1.5 rounded-full bg-white" />
-            </span>
-            <p className="ml-32 -mt-1 w-36 text-[8px] leading-3 text-black/55">
-              Physically accurate precious-metal response
-            </p>
-          </div>
+    <div className='mist-home'>
+      <a className='mist-skip' href='#workflow'>Skip to the workflow</a>
+      <main>
+        <LandingExperience />
+        <section id='workflow' className='mist-section mist-workflow'>
+          <div className='mist-section-heading'><p className='mist-eyebrow'>The workflow</p><h2>One design.<br /><span>Every possibility.</span></h2><Link className='mist-text-link' href='/upload-model'>Bring your own model <ArrowUpRight size={17} /></Link></div>
+          <div className='mist-steps'>{workflow.map(([number, title, copy, asset, alt]) => (
+            <article key={number}>
+              <div className='mist-step-image'><Image src={`/images/landing/${asset}.webp`} alt={alt} fill sizes='(max-width: 767px) calc(100vw - 48px), (max-width: 1440px) 30vw, 414px' /></div>
+              <div className='mist-step-caption'><span className='mist-step-number'>{number}</span><div><h3>{title}</h3><p>{copy}</p></div></div>
+            </article>
+          ))}</div>
         </section>
-
-        <section
-          id="platform"
-          className="grid gap-8 px-3 py-24 sm:px-6 lg:grid-cols-[0.7fr_1.3fr] lg:px-8 lg:py-36"
-        >
-          <div className="flex items-start gap-4">
-            <p className="text-7xl font-light leading-none tracking-[-0.08em]">
-              01
-            </p>
-            <div className="pt-2 text-2xl font-light leading-[0.9]">
-              The
-              <strong className="block font-semibold">Platform</strong>
-            </div>
+        <section id='materials' className='mist-section mist-materials'>
+          <div className='mist-material-canvas'>
+            <Image src='/images/landing/materials.webp' alt='Yellow gold, platinum, and rose gold rings set with a diamond, sapphire, and emerald' fill sizes='(max-width: 767px) calc(100vw - 48px), (max-width: 1440px) 48vw, 640px' />
           </div>
-          <div>
-            <h2 className="max-w-5xl text-[clamp(2.7rem,5.3vw,5.9rem)] font-light leading-[0.9] tracking-[-0.065em]">
-              A new era of jewelry production — where
-              <strong className="font-semibold"> advanced technology</strong>
-              <span className="text-black/20"> meets natural brilliance.</span>
-            </h2>
-            <p className="ml-auto mt-16 max-w-2xl text-[clamp(1.6rem,3vw,3.4rem)] font-light leading-[0.95] tracking-[-0.05em]">
-              DevJewels unites the precision of real-time 3D with the elegance
-              of campaign-grade presentation.
-            </p>
-          </div>
+          <div className='mist-material-copy'><p className='mist-eyebrow'>Precious by design</p><h2>Every facet.<br /><span>Every finish.</span></h2><p>Yellow gold, platinum, rose gold. Diamonds, sapphires, emeralds. Find the combination that belongs to your design.</p><div className='mist-inline-tags'><span>Separate metal & gem controls</span><span>Polished to brushed finishes</span></div><Link className='mist-text-link' href='/stones'>Explore gemstones <ArrowUpRight size={17} /></Link></div>
         </section>
-
-        <section className="ice-panel overflow-hidden">
-          <div className="grid border-b border-black/10 px-6 py-12 lg:grid-cols-[0.65fr_1.35fr] lg:px-12 lg:py-20">
-            <div className="flex items-start gap-4">
-              <p className="text-7xl font-light leading-none tracking-[-0.08em]">
-                02
-              </p>
-              <p className="pt-2 text-2xl font-light leading-[0.9]">
-                One object
-                <strong className="block font-semibold">Every output</strong>
-              </p>
-            </div>
-            <h2 className="mt-12 max-w-4xl text-[clamp(3rem,6vw,7rem)] font-light leading-[0.84] tracking-[-0.07em] lg:mt-0">
-              More than a renderer —
-              <strong className="font-semibold"> your launch partner.</strong>
-            </h2>
-          </div>
-
-          <div className="grid md:grid-cols-3">
-            {capabilities.map((item) => (
-              <Link
-                key={item.number}
-                href={item.href}
-                className="group min-h-[340px] border-b border-black/10 p-6 transition-colors hover:bg-white/35 md:border-b-0 md:border-r md:last:border-r-0 lg:p-9"
-              >
-                <div className="flex items-start justify-between">
-                  <p className="text-[10px] text-black/45">{item.number}</p>
-                  <ArrowUpRight
-                    className="size-4 text-black/35 transition-transform group-hover:-translate-y-1 group-hover:translate-x-1 group-hover:text-black"
-                    aria-hidden
-                  />
-                </div>
-                <div className="mt-36">
-                  <h3 className="text-3xl font-light tracking-[-0.05em]">
-                    {item.title}
-                  </h3>
-                  <p className="mt-4 max-w-xs text-[11px] leading-5 text-black/55">
-                    {item.copy}
-                  </p>
-                </div>
-              </Link>
-            ))}
-          </div>
+        <section className='mist-light-section'>
+          <Image src='/images/devjewels-ice-ring.png' alt='A diamond ring under soft studio lighting' fill sizes='100vw' className='mist-light-image' />
+          <div className='mist-light-shade' />
+          <div className='mist-light-copy'><p className='mist-eyebrow'>Direct the reflection</p><h2>Find your light.</h2><p>Soft studio. Warm highlights. Dramatic contrast.<br />Start with a preset, then refine the scene.</p><Link className='mist-text-link' href='/viewer/mist-solitaire'>Explore the studio <ArrowUpRight size={17} /></Link></div>
+          <div className='mist-light-labels'><span><Sun size={16} />Studio</span><span>Warm</span><span>Dramatic</span></div>
         </section>
-
-        <section className="relative my-2.5 min-h-[680px] overflow-hidden rounded-[2.25rem] bg-[#212121] text-white sm:my-4">
-          <Image
-            src="/images/devjewels-ice-ring.png"
-            alt=""
-            fill
-            sizes="100vw"
-            className="object-cover opacity-45 mix-blend-screen"
-          />
-          <div className="absolute inset-0 bg-gradient-to-b from-[#212121]/20 to-[#212121]/90" />
-          <div className="relative z-10 flex min-h-[680px] flex-col justify-between p-7 sm:p-12">
-            <div className="flex items-center justify-between text-[9px] uppercase tracking-[0.15em] text-white/55">
-              <span>DevJewels / Studio</span>
-              <Sparkles className="size-4" aria-hidden />
-            </div>
-            <div>
-              <h2 className="max-w-5xl text-[clamp(4rem,9vw,10rem)] font-light uppercase leading-[0.75] tracking-[-0.075em]">
-                Ready to make
-                <strong className="block font-semibold">
-                  every facet count?
-                </strong>
-              </h2>
-              <div className="mt-10 flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
-                <p className="max-w-xs text-xs leading-5 text-white/55">
-                  Upload a CAD model and turn it into a complete digital product
-                  experience.
-                </p>
-                <Link
-                  href="/upload-model"
-                  className="inline-flex w-fit items-center gap-3 rounded-full bg-white px-6 py-4 text-[9px] font-semibold uppercase tracking-[0.1em] text-black"
-                >
-                  Upload your first object
-                  <ArrowUpRight className="size-3.5" aria-hidden />
-                </Link>
-              </div>
-            </div>
-          </div>
+        <section className='mist-section mist-output'>
+          <div><p className='mist-eyebrow'>From one model</p><h2>Ready for<br /><span>the next screen.</span></h2><p>Build the view once. Bring it to your catalog, your next conversation, or your customer’s phone.</p><Link href='/viewer/mist-solitaire' className='mist-button mist-button-outline'>Try the sample <ArrowUpRight size={18} /></Link></div>
+          <div className='mist-output-list'>{[[ImageIcon,'Still images','Frame the details in a clean product shot.'],[Video,'360° turntables','Show the shape from every angle.'],[MonitorSmartphone,'Interactive views','Let people explore the design themselves.']].map(([Icon,title,copy]) => { const OutputIcon = Icon as typeof Box; return <article key={String(title)}><OutputIcon size={25} strokeWidth={1.3} /><div><h3>{String(title)}</h3><p>{String(copy)}</p></div><ArrowUpRight size={16} /></article>; })}</div>
         </section>
+        <section className='mist-section mist-closing'><p className='mist-eyebrow'>MIST Studio</p><h2>Your next piece<br /><span>starts here.</span></h2><p>Open a sample, or bring your own design.</p><Link href='/viewer/mist-solitaire' className='mist-button'>Open the studio <ArrowUpRight size={18} /></Link><Link href='/upload-model' className='mist-text-link'>Upload a model <ArrowUpRight size={16} /></Link></section>
       </main>
+      <footer className='mist-footer'><Link href='/' aria-label='MIST Studio home'>MIST <span>STUDIO</span></Link><nav aria-label='Footer'>{[['/gallery','Gallery'],['/pricing','Pricing'],['/contact','Contact'],['/privacy','Privacy'],['/terms','Terms']].map(([href,label])=><Link key={href} href={href}>{label}</Link>)}</nav><span>Made for the details.</span></footer>
     </div>
   );
 }

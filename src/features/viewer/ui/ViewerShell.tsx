@@ -16,6 +16,7 @@ import { StudioTopBar } from "./StudioTopBar";
 import { ZoomControls } from "./ZoomControls";
 import { useStudioPrimaryPanel } from "./useStudioPrimaryPanel";
 import { shouldPersistViewerScene } from "@/features/viewer/domain/viewer-scene-persist";
+import { resolveSceneSettings } from "../domain/resolve-scene-settings";
 import { cn } from "@/lib/utils";
 import type { EmbedSettings } from "@/lib/embed-settings";
 import { resolveModelUrl } from "@/lib/model-url";
@@ -51,7 +52,7 @@ export function ViewerShell({
   embedSettings,
   displayName,
 }: ViewerShellProps) {
-  const modelUrl = resolveModelUrl(modelId);
+  const modelUrl = initialScene?.model_url ?? resolveModelUrl(modelId);
   const preset = useMaterialPresetStore((s) => s.preset);
   const setPreset = useMaterialPresetStore((s) => s.setPreset);
   const autoRotate = useMaterialPresetStore((s) => s.autoRotate);
@@ -67,13 +68,13 @@ export function ViewerShell({
   );
 
   const [modelConfig, setModelConfig] = useState(() =>
-    buildModelConfigFromSlots([]),
+    initialScene?.model_config ?? buildModelConfigFromSlots([]),
   );
   const [sceneSku, setSceneSku] = useState<string | null>(
     initialScene?.sku ?? null,
   );
   const [catalog, setCatalog] = useState<SourceCatalogPayload | null>(null);
-  const [sceneLoaded, setSceneLoaded] = useState(false);
+  const [sceneLoaded, setSceneLoaded] = useState(Boolean(initialScene));
   const applyingPersistedState = useRef(false);
   const persistTimer = useRef<number | null>(null);
   const { panel, setPanel } = useStudioPrimaryPanel("metal");
@@ -123,9 +124,6 @@ export function ViewerShell({
       setLighting(incomingLighting);
       replaceSlotSelections(safeSelections);
       replaceSceneSettings(scene.scene_settings ?? getDefaultSceneSettings());
-      setModelConfig(resolvedModelConfig);
-      setSceneSku(scene.sku ?? null);
-      setSceneLoaded(true);
       window.setTimeout(() => {
         applyingPersistedState.current = false;
       }, 0);
@@ -191,29 +189,13 @@ export function ViewerShell({
     [lighting, modelConfig, preset, sceneSettings, slotSelections],
   );
 
-  const resolvedSceneSettings = useMemo(() => {
-    if (!catalog?.scenes) return sceneSettings;
-    const indexById = new Map(
-      catalog.scenes.map((item) => [item._id, item.value ?? ""]),
-    );
-    const resolveValue = (value: string | null) => {
-      if (!value) return null;
-      if (value.includes("/") || value.includes(".")) return value;
-      const mapped = indexById.get(value);
-      return mapped || value;
-    };
-    return {
-      "ENVIRONMENT-METAL": resolveValue(sceneSettings["ENVIRONMENT-METAL"]),
-      "ENVIRONMENT-GEM": resolveValue(sceneSettings["ENVIRONMENT-GEM"]),
-      GROUND: resolveValue(sceneSettings.GROUND),
-      BACKGROUND: resolveValue(sceneSettings.BACKGROUND),
-      VJSON: resolveValue(sceneSettings.VJSON),
-      quality_mode: sceneSettings.quality_mode ?? "standard",
-    };
-  }, [catalog, sceneSettings]);
+  const resolvedSceneSettings = useMemo(
+    () => resolveSceneSettings(sceneSettings, catalog?.scenes),
+    [catalog, sceneSettings],
+  );
 
   useEffect(() => {
-    if (!shouldPersistViewerScene(variant)) return;
+    if (!shouldPersistViewerScene(variant) || modelId === "mist-solitaire" || modelId === "clearcoat") return;
     if (!sceneLoaded || applyingPersistedState.current) return;
     if (persistTimer.current !== null)
       window.clearTimeout(persistTimer.current);
@@ -251,7 +233,7 @@ export function ViewerShell({
                 ? `/viewer/${encodeURIComponent(viewerIdFromModelKey(initialScene.model_key))}`
                 : undefined
             }
-            displayName={displayName}
+            displayName={displayName ?? initialScene?.name ?? undefined}
             brandingText={embedSettings?.brandingText}
             showTitle={embedSettings?.showTitle ?? true}
             showStudioLink={embedSettings?.showStudioLink ?? false}
@@ -292,7 +274,7 @@ export function ViewerShell({
 
         <div className="order-1 flex min-h-0 min-w-0 flex-1 flex-col md:order-2">
           <div className="h-[52px] shrink-0">
-            <StudioTopBar modelId={modelId} sku={sceneSku} />
+            <StudioTopBar modelId={modelId} sku={sceneSku} displayName={displayName ?? initialScene?.name} />
           </div>
           <div className="relative min-h-0 flex-1 bg-studio-canvas">
             <ViewerCanvas

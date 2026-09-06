@@ -29,7 +29,6 @@ export function createGemMaterial(
     attenuationDistance: cfg.attenuationDistance,
     specularIntensity: 1.0,
     specularColor: new THREE.Color(0xffffff),
-    reflectivity: 0.6,
     clearcoat: cfg.clearcoat ?? 0,
     clearcoatRoughness: cfg.clearcoat ? 0.02 : 0,
     iridescence: cfg.iridescence ?? 0,

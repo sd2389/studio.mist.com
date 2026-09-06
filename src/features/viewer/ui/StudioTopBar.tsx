@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronLeft, Save, Share2 } from "lucide-react";
+import { ChevronLeft, RotateCcw, Save, Share2 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { buildEmbedUrl, resolveEmbedKey } from "@/lib/embed-settings";
@@ -12,28 +12,55 @@ import { QualityMenu } from "./QualityMenu";
 type StudioTopBarProps = {
   modelId: string;
   sku?: string | null;
+  displayName?: string | null;
 };
 
-export function StudioTopBar({ modelId, sku }: StudioTopBarProps) {
+export function StudioTopBar({ modelId, sku, displayName }: StudioTopBarProps) {
   const preset = useMaterialPresetStore((s) => s.preset);
   const lighting = useMaterialPresetStore((s) => s.lighting);
   const [toast, setToast] = useState<string | null>(null);
   const canShare = Boolean(sku?.trim());
 
   function savePreset() {
-    const payload = { preset, lighting, savedAt: Date.now() };
-    localStorage.setItem(`studio-scene-${modelId}`, JSON.stringify(payload));
-    setToast("Preset saved locally");
-    setTimeout(() => setToast(null), 2200);
+    const { preset, lighting, finish, autoRotate, slotSelections, sceneSettings } = useMaterialPresetStore.getState();
+    try {
+      localStorage.setItem(`studio-scene-${modelId}`, JSON.stringify({
+        version: 1, preset, lighting, finish, autoRotate, slotSelections, sceneSettings,
+      }));
+      setToast("Look saved on this device. Restore it anytime.");
+    } catch {
+      setToast("This browser could not save the look. Check available storage.");
+    }
+  }
+
+  function restorePreset() {
+    try {
+      const raw = localStorage.getItem(`studio-scene-${modelId}`);
+      if (!raw) { setToast("Save a look first, then restore it here."); return; }
+      const look = JSON.parse(raw);
+      if (look.version !== 1 || typeof look.preset !== "string" || typeof look.lighting !== "string" ||
+          typeof look.finish !== "string" || typeof look.autoRotate !== "boolean" ||
+          !look.slotSelections || !look.sceneSettings) throw new Error("Invalid saved look");
+      useMaterialPresetStore.setState({
+        preset: look.preset, lighting: look.lighting, finish: look.finish,
+        autoRotate: look.autoRotate, slotSelections: look.slotSelections, sceneSettings: look.sceneSettings,
+      });
+      setToast("Saved look restored");
+    } catch {
+      setToast("This saved look could not be restored. Save a new look to replace it.");
+    }
   }
 
   async function shareEmbed() {
     if (!canShare) return;
     const embedKey = resolveEmbedKey(sku, modelId);
     const url = buildEmbedUrl(window.location.origin, embedKey);
-    await navigator.clipboard.writeText(url);
-    setToast("Embed URL copied");
-    setTimeout(() => setToast(null), 2200);
+    try {
+      await navigator.clipboard.writeText(url);
+      setToast("Share link copied");
+    } catch {
+      setToast("Clipboard unavailable. Use the Export panel to copy your link.");
+    }
   }
 
   return (
@@ -47,7 +74,7 @@ export function StudioTopBar({ modelId, sku }: StudioTopBarProps) {
       </Link>
       <div className="min-w-0 flex-1">
         <p className="truncate text-[13px] font-medium tracking-tight text-black">
-          {sceneDisplayName(modelId)}
+          {displayName || sceneDisplayName(modelId)}
         </p>
         <p className="truncate text-[10px] text-black/40">
           {preset} · {lighting}
@@ -59,17 +86,22 @@ export function StudioTopBar({ modelId, sku }: StudioTopBarProps) {
           type="button"
           variant="outline"
           size="sm"
-          className="hidden h-8 rounded-md border-black/15 bg-transparent px-2 text-[10px] font-medium uppercase tracking-[0.1em] text-black/65 shadow-none hover:bg-white hover:text-black md:inline-flex"
+          className="inline-flex h-8 rounded-md border-black/15 bg-transparent px-2 text-[10px] font-medium uppercase tracking-[0.1em] text-black/65 shadow-none hover:bg-white hover:text-black"
+          aria-label="Save look on this device"
           onClick={savePreset}
         >
           <Save className="size-3.5" aria-hidden />
-          <span className="hidden sm:inline">Save preset</span>
+          <span className="hidden sm:inline">Save look</span>
+        </Button>
+        <Button type="button" variant="ghost" size="sm" className="h-8 px-2" onClick={restorePreset} aria-label="Restore saved look" title="Restore saved look">
+          <RotateCcw className="size-3.5" aria-hidden />
         </Button>
         <Button
           type="button"
           variant="ghost"
           size="sm"
-          className="hidden h-8 rounded-md px-2 text-[10px] font-medium uppercase tracking-[0.1em] text-black/65 hover:bg-black/[0.04] hover:text-black md:inline-flex"
+          className="inline-flex h-8 rounded-md px-2 text-[10px] font-medium uppercase tracking-[0.1em] text-black/65 hover:bg-black/[0.04] hover:text-black"
+          aria-label="Copy share link"
           onClick={() => void shareEmbed()}
           disabled={!canShare}
           title={
@@ -79,7 +111,7 @@ export function StudioTopBar({ modelId, sku }: StudioTopBarProps) {
           }
         >
           <Share2 className="size-3.5" aria-hidden />
-          <span>Share</span>
+          <span className="hidden sm:inline">Share</span>
         </Button>
       </div>
       {toast ? (
@@ -88,6 +120,7 @@ export function StudioTopBar({ modelId, sku }: StudioTopBarProps) {
           role="status"
         >
           {toast}
+          <button type="button" className="ml-3 underline" onClick={() => setToast(null)} aria-label="Dismiss message">Dismiss</button>
         </p>
       ) : null}
     </header>

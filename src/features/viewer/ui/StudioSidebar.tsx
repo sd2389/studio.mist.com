@@ -77,17 +77,8 @@ export function StudioSidebar({
     resolvedActiveSlot,
     activePhysicalSlots,
     selectedPresetForActiveSlot,
-  } = useStudioSlotContext({ modelConfig, activeSlot });
+  } = useStudioSlotContext({ modelConfig, activeSlot, kind: panel === "metal" || panel === "gem" ? panel : undefined });
 
-  useEffect(() => {
-    if (panel === "metal") {
-      const metals = filterSlotsByKind(allSlotIds, "metal");
-      if (metals.length && slotKind(activeSlot) !== "metal") setActiveSlot(metals[0]);
-    } else if (panel === "gem") {
-      const gems = filterSlotsByKind(allSlotIds, "gem");
-      if (gems.length && slotKind(activeSlot) !== "gem") setActiveSlot(gems[0]);
-    }
-  }, [activeSlot, allSlotIds, panel]);
 
   const currentColor = resolveSelectionSwatchColor(selectedPresetForActiveSlot);
   const currentIsGem = resolveSelectionIsGem(selectedPresetForActiveSlot);

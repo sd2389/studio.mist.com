@@ -81,3 +81,6 @@ docker-compose.override.yml
 
 # Git worktrees (project-local isolated checkouts)
 .worktrees/
+
+# Isolated production build used during local verification
+.next-production/

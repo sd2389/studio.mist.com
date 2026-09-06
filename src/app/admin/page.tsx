@@ -12,7 +12,7 @@ import { fetchCurrentUser } from "@/lib/auth/server-session";
 import { formatStorageGb } from "@/lib/billing/format";
 
 export const metadata: Metadata = {
-  title: "Admin · DevJewels Studio",
+  title: "Admin · MIST Studio",
   description: "Internal ops console.",
 };
 

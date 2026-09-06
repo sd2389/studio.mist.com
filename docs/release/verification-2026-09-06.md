@@ -1,6 +1,8 @@
 # MIST Studio release verification
 
-Status: implementation in progress; browser release checks and main delivery are not complete.
+Status: implementation in progress; browser release checks and main delivery are not complete. Draft PR #10 holds the release changes.
+
+GitHub CI run 34051031884 passed unit tests and its clean Linux production build. The image check timed out before producing a comparison. Its timeout argument position has been corrected; this is not evidence that rendering passes.
 
 ## Verified
 

@@ -5,7 +5,7 @@ Status: implementation in progress; browser release checks and main delivery are
 ## Verified
 
 - Production build passes with the CAD, authenticated-asset, save/restore, export-isolation and performance-mode changes. Backend-dependent gallery, stone library and upload pages render dynamically.
-- Frontend: 87 tests pass. Backend: 74 tests pass. TypeScript passes. Lint has no errors (existing complexity/unused-import warnings remain).
+- Frontend: 88 tests pass. Backend: 74 tests pass. TypeScript passes. Lint has no errors (existing complexity/unused-import warnings remain).
 - Real Rhino imports: DB-131 bracelet (51 MB) and DN-064 necklace (137 MB) converted and rendered in the development harness.
 - Necklace placement layers match the CAD: Gem 1 = 135, Gem 2 = 8, Gem 3 = 2, Gem 4 = 6. Other block placements are metal or construction geometry, not additional gemstones.
 - Isolated API workflow: upload bracelet GLB, list scene, update name/exposure, reopen saved scene.
@@ -29,8 +29,8 @@ Status: implementation in progress; browser release checks and main delivery are
 - Browser sign-in, dashboard → saved studio, slot switching, save/restore look, PNG/JPEG export and published embed.
 - Desktop and mobile visual review of the final homepage and studio controls.
 - WebGPU and WebGL2 fallback rendering of the final changes, including performance mode.
-- Verify separate metal/gem environments: the existing renderer currently chooses one scene environment using the active preset.
-- Validate PostgreSQL migrations / documented clean-checkout startup. Local smoke testing used an isolated SQLite database, not production data.
+- Visually verify the newly independent metal/gem environments. A regression test proves independent texture, rotation and intensity assignment; rendered appearance still needs browser review.
+- PostgreSQL 16 fresh migrations and account/upload/list/save/reopen smoke pass. Alembic schema comparison reports pre-existing server-default/index declaration differences; no missing-column runtime failure was observed.
 - Review final diff, commit, and deliver verified changes to GitHub main.
 
 Browser checks were interrupted by a usage-limit rejection (subsequently reset) and then an unavailable browser security policy check. Neither is a successful browser test.

@@ -1,13 +1,13 @@
-import { ArrowUpRight, Box, Diamond, ImageIcon, MonitorSmartphone, Sun, Video } from 'lucide-react';
+import { ArrowUpRight, Box, ImageIcon, MonitorSmartphone, Sun, Video } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { LandingExperience } from './LandingExperience';
 import './landing.css';
 
 const workflow = [
-  ['01', 'Bring your design.', 'Upload a GLB, GLTF, OBJ, STL, or Rhino 3DM model. Keep the creative work you already did.'],
-  ['02', 'Make it yours.', 'Choose metals and gemstones independently. Set the finish, lighting, and camera angle.'],
-  ['03', 'Show every detail.', 'Create images and turntables, or share an interactive view of your published design.'],
+  ['01', 'Bring your design.', 'Upload a GLB, GLTF, OBJ, STL, or Rhino 3DM model. Keep the creative work you already did.', 'workflow-cad', 'A detailed blue wireframe of a solitaire ring'],
+  ['02', 'Make it yours.', 'Choose metals and gemstones independently. Set the finish, lighting, and camera angle.', 'workflow-materials', 'A yellow gold diamond ring beside sapphire and emerald gemstones'],
+  ['03', 'Show every detail.', 'Create images and turntables, or share an interactive view of your published design.', 'workflow-render', 'A polished platinum diamond solitaire on a dark studio surface'],
 ];
 
 export function LandingPage() {
@@ -18,10 +18,17 @@ export function LandingPage() {
         <LandingExperience />
         <section id='workflow' className='mist-section mist-workflow'>
           <div className='mist-section-heading'><p className='mist-eyebrow'>The workflow</p><h2>One design.<br /><span>Every possibility.</span></h2><Link className='mist-text-link' href='/upload-model'>Bring your own model <ArrowUpRight size={17} /></Link></div>
-          <div className='mist-steps'>{workflow.map(([number, title, copy]) => <article key={number}><span className='mist-step-number'>{number}</span><h3>{title}</h3><p>{copy}</p></article>)}</div>
+          <div className='mist-steps'>{workflow.map(([number, title, copy, asset, alt]) => (
+            <article key={number}>
+              <div className='mist-step-image'><Image src={`/images/landing/${asset}.webp`} alt={alt} fill sizes='(max-width: 767px) calc(100vw - 48px), (max-width: 1440px) 30vw, 414px' /></div>
+              <div className='mist-step-caption'><span className='mist-step-number'>{number}</span><div><h3>{title}</h3><p>{copy}</p></div></div>
+            </article>
+          ))}</div>
         </section>
         <section id='materials' className='mist-section mist-materials'>
-          <div className='mist-material-canvas' aria-hidden='true'><div className='mist-material-disc mist-gold' /><div className='mist-material-disc mist-platinum' /><div className='mist-cut-gem'><Diamond strokeWidth={0.65} /></div><div className='mist-material-disc mist-rose' /><span>Metal · Gemstone · Finish</span></div>
+          <div className='mist-material-canvas'>
+            <Image src='/images/landing/materials.webp' alt='Yellow gold, platinum, and rose gold rings set with a diamond, sapphire, and emerald' fill sizes='(max-width: 767px) calc(100vw - 48px), (max-width: 1440px) 48vw, 640px' />
+          </div>
           <div className='mist-material-copy'><p className='mist-eyebrow'>Precious by design</p><h2>Every facet.<br /><span>Every finish.</span></h2><p>Yellow gold, platinum, rose gold. Diamonds, sapphires, emeralds. Find the combination that belongs to your design.</p><div className='mist-inline-tags'><span>Separate metal & gem controls</span><span>Polished to brushed finishes</span></div><Link className='mist-text-link' href='/stones'>Explore gemstones <ArrowUpRight size={17} /></Link></div>
         </section>
         <section className='mist-light-section'>

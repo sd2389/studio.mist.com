@@ -9,8 +9,10 @@ import {
 } from "@/lib/feature-flags/server-fetch";
 import { cn } from "@/lib/utils";
 
+export const dynamic = "force-dynamic";
+
 export const metadata = {
-  title: "Diamond cuts · DevJewels Studio",
+  title: "Diamond cuts · MIST Studio",
 };
 
 export default async function StonesPage() {
@@ -27,7 +29,7 @@ export default async function StonesPage() {
               href="/"
               className="mb-10 inline-flex items-center gap-2 text-[9px] uppercase tracking-[0.14em] text-black/45"
             >
-              <ArrowLeft className="size-3.5" aria-hidden /> DevJewels Studio
+              <ArrowLeft className="size-3.5" aria-hidden /> MIST Studio
             </Link>
             <h1 className="text-[clamp(4rem,9vw,9rem)] font-light leading-[0.76] tracking-[-0.085em] text-black">
               Stone <span className="text-black/20">/ Index</span>

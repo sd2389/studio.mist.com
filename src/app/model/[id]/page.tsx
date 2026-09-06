@@ -23,11 +23,11 @@ export async function generateMetadata({ params }: ModelPageProps): Promise<Meta
   const { id } = await params;
   const sceneId = Number(id);
   if (!Number.isFinite(sceneId)) {
-    return { title: "Model · DevJewels Studio" };
+    return { title: "Model · MIST Studio" };
   }
   const scene = await fetchSceneByIdServer(sceneId).catch(() => null);
   return {
-    title: scene?.name ? `${scene.name} · DevJewels Studio` : `Model · ${id}`,
+    title: scene?.name ? `${scene.name} · MIST Studio` : `Model · ${id}`,
   };
 }
 

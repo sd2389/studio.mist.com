@@ -130,7 +130,7 @@ export function ViewerCanvas({
   const exposureBase = photometric
     ? TONE_EXPOSURE_BY_LIGHTING[lighting] * 0.92
     : TONE_EXPOSURE_BY_LIGHTING[lighting];
-  const exposure = advanced?.exposure ? exposureBase * advanced.exposure : exposureBase;
+  const exposure = typeof advanced?.exposure === "number" ? exposureBase * advanced.exposure : exposureBase;
 
   const ground = groundParamsFromItem(groundItem);
   const legacyGroundNone = sceneSettings?.GROUND?.toLowerCase().includes("none");
@@ -166,7 +166,7 @@ export function ViewerCanvas({
         ) : null}
         <Suspense fallback={null}>
           <JewelryModel
-            key={preset}
+            key={modelUrl}
             url={modelUrl}
             preset={preset}
             modelConfig={modelConfig}

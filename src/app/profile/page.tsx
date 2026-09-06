@@ -5,7 +5,7 @@ import { fetchCurrentUser } from "@/lib/auth/server-session";
 import { requireBillingAccountServer } from "@/lib/billing/server-fetch";
 
 export const metadata: Metadata = {
-  title: "Profile · DevJewels Studio",
+  title: "Profile · MIST Studio",
   description: "Plan details, credits, and account settings.",
 };
 

@@ -1,3 +1,5 @@
+import { isCatalogMaterialRef, parseCatalogMaterialSlug } from "@/lib/catalog/catalog-material-ref";
+import { useCatalogParamsStore } from "@/stores/catalog-params-store";
 import { isGemPresetId } from "@/lib/gem-gpu/gem-configs";
 import {
   isCustomMaterialRef,
@@ -11,12 +13,20 @@ import { useUserLibraryStore } from "@/stores/user-library-store";
 
 export type SlotSelectionMap = Record<string, SlotMaterialRef>;
 
-function selectionKind(ref: SlotMaterialRef): "metal" | "gem" | "original" {
+function selectionKind(ref: SlotMaterialRef): "metal" | "gem" | "original" | null {
   if (ref === "original") return "original";
+  if (isCatalogMaterialRef(ref)) {
+    const slug = parseCatalogMaterialSlug(ref);
+    const catalog = useCatalogParamsStore.getState();
+    if (slug && catalog.getGemParams(slug)) return "gem";
+    if (slug && catalog.getMetalParams(slug)) return "metal";
+    return null; // Keep persisted references until the catalog has loaded.
+  }
   if (isCustomMaterialRef(ref)) {
     const id = parseCustomMaterialId(ref);
     const item = id ? useUserLibraryStore.getState().getMaterial(id) : undefined;
-    if (item?.kind === "gem") return "gem";
+    if (!item) return null;
+    if (item.kind === "gem") return "gem";
     return "metal";
   }
   return isGemPresetId(ref) ? "gem" : "metal";

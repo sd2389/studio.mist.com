@@ -1,7 +1,7 @@
 "use client";
 
 import { Center, Html, useGLTF } from "@react-three/drei";
-import { useEffect, useLayoutEffect, useMemo } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { GemGpuDiamondShimmer } from "@/components/DiamondGem";
 import {
@@ -35,7 +35,7 @@ const FIT_SIZE = 1.4;
 
 export function JewelryModel({ url, preset, modelConfig, modelTransform }: JewelryModelProps) {
   const ext = modelExtFromUrl(url);
-  if (ext !== "glb" && ext !== "gltf") {
+  if (ext !== "glb" && ext !== "gltf" && !url.startsWith("blob:")) {
     return (
       <Html center className="max-w-xs rounded-md border border-border/60 bg-background/90 px-3 py-2 text-center text-xs text-foreground">
         This model is not GLB. Re-upload through the studio to convert legacy STL/3DM files.
@@ -85,6 +85,13 @@ function PresetWrapper({
   const qualityLevel = useViewerQualityStore((s) => s.level);
   const model = useMemo(() => {
     const cloned = raw.clone(true);
+    cloned.traverse((child) => {
+      if (!(child instanceof THREE.Mesh)) return;
+      child.geometry = child.geometry.clone();
+      child.material = Array.isArray(child.material)
+        ? child.material.map((material) => material.clone())
+        : child.material.clone();
+    });
     fitToUnit(cloned, FIT_SIZE);
     snapshotOriginalMaterials(cloned);
     return cloned;
@@ -96,8 +103,11 @@ function PresetWrapper({
     return [...slotMap.keys()].some((slot) => slot !== "default");
   }, [slotMap]);
 
+  const pendingDisposal = useRef<{ model: THREE.Object3D; timer: ReturnType<typeof setTimeout> } | null>(null);
   useEffect(() => {
-    return () => disposeObject3D(model);
+    // Strict Mode replays setup/cleanup; keep GPU resources alive through that replay.
+    if (pendingDisposal.current?.model === model) clearTimeout(pendingDisposal.current.timer);
+    return () => { pendingDisposal.current = { model, timer: setTimeout(() => disposeObject3D(model), 0) }; };
   }, [model]);
 
   useLayoutEffect(() => {

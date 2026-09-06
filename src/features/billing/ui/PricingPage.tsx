@@ -27,12 +27,12 @@ export function PricingPageClient({
 
   async function subscribe(priceId: string | null, tier: string) {
     if (!isAuthenticated) {
-      window.location.href = `/signup?next=/pricing`;
+      window.location.assign(`/signup?next=/pricing`);
       return;
     }
     if (!priceId) {
       if (tier === "free") {
-        window.location.href = "/dashboard";
+        window.location.assign("/dashboard");
         return;
       }
       setError("Stripe price not configured for this plan.");
@@ -42,7 +42,7 @@ export function PricingPageClient({
     setError(null);
     try {
       const url = await startSubscriptionCheckout(priceId);
-      window.location.href = url;
+      window.location.assign(url);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Checkout failed");
       setBusy(null);
@@ -51,14 +51,14 @@ export function PricingPageClient({
 
   async function buyTopUp(packId: string) {
     if (!isAuthenticated) {
-      window.location.href = `/signup?next=/pricing`;
+      window.location.assign(`/signup?next=/pricing`);
       return;
     }
     setBusy(packId);
     setError(null);
     try {
       const url = await startTopUpCheckout(packId);
-      window.location.href = url;
+      window.location.assign(url);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Top-up failed");
       setBusy(null);

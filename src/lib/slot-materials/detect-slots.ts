@@ -61,11 +61,21 @@ function detectSlotsFromTokens(root: THREE.Object3D, slotTokens: PersistedSlotTo
   root.traverse((obj) => {
     if (!(obj instanceof THREE.Mesh)) return;
     const candidates = getCandidates(obj).map((candidate) => candidate.toLowerCase());
-    const matched = normalizedSlots.find(({ tokens }) =>
-      candidates.some((candidate) =>
-        tokens.some((token) => candidate.includes(token)),
-      ),
-    );
+    // A generic "gem" alias must not steal "Gem 03" from its specific slot.
+    let matched: (typeof normalizedSlots)[number] | undefined;
+    let bestScore = 0;
+    for (const entry of normalizedSlots) {
+      for (const candidate of candidates) {
+        for (const token of entry.tokens) {
+          const score = candidate === token ? 10_000 + token.length
+            : candidate.includes(token) ? token.length : 0;
+          if (score > bestScore) {
+            bestScore = score;
+            matched = entry;
+          }
+        }
+      }
+    }
     const slot = matched?.slot ?? "default";
     const existing = slotMap.get(slot);
     if (existing) {

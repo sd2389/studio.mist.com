@@ -6,8 +6,8 @@ import { fetchPricingCatalogServer } from "@/lib/billing/server-fetch";
 import { fetchFeatureFlagsServer, isFeatureEnabled } from "@/lib/feature-flags/server-fetch";
 
 export const metadata: Metadata = {
-  title: "Pricing · DevJewels Studio",
-  description: "Plans, credits, and top-ups for DevJewels Studio.",
+  title: "Pricing · MIST Studio",
+  description: "Plans, credits, and top-ups for MIST Studio.",
 };
 
 const FALLBACK_CATALOG = {

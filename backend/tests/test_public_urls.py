@@ -42,3 +42,12 @@ def test_cache_control_for_thumbnails_is_shorter():
     policy = cache_control_for_key("thumbnails/uuid.webp")
     assert "immutable" not in policy
     assert "86400" in policy
+
+
+def test_private_assets_use_authenticated_app_proxy(monkeypatch):
+    from app.config import get_settings
+    monkeypatch.setenv("APP_PUBLIC_URL", "https://studio.example.com")
+    monkeypatch.setenv("PUBLIC_CDN_ORIGIN", "https://cdn.example.com")
+    get_settings.cache_clear()
+    assert public_file_url("customers/2/models/ring.glb") == "https://studio.example.com/api/files/customers/2/models/ring.glb"
+    get_settings.cache_clear()

@@ -108,7 +108,14 @@ async function loadRhino3dm(file: File): Promise<LoadedModel> {
     root.traverse((obj) => {
       if (!(obj instanceof THREE.Mesh) || !obj.geometry) return;
       obj.geometry.computeVertexNormals();
-      const attrs = (obj.userData?.attributes ?? {}) as {
+      let instanceAttrs: unknown;
+      for (let parent = obj.parent; parent; parent = parent.parent) {
+        if (parent.userData.rhinoInstanceAttributes) {
+          instanceAttrs = parent.userData.rhinoInstanceAttributes;
+          break;
+        }
+      }
+      const attrs = (instanceAttrs ?? obj.userData?.attributes ?? {}) as {
         layerIndex?: number;
         name?: string;
       };

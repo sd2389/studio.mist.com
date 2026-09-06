@@ -5,7 +5,7 @@ import { fetchCurrentUser } from "@/lib/auth/server-session";
 import { fetchBillingAccountServer } from "@/lib/billing/server-fetch";
 
 export const metadata: Metadata = {
-  title: "Workshop · DevJewels Studio",
+  title: "Workshop · MIST Studio",
   description: "Your jewelry scenes, credits, and uploads — synced from the API.",
 };
 

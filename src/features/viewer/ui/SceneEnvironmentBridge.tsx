@@ -14,6 +14,7 @@ export function SceneEnvironmentBridge({ rotationRadians, intensity }: SceneEnvi
   const scene = useThree((state) => state.scene);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/immutability -- Synchronizes the externally owned Three.js scene.
     scene.environmentRotation = new THREE.Euler(0, rotationRadians, 0);
     scene.environmentIntensity = intensity;
   }, [intensity, rotationRadians, scene]);

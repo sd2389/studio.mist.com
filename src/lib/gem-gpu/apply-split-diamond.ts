@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { cloneJewelryMaterial } from "./clone-jewelry-material";
 import { createPresetMaterial } from "@/lib/material-presets";
 import { createGemMaterial, isGemGpuMaterial } from "@/lib/gem-gpu/gem-physical-material";
 import { ensureFacetedGemNormalsOnMesh } from "@/lib/gem-gpu/ensure-faceted-gem-normals";
@@ -37,10 +38,10 @@ export function applySplitGemBandPreset(
   root.traverse((obj) => {
     if (!(obj instanceof THREE.Mesh)) return;
     const assignFor = (src: THREE.Material): THREE.Material => {
-      if (src.name === GLTF_GEM_SLOT) return gem.clone();
+      if (src.name === GLTF_GEM_SLOT) return cloneJewelryMaterial(gem);
       if (src.name === GLTF_BAND_SLOT) return band.clone();
       if (src.name) return band.clone();
-      return gem.clone();
+      return cloneJewelryMaterial(gem);
     };
 
     if (Array.isArray(obj.material)) {
@@ -62,4 +63,6 @@ export function applySplitGemBandPreset(
       ensureFacetedGemNormalsOnMesh(obj);
     }
   });
+  gem.dispose();
+  band.dispose();
 }

@@ -30,9 +30,11 @@ export function DashboardToolbar({
   const [pending, startTransition] = useTransition();
   const [searchDraft, setSearchDraft] = useState(filters.q);
 
-  useEffect(() => {
+  const [previousInitial, setPreviousInitial] = useState(filters.q);
+  if (previousInitial !== filters.q) {
+    setPreviousInitial(filters.q);
     setSearchDraft(filters.q);
-  }, [filters.q]);
+  }
 
   const pushFilters = useCallback(
     (patch: Partial<DashboardFilters>) => {

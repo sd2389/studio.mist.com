@@ -25,12 +25,15 @@ export function useUserLibraryMaterials({
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const pageItems = initialPage?.items ?? [];
-    setItems(pageItems);
+  const [previousPage, setPreviousPage] = useState(initialPage);
+  if (previousPage !== initialPage) {
+    setPreviousPage(initialPage);
+    setItems(initialPage?.items ?? []);
     setTotal(initialPage?.total ?? 0);
     setError(null);
-    if (pageItems.length > 0) hydrateMaterials(pageItems);
+  }
+  useEffect(() => {
+    if (initialPage?.items.length) hydrateMaterials(initialPage.items);
   }, [hydrateMaterials, initialPage]);
 
   const hasMore = items.length < total;

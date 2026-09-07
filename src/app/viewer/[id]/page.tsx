@@ -11,7 +11,7 @@ export async function generateMetadata({ params }: ViewerPageProps): Promise<Met
   const { id } = await params;
   const scene = await fetchSceneByViewerIdServer(id).catch(() => null);
   return {
-    title: scene?.name ? `${scene.name} · DevJewels Studio` : `Viewer · ${id}`,
+    title: scene?.name ? `${scene.name} · MIST Studio` : `Viewer · ${id}`,
   };
 }
 

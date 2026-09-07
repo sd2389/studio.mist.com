@@ -36,6 +36,7 @@ export async function POST(request: Request) {
   const sku = incoming.get("sku");
   const category = incoming.get("category");
   const note = incoming.get("note");
+  const polygonCount = incoming.get("polygon_count");
   if (typeof modelConfig === "string") outgoing.append("model_config", modelConfig);
   if (typeof slotSelections === "string") outgoing.append("slot_selections", slotSelections);
   if (typeof sceneSettings === "string") outgoing.append("scene_settings", sceneSettings);
@@ -43,6 +44,7 @@ export async function POST(request: Request) {
   if (typeof sku === "string") outgoing.append("sku", sku);
   if (typeof category === "string") outgoing.append("category", category);
   if (typeof note === "string") outgoing.append("note", note);
+  if (typeof polygonCount === "string") outgoing.append("polygon_count", polygonCount);
 
   const auth = await authHeaders();
   let upstream: Response;

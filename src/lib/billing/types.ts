@@ -10,6 +10,7 @@ export type QuotaBalances = {
 export type PlanFeatures = {
   max_variants_per_model: number;
   max_image_resolution: number;
+  max_polygons: number;
   watermark_exports: boolean;
   embed_enabled: boolean;
   batch_export_enabled: boolean;

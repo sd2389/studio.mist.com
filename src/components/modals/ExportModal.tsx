@@ -37,7 +37,7 @@ export function ExportModal({ open, onOpenChange, modelId, sku }: ExportModalPro
   const snippet = useMemo(
     () =>
       embedSrc
-        ? buildEmbedIframeSnippet(embedSrc, { height: 640, title: "DevJewels 3D" })
+        ? buildEmbedIframeSnippet(embedSrc, { height: 640, title: "MIST 3D" })
         : "",
     [embedSrc],
   );

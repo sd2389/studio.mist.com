@@ -4,7 +4,7 @@ import { requirePageUser } from "@/lib/auth/require-page-user";
 import { requireBillingAccountServer } from "@/lib/billing/server-fetch";
 
 export const metadata: Metadata = {
-  title: "Profile · DevJewels Studio",
+  title: "Profile · MIST Studio",
   description: "Plan details, credits, and account settings.",
 };
 

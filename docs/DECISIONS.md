@@ -8,6 +8,6 @@ Key choices still in effect:
 - **Postgres-only** — no SQLite; Alembic owns schema
 - **Docker compose** — postgres + backend + web as default run path
 - **Owned catalog** — DB-backed parametric materials; no competitor asset files
-- **DevJewels Studio** — product name (not Gemora)
+- **MIST Studio** — product name (not Gemora)
 
 Full append-only log preserved from vault migration (2026-05-13 entries cover video encode, offscreen render, HDRIs, finish textures, rebrand, etc.).

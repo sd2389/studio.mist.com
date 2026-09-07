@@ -10,6 +10,7 @@ type RegisterBody = {
   category?: string;
   note?: string;
   thumbnail_key?: string;
+  polygon_count?: number;
   material?: string;
   model_config?: Record<string, unknown>;
   slot_selections?: Record<string, string>;
@@ -38,6 +39,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "key must start with models/" }, { status: 400 });
   }
 
+  if (!Number.isInteger(body.polygon_count) || (body.polygon_count ?? -1) < 0) {
+    return NextResponse.json(
+      { error: "polygon_count must be a non-negative integer" },
+      { status: 400 },
+    );
+  }
+
   const upstream = await upstreamFetch("/upload/register", {
     method: "POST",
     body: JSON.stringify({
@@ -47,6 +55,7 @@ export async function POST(request: Request) {
       category: body.category,
       note: body.note,
       thumbnail_key: body.thumbnail_key,
+      polygon_count: body.polygon_count,
       material: body.material ?? "original",
       model_config: body.model_config ?? {},
       slot_selections: body.slot_selections ?? {},

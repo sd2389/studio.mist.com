@@ -640,7 +640,7 @@ import { Suspense } from "react";
 import { AuthPanel } from "@/features/auth";
 
 export const metadata: Metadata = {
-  title: "Sign in · DevJewels Studio",
+  title: "Sign in · MIST Studio",
 };
 
 export default function LoginPage() {
@@ -659,7 +659,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
 export const metadata: Metadata = {
-  title: "Sign up · DevJewels Studio",
+  title: "Sign up · MIST Studio",
 };
 
 type SignUpPageProps = {

@@ -13,7 +13,7 @@ _settings = get_settings()
 _is_dev = _settings.app_env.lower() != "production"
 
 app = FastAPI(
-    title="DevJewels Studio API",
+    title="MIST Studio API",
     version="0.1.0",
     docs_url="/docs" if _is_dev else None,
     redoc_url="/redoc" if _is_dev else None,

@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
-import { formatPolyCount } from "@/lib/upload/count-polygons";
+import { formatPolyCount } from "@/lib/upload/polygon-limits";
 import { useUploadModelFlow } from "@/features/upload/hooks/useUploadModelFlow";
 import { UploadDropPanel } from "./UploadDropPanel";
 import { UploadLayersEditor } from "./UploadLayersEditor";
 import { UploadMetadataForm } from "./UploadMetadataForm";
 import { UploadModelViewport } from "./UploadModelViewport";
-import { Button } from "@/components/ui/button";
+import { UploadSignInDialog } from "./UploadSignInDialog";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 
 export function UploadModelShell() {
@@ -23,9 +24,12 @@ export function UploadModelShell() {
     skuError,
     saveProgress,
     saveMessage,
+    authDialogOpen,
     hiddenSlots,
     slotIds,
-    showPolyWarning,
+    overPolyLimit,
+    maxPolygons,
+    planLabel,
     busy,
     reset,
     ingestFile,
@@ -34,6 +38,8 @@ export function UploadModelShell() {
     handleToggleVisibility,
     handleDecimate,
     handleSave,
+    handleAuthDialogOpenChange,
+    handleAuthSuccess,
   } = flow;
 
   return (
@@ -52,7 +58,7 @@ export function UploadModelShell() {
               href="/dashboard"
               className="inline-flex text-[9px] uppercase tracking-[0.14em] text-black/45 transition-colors hover:text-black"
             >
-              DevJewels Studio
+              MIST Studio
             </Link>
             <h1 className="mt-3 text-[clamp(3rem,6vw,6rem)] font-light leading-[0.78] tracking-[-0.075em] text-black">
               Drop your <strong className="font-semibold">CAD.</strong>
@@ -72,9 +78,9 @@ export function UploadModelShell() {
         </header>
 
         <div className="grid flex-1 gap-0 lg:grid-cols-[1.35fr_0.65fr]">
-          <section className="relative min-h-[420px] overflow-hidden border-b border-black/10 bg-[radial-gradient(circle_at_50%_40%,#ffffff_0%,#e3eaf2_52%,#cbd7e4_100%)] lg:min-h-[650px] lg:border-b-0 lg:border-r lg:border-black/10">
+          <section className="relative min-h-[420px] overflow-hidden border-b border-black/[0.06] bg-[#eef2f7] lg:min-h-[650px] lg:border-b-0 lg:border-r lg:border-black/[0.06]">
             {phase === "parsing" ? (
-              <div className="flex h-full min-h-[420px] flex-col items-center justify-center gap-4 bg-black/10">
+              <div className="flex h-full min-h-[420px] flex-col items-center justify-center gap-4 bg-[#eef2f7]">
                 <Loader2
                   className="size-8 animate-spin text-primary"
                   aria-hidden
@@ -93,7 +99,7 @@ export function UploadModelShell() {
                 slots={slotIds}
                 hiddenSlots={hiddenSlots}
                 slotTokens={parsed?.modelConfig.slotTokens}
-                className="h-full min-h-[420px] lg:min-h-[560px]"
+                className="h-full min-h-[420px] lg:min-h-[650px]"
                 emptyLabel={
                   phase === "idle"
                     ? "Your model preview will appear here"
@@ -134,21 +140,29 @@ export function UploadModelShell() {
                   </p>
                 </div>
 
-                {showPolyWarning ? (
-                  <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+                {overPolyLimit ? (
+                  <div
+                    className="rounded-xl border border-red-600/25 bg-red-500/[0.07] px-4 py-3 text-sm text-red-950"
+                    role="alert"
+                  >
                     <p>
-                      This model has {formatPolyCount(parsed?.polyCount ?? 0)}{" "}
-                      polygons — above the recommended 100k limit.
+                      This model has {formatPolyCount(parsed?.polyCount ?? 0)} polygons — your{" "}
+                      {planLabel} plan allows up to {formatPolyCount(maxPolygons)}.
                     </p>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="mt-3 border-amber-500/40 text-amber-50 hover:bg-amber-500/10"
-                      onClick={handleDecimate}
-                    >
-                      Decimate to ~100k
-                    </Button>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Link href="/pricing" className={buttonVariants({ size: "sm" })}>
+                        Upgrade plan
+                      </Link>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="border-red-800/25 text-red-950 hover:bg-red-500/10"
+                        onClick={handleDecimate}
+                      >
+                        Decimate to ~{formatPolyCount(maxPolygons)}
+                      </Button>
+                    </div>
                   </div>
                 ) : null}
 
@@ -191,7 +205,7 @@ export function UploadModelShell() {
                 <Button
                   type="button"
                   className="w-full rounded-full bg-[#212121] py-6 text-[10px] font-semibold uppercase tracking-[0.1em] text-white hover:bg-black"
-                  disabled={busy}
+                  disabled={busy || overPolyLimit}
                   onClick={() => void handleSave()}
                 >
                   Save and open studio ↗
@@ -201,6 +215,12 @@ export function UploadModelShell() {
           </aside>
         </div>
       </div>
+
+      <UploadSignInDialog
+        open={authDialogOpen}
+        onOpenChange={handleAuthDialogOpenChange}
+        onSuccess={handleAuthSuccess}
+      />
     </main>
   );
 }

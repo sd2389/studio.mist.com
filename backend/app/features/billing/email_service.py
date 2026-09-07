@@ -12,7 +12,7 @@ def send_payment_receipt_email(
     amount_label: str,
     invoice_url: str | None = None,
 ) -> None:
-    subject = f"DevJewels Studio — payment received ({plan_label})"
+    subject = f"MIST Studio — payment received ({plan_label})"
     lines = [
         f"Thank you for your payment of {amount_label} for the {plan_label} plan.",
         "",
@@ -31,9 +31,9 @@ def send_subscription_updated_email(
     plan_label: str,
     action: str,
 ) -> None:
-    subject = f"DevJewels Studio — subscription {action}"
+    subject = f"MIST Studio — subscription {action}"
     body_text = (
-        f"Your DevJewels Studio subscription has been {action}.\n\n"
+        f"Your MIST Studio subscription has been {action}.\n\n"
         f"Current plan: {plan_label}\n\n"
         f"Manage billing anytime from your profile page."
     )

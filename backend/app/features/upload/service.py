@@ -17,6 +17,7 @@ from app.features.publish import service as publish_service
 from app.features.billing.quota_service import (
     add_storage_bytes,
     assert_model_credit,
+    assert_polygon_limit,
     assert_storage_for_upload,
     consume_model_credit,
 )
@@ -102,6 +103,7 @@ def register_after_presign(
     model_config_data: dict | None,
     slot_selections: dict[str, str] | None,
     scene_settings: dict[str, Any] | None,
+    polygon_count: int,
 ) -> dict[str, int | str]:
     try:
         keys.reject_unsafe_key(key)
@@ -121,6 +123,8 @@ def register_after_presign(
         existing = db.execute(select(Scene).where(Scene.sku == sku)).scalars().first()
         if existing is not None:
             raise HTTPException(status_code=409, detail="SKU already exists")
+
+    assert_polygon_limit(db, user, polygon_count)
 
     model_bytes = storage.read_bytes(key)
     upload_bytes = _total_upload_bytes(model_bytes, thumbnail_key)
@@ -170,6 +174,7 @@ def save_direct_multipart(
     model_config_raw: Any,
     slot_selections_raw: Any,
     scene_settings_raw: Any,
+    polygon_count: int,
 ) -> dict[str, int | str]:
     safe_name = safe_filename(filename, force_glb=True)
     key = keys.model_key(user.id, safe_name)
@@ -178,6 +183,8 @@ def save_direct_multipart(
         existing = db.execute(select(Scene).where(Scene.sku == sku)).scalars().first()
         if existing is not None:
             raise HTTPException(status_code=409, detail="SKU already exists")
+
+    assert_polygon_limit(db, user, polygon_count)
 
     assert_storage_for_upload(db, user, len(body))
     billing = assert_model_credit(db, user)

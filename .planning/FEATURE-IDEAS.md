@@ -1,9 +1,9 @@
-# DevJewels Studio — Competitive Feature Ideas
+# MIST Studio — Competitive Feature Ideas
 
 **Captured:** 2026-07-07
 **Context:** Brainstorm of features to leapfrog Gemora and adjacent players (Threekit, VNTANA, KeyShot, Picup Media). Grounded in the current stack: Next.js 16 + R3F/Three.js r184, FastAPI + Postgres, S3/R2 + CDN, Mediabunny MP4 muxing, existing features (upload, viewer, scene, render, render_jobs, variants, publish, billing, catalog, user_library, feature flags, `AI_BACKGROUND_MODE` SDXL hook).
 
-**Strategic spine:** Gemora renders jewelry. DevJewels should *sell* jewelry — push every feature from "make a pretty picture" toward "close the sale": configure → price → try on → approve → list → advertise. That positioning requires a rebuild for competitors to follow.
+**Strategic spine:** Gemora renders jewelry. MIST should *sell* jewelry — push every feature from "make a pretty picture" toward "close the sale": configure → price → try on → approve → list → advertise. That positioning requires a rebuild for competitors to follow.
 
 **Recommended opening combo:** #1 + #2 + #3 (configurator, live pricing, listing packs). All three sit directly on top of slot materials, already spec'd in [.planning/research/gemora/PHASE-SPEC-slot-materials.md](research/gemora/PHASE-SPEC-slot-materials.md).
 
@@ -12,7 +12,7 @@
 ## Tier 1 — Money features (buildable now, direct kill shots)
 
 ### 1. Live configurator embed
-Retailer drops one `<script>` tag; shopper picks metal/stone/size on the product page and sees photoreal 3D instantly. Threekit sells this for six figures via enterprise sales; DevJewels sells it self-serve on a credit card.
+Retailer drops one `<script>` tag; shopper picks metal/stone/size on the product page and sees photoreal 3D instantly. Threekit sells this for six figures via enterprise sales; MIST sells it self-serve on a credit card.
 **Depends on:** slot-aware material swap (spec drafted), publish/embed feature.
 
 ### 2. Instant price engine
@@ -24,7 +24,7 @@ One click produces: white-background hero, 6 standard angles, 360 spin MP4/GIF, 
 **Depends on:** render pipeline (exists), camera-preset templates, export sizing profiles.
 
 ### 4. Shopify app
-Renders sync as product media; DevJewels variants map to Shopify variants; configurator embeds in the theme. Distribution channel + moat in one move.
+Renders sync as product media; MIST variants map to Shopify variants; configurator embeds in the theme. Distribution channel + moat in one move.
 **Depends on:** #1, #3, Shopify partner app (OAuth + Admin API).
 
 ### 5. AI lifestyle compositing
@@ -43,7 +43,7 @@ Upload 200 CADs, apply one scene template, wake up to 200 finished listing packs
 Ring on the shopper's actual hand via MediaPipe hand tracking; earrings via face tracking. Free adjacent win: USDZ export → iPhone QuickLook AR with zero code.
 
 ### 8. Auto slot detection
-Gemora requires pre-tagged GLBs. DevJewels: heuristics/ML on raw STL/GLB geometry (refractive candidates, prong patterns, band topology) auto-tags `Gem 01` / `Metal 01` / `Heads`. Upload anything → configurable model. Removes the biggest onboarding friction in the category.
+Gemora requires pre-tagged GLBs. MIST: heuristics/ML on raw STL/GLB geometry (refractive candidates, prong patterns, band topology) auto-tags `Gem 01` / `Metal 01` / `Heads`. Upload anything → configurable model. Removes the biggest onboarding friction in the category.
 
 ### 9. Path-traced beauty mode
 Real-time preview stays R3F; "final render" runs progressive path tracing (WebGPU or server-side) with true diamond dispersion and fire. KeyShot quality, zero install.
@@ -97,11 +97,11 @@ Brand-new vs 5-years-loved rendering. Emotional selling tool no renderer offers.
 ## Tier 4 — Industry blind spots (researched 2026-07; regulatory & market currents most jewelers haven't reacted to yet)
 
 ### 23. Digital Product Passport (DPP) compliance engine
-EU is rolling out Digital Product Passports for product categories including jewelry, alongside G7 rules pushing digital tracking of diamonds and gold through supply chains. Every piece sold into the EU will need a digital identity: origin, certifications, material traceability. DevJewels already generates digital twins (#11) — extend them into DPP-compliant passports (QR/NFC-linked, origin + cert fields, ownership history). This is a *forced* purchase for jewelers — regulation sells it for us. First mover in jewelry tooling owns the category.
+EU is rolling out Digital Product Passports for product categories including jewelry, alongside G7 rules pushing digital tracking of diamonds and gold through supply chains. Every piece sold into the EU will need a digital identity: origin, certifications, material traceability. MIST already generates digital twins (#11) — extend them into DPP-compliant passports (QR/NFC-linked, origin + cert fields, ownership history). This is a *forced* purchase for jewelers — regulation sells it for us. First mover in jewelry tooling owns the category.
 **Why now:** compliance deadlines create urgency no marketing feature can match.
 
 ### 24. Agentic commerce feed (UCP / ACP / MCP)
-AI agents now shop on behalf of consumers: ChatGPT Instant Checkout (Stripe/OpenAI ACP) live since Sept 2025 with ~900M weekly users; Google launched UCP at NRF 2026 with Shopify, Etsy, Walmart, Target; Anthropic's MCP is the data-connectivity layer. McKinsey projects $900B–$1T US agentic-commerce revenue by 2030. Jewelry retailers have zero tooling for this. DevJewels exports agent-ready product data from what it already has — renders, variants, live configured pricing (#2), 3D/AR links — as UCP/ACP feeds plus an MCP server per catalog ("AI agents can browse, configure, and quote your jewelry"). Nobody in the jewelry-rendering space is even talking about this.
+AI agents now shop on behalf of consumers: ChatGPT Instant Checkout (Stripe/OpenAI ACP) live since Sept 2025 with ~900M weekly users; Google launched UCP at NRF 2026 with Shopify, Etsy, Walmart, Target; Anthropic's MCP is the data-connectivity layer. McKinsey projects $900B–$1T US agentic-commerce revenue by 2030. Jewelry retailers have zero tooling for this. MIST exports agent-ready product data from what it already has — renders, variants, live configured pricing (#2), 3D/AR links — as UCP/ACP feeds plus an MCP server per catalog ("AI agents can browse, configure, and quote your jewelry"). Nobody in the jewelry-rendering space is even talking about this.
 **Why now:** protocols just standardized (late 2025–early 2026); feed structures are settling; early integrations get outsized AI-search visibility.
 
 ### 25. Gram-budget design optimizer

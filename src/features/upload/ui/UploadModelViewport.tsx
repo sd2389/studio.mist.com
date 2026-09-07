@@ -8,27 +8,35 @@ import { detectSlots } from "@/lib/slot-materials/detect-slots";
 import { cn } from "@/lib/utils";
 
 const FIT_SIZE = 1.8;
-const BLUE_SCALE = ["#0a49e8", "#1d6aff", "#2f86ff", "#57a2ff"];
-const GREEN_SCALE = ["#08a46a", "#1bb980", "#33c995", "#5fd9b2"];
+const STUDIO_BG = "#eef2f7";
+const GEM_SCALE = ["#3b82f6", "#60a5fa", "#2563eb", "#93c5fd"];
+const METAL_SCALE = ["#d7dde6", "#c3cad6", "#b0b9c8", "#9aa5b6"];
+const DEFAULT_METAL = "#c9d0da";
 
 type SlotCounters = { gem: number; metal: number };
 
+function isGemSlot(slot: string): boolean {
+  return slot.startsWith("Gem") || slot.startsWith("Accent");
+}
+
 function slotColor(slot: string, counters: SlotCounters): string {
-  if (slot.startsWith("Gem") || slot.startsWith("Accent")) {
+  if (isGemSlot(slot)) {
     const idx = counters.gem++;
-    return BLUE_SCALE[idx % BLUE_SCALE.length]!;
+    return GEM_SCALE[idx % GEM_SCALE.length]!;
   }
+  if (slot === "default") return DEFAULT_METAL;
   const idx = counters.metal++;
-  return GREEN_SCALE[idx % GREEN_SCALE.length]!;
+  return METAL_SCALE[idx % METAL_SCALE.length]!;
 }
 
 function toCadStyleMaterial(color: string, hidden: boolean): THREE.MeshStandardMaterial {
   return new THREE.MeshStandardMaterial({
     color,
-    roughness: 0.25,
-    metalness: 0.08,
+    roughness: 0.42,
+    metalness: 0.18,
     transparent: hidden,
     opacity: hidden ? 0.15 : 1,
+    side: THREE.DoubleSide,
   });
 }
 
@@ -63,16 +71,16 @@ function applyPreviewMaterials(
   const slotMaterials = new Map<string, THREE.Material>();
 
   for (const slot of slotMap.keys()) {
-    const fallback =
-      slot.startsWith("Gem") || slot.startsWith("Accent")
-        ? BLUE_SCALE[0]!
-        : slot === "default"
-          ? "#8b95a1"
-          : GREEN_SCALE[0]!;
+    const fallback = isGemSlot(slot)
+      ? GEM_SCALE[0]!
+      : slot === "default"
+        ? DEFAULT_METAL
+        : METAL_SCALE[0]!;
     const color = slotColors[slot] ?? fallback;
     slotMaterials.set(slot, toCadStyleMaterial(color, hiddenSlots.has(slot)));
   }
 
+  const assigned = new Set<THREE.Mesh>();
   for (const [slot, meshes] of slotMap.entries()) {
     const mat = slotMaterials.get(slot);
     if (!mat) continue;
@@ -82,10 +90,23 @@ function applyPreviewMaterials(
       mesh.material = mat.clone();
       mesh.userData.slotId = slot;
       mesh.visible = !hiddenSlots.has(slot);
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
+      mesh.castShadow = false;
+      mesh.receiveShadow = false;
+      assigned.add(mesh);
     }
   }
+
+  // Any mesh missed by slot detection still gets a studio-safe metal, never a
+  // dark imported CAD material that reads as black on the light stage.
+  cloned.traverse((node) => {
+    if (!(node instanceof THREE.Mesh) || assigned.has(node)) return;
+    if (Array.isArray(node.material)) node.material.forEach((m) => m.dispose());
+    else node.material?.dispose();
+    node.material = toCadStyleMaterial(DEFAULT_METAL, false);
+    node.userData.slotId = "default";
+    node.castShadow = false;
+    node.receiveShadow = false;
+  });
 
   fitToUnit(cloned, FIT_SIZE);
   return cloned;
@@ -125,21 +146,24 @@ export function UploadModelViewport({
 
   return (
     <div
-      className={cn(
-        "relative overflow-hidden rounded-xl border border-border/60 bg-[#08090b]",
-        className,
-      )}
+      className={cn("relative h-full min-h-[320px] overflow-hidden", className)}
+      style={{ background: STUDIO_BG }}
     >
       {model ? (
         <>
-          <div className="pointer-events-none absolute left-3 top-3 z-10 rounded-full border border-white/20 bg-black/65 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-white/90">
+          <div className="pointer-events-none absolute left-3 top-3 z-10 rounded-full border border-black/10 bg-white/75 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-black/60 backdrop-blur-sm">
             {selectedSlot ? `Layer: ${selectedSlot}` : "Orbit to inspect"}
           </div>
-          <Canvas camera={{ position: [0, 0.5, 2.2], fov: 38 }}>
-            <color attach="background" args={["#08090b"]} />
-            <ambientLight intensity={0.7} />
-            <directionalLight position={[3, 4, 2]} intensity={1.1} />
-            <directionalLight position={[-2, -1, -2]} intensity={0.35} />
+          <Canvas
+            camera={{ position: [0, 0.55, 2.35], fov: 38 }}
+            gl={{ antialias: true, alpha: false }}
+            style={{ background: STUDIO_BG }}
+          >
+            <color attach="background" args={[STUDIO_BG]} />
+            <hemisphereLight args={["#ffffff", "#c8d2de", 0.95]} />
+            <ambientLight intensity={0.55} />
+            <directionalLight position={[4, 6, 3]} intensity={1.05} color="#ffffff" />
+            <directionalLight position={[-3, 2, -2]} intensity={0.45} color="#e8eef6" />
             <Center>
               <primitive object={model} onPointerDown={handlePick} />
             </Center>

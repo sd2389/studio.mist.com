@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { AdminShell } from "@/features/admin/ui/AdminShell";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -291,9 +291,12 @@ export function AdminUserDetailShell({ userEmail, initial }: AdminUserDetailShel
               <Button variant="secondary" disabled={!!busy} onClick={impersonate}>
                 Impersonate user
               </Button>
-              <Button variant="ghost" asChild>
-                <Link href="/dashboard">Back to workshop</Link>
-              </Button>
+              <Link
+                href="/dashboard"
+                className={buttonVariants({ variant: "ghost" })}
+              >
+                Back to workshop
+              </Link>
             </CardContent>
           </Card>
         </div>

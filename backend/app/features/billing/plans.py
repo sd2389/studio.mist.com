@@ -20,6 +20,7 @@ class PlanQuotas:
     storage_bytes: int
     max_variants_per_model: int
     max_image_resolution: int
+    max_polygons: int
     watermark_exports: bool
 
 
@@ -33,6 +34,7 @@ PLAN_QUOTAS: dict[PlanTier, PlanQuotas] = {
         storage_bytes=5 * GB,
         max_variants_per_model=3,
         max_image_resolution=4096,
+        max_polygons=100_000,
         watermark_exports=True,
     ),
     "grow": PlanQuotas(
@@ -44,6 +46,7 @@ PLAN_QUOTAS: dict[PlanTier, PlanQuotas] = {
         storage_bytes=150 * GB,
         max_variants_per_model=15,
         max_image_resolution=8192,
+        max_polygons=500_000,
         watermark_exports=False,
     ),
     "studio": PlanQuotas(
@@ -55,6 +58,7 @@ PLAN_QUOTAS: dict[PlanTier, PlanQuotas] = {
         storage_bytes=500 * GB,
         max_variants_per_model=50,
         max_image_resolution=8192,
+        max_polygons=2_000_000,
         watermark_exports=False,
     ),
 }

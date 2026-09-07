@@ -61,7 +61,7 @@ export function UploadDropPanel({ busy, onFile, onSample, className }: UploadDro
           Requirements & recommendations
         </p>
         <ul className="mt-3 space-y-2 text-sm leading-relaxed text-muted-foreground">
-          <li>Keep poly count under 100k for best performance.</li>
+          <li>Polygon limits depend on your plan (Free 100k · Grow 500k · Studio 2M).</li>
           <li>Separate diamond meshes into their own layers for accurate cuts.</li>
           <li>Include at least one mesh for proper viewing.</li>
         </ul>

@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     fal_key: str | None = None
     public_api_base: str | None = None
     app_public_url: str = "http://localhost:3000"
-    email_from: str = "studio@devjewels.com"
+    email_from: str = "studio@mist.com"
     contact_notify_email: str | None = None
     smtp_host: str | None = None
     smtp_port: int = 587

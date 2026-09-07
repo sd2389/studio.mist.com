@@ -12,7 +12,7 @@ import { requirePageUser } from "@/lib/auth/require-page-user";
 import { formatStorageGb } from "@/lib/billing/format";
 
 export const metadata: Metadata = {
-  title: "Admin · DevJewels Studio",
+  title: "Admin · MIST Studio",
   description: "Internal ops console.",
 };
 

@@ -10,7 +10,7 @@ import {
 import { cn } from "@/lib/utils";
 
 export const metadata = {
-  title: "Demo jewelry · DevJewels Studio",
+  title: "Demo jewelry · MIST Studio",
 };
 
 export default async function GalleryPage() {
@@ -27,7 +27,7 @@ export default async function GalleryPage() {
               href="/"
               className="mb-10 inline-flex items-center gap-2 text-[9px] uppercase tracking-[0.14em] text-black/45"
             >
-              <ArrowLeft className="size-3.5" aria-hidden /> DevJewels Studio
+              <ArrowLeft className="size-3.5" aria-hidden /> MIST Studio
             </Link>
             <h1 className="text-[clamp(4rem,9vw,9rem)] font-light leading-[0.76] tracking-[-0.085em] text-black">
               Objects <span className="text-black/20">/ Archive</span>

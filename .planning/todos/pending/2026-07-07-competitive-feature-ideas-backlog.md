@@ -9,7 +9,7 @@ files:
 
 ## Problem
 
-Brainstormed 32 competitor-beating features for DevJewels Studio (vs Gemora, Threekit, VNTANA, KeyShot, Picup Media), organized in 4 tiers. Tier 4 covers researched 2026 industry blind spots: EU Digital Product Passport compliance, agentic commerce (UCP/ACP/MCP feeds), gram-budget design for record gold prices, lab-grown dual-listing, resale digitization, WhatsApp B2B, HUID linkage. Full list with rationale and dependencies lives in `.planning/FEATURE-IDEAS.md`. Nothing is scheduled yet — ideas will be lost without a pointer into the GSD workflow.
+Brainstormed 32 competitor-beating features for MIST Studio (vs Gemora, Threekit, VNTANA, KeyShot, Picup Media), organized in 4 tiers. Tier 4 covers researched 2026 industry blind spots: EU Digital Product Passport compliance, agentic commerce (UCP/ACP/MCP feeds), gram-budget design for record gold prices, lab-grown dual-listing, resale digitization, WhatsApp B2B, HUID linkage. Full list with rationale and dependencies lives in `.planning/FEATURE-IDEAS.md`. Nothing is scheduled yet — ideas will be lost without a pointer into the GSD workflow.
 
 ## Solution
 

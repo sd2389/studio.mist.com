@@ -85,7 +85,7 @@ export function StudioSidebar({
     <div className={cn("flex h-full flex-col overflow-hidden", className)}>
       <div className="flex shrink-0 items-baseline justify-between gap-3 border-b border-border/60 px-5 pb-3 pt-4">
         <span className="font-display text-[15px] italic leading-none tracking-tight text-foreground">
-          DevJewels
+          MIST
         </span>
         <span className="font-mono text-[9px] uppercase tracking-[0.22em] text-muted-foreground">
           atelier

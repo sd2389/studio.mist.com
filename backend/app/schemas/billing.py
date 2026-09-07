@@ -16,6 +16,7 @@ class QuotaBalances(BaseModel):
 class PlanFeatures(BaseModel):
     max_variants_per_model: int
     max_image_resolution: int
+    max_polygons: int
     watermark_exports: bool
     embed_enabled: bool
     batch_export_enabled: bool

@@ -1,7 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { fetchMe } from "@/lib/auth/client";
+import { isAuthRequiredError } from "@/lib/auth/is-auth-required-error";
 import { inspectModelFromFile } from "@/lib/convert/to-glb";
 import type { LoadedModel } from "@/lib/convert/types";
 import {
@@ -10,7 +12,8 @@ import {
   type PersistedModelConfig,
 } from "@/lib/slot-materials/model-config";
 import { DEFAULT_JEWELRY_CATEGORY } from "@/lib/upload/categories";
-import { countPolygons, POLY_WARN_THRESHOLD } from "@/lib/upload/count-polygons";
+import { countPolygons } from "@/lib/upload/count-polygons";
+import { formatPolyCount } from "@/lib/upload/polygon-limits";
 import { decimateModelRoot } from "@/lib/upload/decimate-model";
 import {
   applyLayerRename,
@@ -24,6 +27,7 @@ import { captureClientException, logClientEvent } from "@/lib/observability/sent
 import { isSupportedModelFile, persistUploadedModel } from "@/lib/upload/persist-model";
 import { fetchSampleModelFile, type SampleModel } from "@/lib/upload/sample-models";
 import type { UploadMetadata } from "@/features/upload/ui/UploadMetadataForm";
+import { usePolygonCap } from "@/features/upload/hooks/usePolygonCap";
 
 export type UploadPhase = "idle" | "parsing" | "ready" | "saving" | "error";
 
@@ -42,6 +46,11 @@ const EMPTY_METADATA: UploadMetadata = {
   category: DEFAULT_JEWELRY_CATEGORY,
   note: "",
 };
+
+/** Mirrors the server's 402 detail so both gates read the same. */
+function overPolyLimitMessage(planLabel: string, cap: number): string {
+  return `Polygon limit exceeded for ${planLabel} (max ${formatPolyCount(cap)}). Upgrade your plan or decimate the mesh.`;
+}
 
 function buildParsedUpload(file: File, inspected: Awaited<ReturnType<typeof inspectModelFromFile>>): ParsedUpload {
   const polyCount = countPolygons(inspected.loaded.root);
@@ -85,14 +94,16 @@ export function useUploadModelFlow() {
   const [skuError, setSkuError] = useState<string | null>(null);
   const [saveProgress, setSaveProgress] = useState(0);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
-  const [decimated, setDecimated] = useState(false);
+  const [authDialogOpen, setAuthDialogOpen] = useState(false);
+  const { maxPolygons, planLabel, refresh: refreshPolygonCap } = usePolygonCap();
+  const pendingSaveAfterAuthRef = useRef(false);
 
   const hiddenSlots = useMemo(
     () => new Set(layers.filter((layer) => !layer.visible).map((layer) => layer.slotId)),
     [layers],
   );
   const slotIds = useMemo(() => layers.map((layer) => layer.slotId), [layers]);
-  const showPolyWarning = parsed != null && parsed.polyCount > POLY_WARN_THRESHOLD && !decimated;
+  const overPolyLimit = parsed != null && parsed.polyCount > maxPolygons;
   const busy = phase === "parsing" || phase === "saving";
 
   const reset = useCallback(() => {
@@ -104,7 +115,8 @@ export function useUploadModelFlow() {
     setSkuError(null);
     setSaveProgress(0);
     setSaveMessage(null);
-    setDecimated(false);
+    setAuthDialogOpen(false);
+    pendingSaveAfterAuthRef.current = false;
   }, []);
 
   const ingestFile = useCallback(async (file: File) => {
@@ -116,7 +128,6 @@ export function useUploadModelFlow() {
     setPhase("parsing");
     setError(null);
     setSkuError(null);
-    setDecimated(false);
     logClientEvent("upload.parse.start", { filename: file.name, size: file.size });
     try {
       const inspected = await inspectModelFromFile(file);
@@ -192,23 +203,24 @@ export function useUploadModelFlow() {
 
   const handleDecimate = useCallback(() => {
     if (!parsed) return;
-    const nextCount = decimateModelRoot(parsed.preloaded.root, POLY_WARN_THRESHOLD);
+    const nextCount = decimateModelRoot(parsed.preloaded.root, maxPolygons);
     setParsed({ ...parsed, polyCount: nextCount });
-    setDecimated(true);
-  }, [parsed]);
+    setError(null);
+  }, [maxPolygons, parsed]);
 
-  const handleSave = useCallback(async () => {
+  const requestSignInForSave = useCallback(() => {
+    pendingSaveAfterAuthRef.current = true;
+    setAuthDialogOpen(true);
+    setPhase("ready");
+    setSaveMessage(null);
+    setSaveProgress(0);
+    setError(null);
+  }, []);
+
+  const persistReadyModel = useCallback(async () => {
     if (!parsed) return;
     const trimmedName = metadata.name.trim();
     const trimmedSku = metadata.sku.trim();
-    if (!trimmedName) {
-      setError("Name is required.");
-      return;
-    }
-    if (!trimmedSku) {
-      setSkuError("SKU is required.");
-      return;
-    }
 
     setPhase("saving");
     setError(null);
@@ -227,6 +239,7 @@ export function useUploadModelFlow() {
         modelConfig: syncedConfig,
         slotSelections: parsed.slotSelections,
         sceneSettings: parsed.sceneSettings,
+        polygonCount: parsed.polyCount,
         metadata: {
           name: trimmedName,
           sku: trimmedSku,
@@ -239,6 +252,10 @@ export function useUploadModelFlow() {
       logClientEvent("upload.save.done", { sceneId: result.sceneId, sku: trimmedSku });
       router.push(`/model/${result.sceneId}`);
     } catch (err) {
+      if (isAuthRequiredError(err)) {
+        requestSignInForSave();
+        return;
+      }
       captureClientException(err, { stage: "upload.save", sku: trimmedSku });
       const message = err instanceof Error ? err.message : "Save failed";
       if (/sku/i.test(message) && /exist/i.test(message)) setSkuError(message);
@@ -247,7 +264,57 @@ export function useUploadModelFlow() {
       setSaveMessage(null);
       setSaveProgress(0);
     }
-  }, [layers, metadata, parsed, router]);
+  }, [layers, metadata, parsed, requestSignInForSave, router]);
+
+  const handleSave = useCallback(async () => {
+    if (!parsed) return;
+    const trimmedName = metadata.name.trim();
+    const trimmedSku = metadata.sku.trim();
+    if (!trimmedName) {
+      setError("Name is required.");
+      return;
+    }
+    if (!trimmedSku) {
+      setSkuError("SKU is required.");
+      return;
+    }
+    if (parsed.polyCount > maxPolygons) {
+      setError(overPolyLimitMessage(planLabel, maxPolygons));
+      return;
+    }
+
+    try {
+      await fetchMe();
+    } catch (err) {
+      if (isAuthRequiredError(err)) {
+        requestSignInForSave();
+        return;
+      }
+      setError(err instanceof Error ? err.message : "Could not verify session");
+      return;
+    }
+
+    await persistReadyModel();
+  }, [maxPolygons, metadata.name, metadata.sku, parsed, persistReadyModel, planLabel, requestSignInForSave]);
+
+  const handleAuthDialogOpenChange = useCallback((open: boolean) => {
+    setAuthDialogOpen(open);
+    if (!open) pendingSaveAfterAuthRef.current = false;
+  }, []);
+
+  const handleAuthSuccess = useCallback(async () => {
+    setAuthDialogOpen(false);
+    const shouldRetry = pendingSaveAfterAuthRef.current;
+    pendingSaveAfterAuthRef.current = false;
+    if (!shouldRetry) return;
+
+    const cap = await refreshPolygonCap();
+    if (parsed != null && parsed.polyCount > cap) {
+      setError(overPolyLimitMessage(planLabel, cap));
+      return;
+    }
+    await persistReadyModel();
+  }, [parsed, persistReadyModel, planLabel, refreshPolygonCap]);
 
   return {
     phase,
@@ -259,9 +326,12 @@ export function useUploadModelFlow() {
     skuError,
     saveProgress,
     saveMessage,
+    authDialogOpen,
     hiddenSlots,
     slotIds,
-    showPolyWarning,
+    overPolyLimit,
+    maxPolygons,
+    planLabel,
     busy,
     reset,
     ingestFile,
@@ -270,5 +340,7 @@ export function useUploadModelFlow() {
     handleToggleVisibility,
     handleDecimate,
     handleSave,
+    handleAuthDialogOpenChange,
+    handleAuthSuccess,
   };
 }

@@ -22,7 +22,7 @@ from app.models.catalog import CatalogEnvironment
 
 logger = logging.getLogger(__name__)
 
-_USER_AGENT = "DevJewelsStudio/1.0 (catalog-sync)"
+_USER_AGENT = "MISTStudio/1.0 (catalog-sync)"
 _POLYHAVEN_FILES_API = "https://api.polyhaven.com/files/{asset_id}"
 _POLYHAVEN_THUMB_URL = "https://cdn.polyhaven.com/asset_img/thumbs/{asset_id}.png"
 

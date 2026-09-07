@@ -79,6 +79,7 @@ async def register_upload(
         model_config_data=body.model_config_data or None,
         slot_selections=body.slot_selections or None,
         scene_settings=body.scene_settings or None,
+        polygon_count=body.polygon_count,
     )
     log_event(logger, "upload.register.done", user_id=user.id, scene_id=result.get("scene_id"))
     return result
@@ -94,6 +95,7 @@ async def upload_model(
     model_config_body: str | None = Form(default=None, alias="model_config"),
     slot_selections: str | None = Form(default=None),
     scene_settings: str | None = Form(default=None),
+    polygon_count: int = Form(...),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     _rate: Annotated[None, Depends(_direct_limit)] = None,
@@ -129,6 +131,7 @@ async def upload_model(
         model_config_raw=model_config_body,
         slot_selections_raw=slot_selections,
         scene_settings_raw=scene_settings,
+        polygon_count=polygon_count,
     )
     log_event(logger, "upload.direct.done", user_id=user.id, scene_id=result.get("scene_id"))
     return result

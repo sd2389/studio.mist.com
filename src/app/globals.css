@@ -50,7 +50,7 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-/* DevJewels Ice system — rich black, luminous blue-white, and optical glass. */
+/* MIST Ice system — rich black, luminous blue-white, and optical glass. */
 :root {
   /* Brand navy / deep background — use: bg-ink, text-ink, border-ink, or var(--ink) */
   --ink: #0b0b0a;

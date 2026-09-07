@@ -53,7 +53,7 @@ export function EmbedChrome({
         {title ? (
           <p className="truncate text-sm font-medium text-foreground">{title}</p>
         ) : (
-          <p className="truncate text-sm font-medium text-muted-foreground">DevJewels Studio</p>
+          <p className="truncate text-sm font-medium text-muted-foreground">MIST Studio</p>
         )}
       </div>
       <div className="flex shrink-0 items-center gap-1">

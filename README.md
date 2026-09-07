@@ -1,4 +1,4 @@
-# DevJewels Studio
+# MIST Studio
 
 Browser-based jewelry rendering studio. CAD upload → photoreal renders → 360 video → embed.
 

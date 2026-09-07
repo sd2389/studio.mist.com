@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
 export const metadata: Metadata = {
-  title: "Sign up · DevJewels Studio",
+  title: "Sign up · MIST Studio",
 };
 
 type SignUpPageProps = {

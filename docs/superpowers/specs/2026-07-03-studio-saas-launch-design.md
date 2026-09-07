@@ -1,4 +1,4 @@
-# DevJewels Studio — SaaS Launch Design
+# MIST Studio — SaaS Launch Design
 
 **Date:** 2026-07-03
 **Status:** Draft for review

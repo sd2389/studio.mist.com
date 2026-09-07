@@ -199,7 +199,7 @@ export function ModelEditorShell({
                 href="/dashboard"
                 className="inline-flex text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground transition-colors hover:text-foreground"
               >
-                DevJewels Studio
+                MIST Studio
               </Link>
               <p className="truncate text-base font-semibold text-foreground sm:text-lg">{displayName}</p>
               {metadata.sku ? (

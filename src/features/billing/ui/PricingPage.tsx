@@ -12,6 +12,7 @@ import {
   startTopUpCheckout,
 } from "@/lib/billing/client";
 import type { PricingCatalog } from "@/lib/billing/types";
+import { formatPolyCount } from "@/lib/upload/polygon-limits";
 
 type PricingPageProps = {
   catalog: PricingCatalog;
@@ -125,6 +126,11 @@ export function PricingPageClient({
                   <li className="flex items-center gap-2">
                     <Check className="size-4 text-primary" />
                     Up to {plan.features.max_variants_per_model} variants /
+                    model
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="size-4 text-primary" />
+                    Up to {formatPolyCount(plan.features.max_polygons)} polygons /
                     model
                   </li>
                   <li className="flex items-center gap-2">

@@ -1,3 +1,4 @@
+import { AuthRequestError } from "@/lib/auth/is-auth-required-error";
 import { parseAuthErrorBody } from "@/lib/auth/parse-auth-error";
 import type { AuthResponse, MessageResponse } from "@/lib/auth/types";
 
@@ -16,7 +17,7 @@ async function authRequest<T>(path: string, init: RequestInit): Promise<T> {
     data = {};
   }
   if (!res.ok) {
-    throw new Error(parseAuthErrorBody(data, "Request failed"));
+    throw new AuthRequestError(parseAuthErrorBody(data, "Request failed"), res.status);
   }
   return data as T;
 }

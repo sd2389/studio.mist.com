@@ -18,7 +18,7 @@
 - SSIM pass threshold: **≥ 0.98** per image. Self-test sanity bound: SSIM(studio golden, dark golden) **< 0.95**.
 - Harness page must 404 in production builds unless `NEXT_PUBLIC_ENABLE_RENDER_HARNESS=1`.
 - Lighting presets (all five): `studio`, `soft`, `dark`, `catalog`, `dramatic`. Default material preset for goldens: `gold-18k-yellow`. Capture size: 512×512.
-- All commands run from repo root `/home/smitdesai/Coding/studio.devjewels.com/jewelry-renderer`.
+- All commands run from repo root `/home/smitdesai/Coding/studio.mist.com/jewelry-renderer`.
 
 ---
 

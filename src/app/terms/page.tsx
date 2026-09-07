@@ -3,15 +3,15 @@ import Link from "next/link";
 import { LegalPageShell } from "@/components/legal/LegalPageShell";
 
 export const metadata: Metadata = {
-  title: "Terms of Service · DevJewels Studio",
+  title: "Terms of Service · MIST Studio",
 };
 
 export default function TermsPage() {
   return (
     <LegalPageShell title="Terms of Service" updated="June 6, 2026">
       <p>
-        These Terms of Service (&quot;Terms&quot;) govern your use of DevJewels Studio
-        (&quot;Service&quot;) operated by DevJewels. By creating an account or using the Service,
+        These Terms of Service (&quot;Terms&quot;) govern your use of MIST Studio
+        (&quot;Service&quot;) operated by MIST. By creating an account or using the Service,
         you agree to these Terms.
       </p>
       <h2>Accounts</h2>
@@ -32,7 +32,7 @@ export default function TermsPage() {
       </p>
       <h2>Content</h2>
       <p>
-        You retain ownership of models and assets you upload. You grant DevJewels a limited license
+        You retain ownership of models and assets you upload. You grant MIST a limited license
         to host, process, and display your content solely to operate the Service.
       </p>
       <h2>Termination</h2>

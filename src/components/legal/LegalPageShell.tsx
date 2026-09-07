@@ -15,7 +15,7 @@ export function LegalPageShell({ title, updated, children }: LegalPageShellProps
         <div className="mx-auto flex h-14 max-w-3xl items-center justify-between px-4 sm:px-6">
           <Link href="/" className="flex items-center gap-2 text-foreground">
             <Gem className="size-6 text-primary" aria-hidden />
-            <span className="text-sm font-semibold">DevJewels Studio</span>
+            <span className="text-sm font-semibold">MIST Studio</span>
           </Link>
           <nav className="flex gap-4 text-sm text-muted-foreground">
             <Link href="/terms" className="hover:text-foreground hover:underline">

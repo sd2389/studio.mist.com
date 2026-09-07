@@ -1,7 +1,5 @@
 import * as THREE from "three";
 
-export const POLY_WARN_THRESHOLD = 100_000;
-
 export function countMeshTriangles(mesh: THREE.Mesh): number {
   const geometry = mesh.geometry;
   if (!geometry) return 0;
@@ -18,10 +16,4 @@ export function countPolygons(root: THREE.Object3D): number {
     if (obj instanceof THREE.Mesh) total += countMeshTriangles(obj);
   });
   return total;
-}
-
-export function formatPolyCount(count: number): string {
-  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
-  if (count >= 1_000) return `${Math.round(count / 1_000)}k`;
-  return String(count);
 }

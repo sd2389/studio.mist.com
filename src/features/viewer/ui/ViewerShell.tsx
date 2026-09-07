@@ -299,7 +299,7 @@ export function ViewerShell({
               High
             </p>
             <p className="pointer-events-none absolute right-7 top-24 hidden text-[8px] uppercase tracking-[0.2em] text-black/35 [writing-mode:vertical-rl] lg:block">
-              Object / {modelId} / DevJewels
+              Object / {modelId} / MIST
             </p>
           </motion.div>
         </div>

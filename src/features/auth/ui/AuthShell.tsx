@@ -22,7 +22,7 @@ export function AuthShell({
             <span className="size-2.5 rotate-45 border border-black" />
           </span>
           <span className="text-[11px] font-semibold uppercase leading-[0.9]">
-            DevJewels
+            MIST
             <span className="block font-light text-black/45">Studio</span>
           </span>
         </Link>

@@ -3,7 +3,7 @@ import { Suspense } from "react";
 import { ForgotPasswordForm } from "@/features/auth";
 
 export const metadata: Metadata = {
-  title: "Forgot password · DevJewels Studio",
+  title: "Forgot password · MIST Studio",
 };
 
 export default function ForgotPasswordPage() {

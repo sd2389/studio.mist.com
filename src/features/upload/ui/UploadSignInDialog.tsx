@@ -13,6 +13,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { logIn } from "@/lib/auth/client";
+import { attemptUploadSignIn } from "@/features/upload/lib/guest-save-auth";
 
 type UploadSignInDialogProps = {
   open: boolean;
@@ -35,11 +36,17 @@ export function UploadSignInDialog({
     setError(null);
     setPending(true);
     try {
-      await logIn({ email, password });
-      setPassword("");
-      onSuccess();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
+      const result = await attemptUploadSignIn({
+        email,
+        password,
+        logIn,
+        onSuccess,
+      });
+      if (result.ok) {
+        setPassword("");
+      } else {
+        setError(result.error);
+      }
     } finally {
       setPending(false);
     }

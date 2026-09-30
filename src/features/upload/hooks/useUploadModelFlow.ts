@@ -98,6 +98,8 @@ export function useUploadModelFlow() {
   const [authDialogOpen, setAuthDialogOpen] = useState(false);
   const { maxPolygons, planLabel, refresh: refreshPolygonCap } = usePolygonCap();
   const pendingSaveAfterAuthRef = useRef(false);
+  /** Serializes Save: acquired before fetchMe, held through auth dialog / persist. */
+  const saveFlowActiveRef = useRef(false);
 
   const hiddenSlots = useMemo(
     () => new Set(layers.filter((layer) => !layer.visible).map((layer) => layer.slotId)),
@@ -118,6 +120,7 @@ export function useUploadModelFlow() {
     setSaveMessage(null);
     setAuthDialogOpen(false);
     pendingSaveAfterAuthRef.current = false;
+    saveFlowActiveRef.current = false;
   }, []);
 
   const ingestFile = useCallback(async (file: File) => {
@@ -283,6 +286,8 @@ export function useUploadModelFlow() {
       setError(overPolyLimitMessage(planLabel, maxPolygons));
       return;
     }
+    if (saveFlowActiveRef.current) return;
+    saveFlowActiveRef.current = true;
 
     try {
       await fetchMe();
@@ -291,16 +296,26 @@ export function useUploadModelFlow() {
         requestSignInForSave();
         return;
       }
+      saveFlowActiveRef.current = false;
       setError(err instanceof Error ? err.message : "Could not verify session");
       return;
     }
 
-    await persistReadyModel();
+    try {
+      await persistReadyModel();
+    } finally {
+      if (!pendingSaveAfterAuthRef.current) {
+        saveFlowActiveRef.current = false;
+      }
+    }
   }, [maxPolygons, metadata.name, metadata.sku, parsed, persistReadyModel, planLabel, requestSignInForSave]);
 
   const handleAuthDialogOpenChange = useCallback((open: boolean) => {
     setAuthDialogOpen(open);
-    if (!open) pendingSaveAfterAuthRef.current = false;
+    if (!open) {
+      pendingSaveAfterAuthRef.current = false;
+      saveFlowActiveRef.current = false;
+    }
   }, []);
 
   const handleAuthSuccess = useCallback(async () => {
@@ -309,12 +324,18 @@ export function useUploadModelFlow() {
     pendingSaveAfterAuthRef.current = false;
     if (!shouldRetry) return;
 
-    const cap = await refreshPolygonCap();
-    if (parsed != null && parsed.polyCount > cap) {
-      setError(overPolyLimitMessage(planLabel, cap));
-      return;
+    try {
+      const cap = await refreshPolygonCap();
+      if (parsed != null && parsed.polyCount > cap) {
+        setError(overPolyLimitMessage(planLabel, cap));
+        return;
+      }
+      await persistReadyModel();
+    } finally {
+      if (!pendingSaveAfterAuthRef.current) {
+        saveFlowActiveRef.current = false;
+      }
     }
-    await persistReadyModel();
   }, [parsed, persistReadyModel, planLabel, refreshPolygonCap]);
 
   return {

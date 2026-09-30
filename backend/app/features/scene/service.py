@@ -45,6 +45,7 @@ def to_list_item(scene: Scene, render_count: int) -> SceneListItem:
         slot_selections=scene.slot_selections or {},
         scene_settings=scene.scene_settings or {},
         variants=scene.variants or {},
+        product_specs=scene.product_specs or {},
         model_url=_scene_model_url(scene),
         thumbnail_key=scene.thumbnail_key,
         thumbnail_url=_scene_thumbnail_url(scene),
@@ -68,6 +69,7 @@ def to_detail(scene: Scene, renders: list[Render]) -> SceneDetail:
         slot_selections=scene.slot_selections or {},
         scene_settings=scene.scene_settings or {},
         variants=scene.variants or {},
+        product_specs=scene.product_specs or {},
         model_url=_scene_model_url(scene),
         thumbnail_key=scene.thumbnail_key,
         thumbnail_url=_scene_thumbnail_url(scene),
@@ -113,6 +115,8 @@ def apply_patch(scene: Scene, body: ScenePatch) -> None:
         scene.scene_settings = body.scene_settings
     if body.variants is not None:
         scene.variants = body.variants
+    if body.product_specs is not None:
+        scene.product_specs = body.product_specs.model_dump()
     scene.updated_at = datetime.utcnow()
 
 

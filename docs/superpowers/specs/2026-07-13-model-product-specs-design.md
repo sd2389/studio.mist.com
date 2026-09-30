@@ -1,7 +1,7 @@
 # Model Editor Product Specs — Design
 
 **Date:** 2026-07-13  
-**Status:** Approved — implementation in progress  
+**Status:** Approved  
 **Owner:** Smit Desai  
 **Architecture rules:** [`docs/ARCHITECTURE.md`](../../ARCHITECTURE.md), [`docs/CODE-STANDARDS.md`](../../CODE-STANDARDS.md)
 

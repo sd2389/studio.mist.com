@@ -16,12 +16,18 @@ import {
 } from "@/features/render";
 import { ViewerPostFX } from "@/features/viewer";
 import { createPresetMaterial } from "@/lib/material-presets";
-import { isGemPresetId } from "@/lib/gem-gpu/gem-configs";
+import { isGemPresetId, type GemPresetId } from "@/lib/gem-gpu/gem-configs";
+import { GemFireOverlay } from "@/features/gem-fire/ui/GemFireOverlay";
+import { useCutGeometry } from "@/lib/stones/load-cut-geometry";
 import type { CutInfo } from "@/lib/stones/cut-geometries";
 import {
   AMBIENT_BY_LIGHTING,
   BG_BY_LIGHTING,
   CONTACT_SHADOW_OPACITY,
+  GEM_AMBIENT_BY_LIGHTING,
+  GEM_BG_BY_LIGHTING,
+  GEM_HDR_FILE_BY_LIGHTING,
+  GEM_SPOT_BY_LIGHTING,
   HDR_FILE_BY_LIGHTING,
   SPOT_BY_LIGHTING,
   TONE_EXPOSURE_BY_LIGHTING,
@@ -36,7 +42,7 @@ type StoneCanvasProps = {
 };
 
 export function StoneCanvas({ cut, preset, autoRotate, lighting }: StoneCanvasProps) {
-  const geometry = useMemo(() => cut.build(), [cut]);
+  const geometry = useCutGeometry(cut.id);
   const material = useMemo<THREE.Material>(() => {
     if (preset === "original") {
       return new THREE.MeshStandardMaterial({ color: 0xd4d4d8, metalness: 0.85, roughness: 0.3 });
@@ -45,25 +51,26 @@ export function StoneCanvas({ cut, preset, autoRotate, lighting }: StoneCanvasPr
   }, [preset]);
 
   const meshNode = useMemo(() => {
-    const m = new THREE.Mesh(geometry, material);
     const group = new THREE.Group();
-    group.add(m);
+    if (geometry) group.add(new THREE.Mesh(geometry, material));
     return group;
   }, [geometry, material]);
 
-  const hdrFile = HDR_FILE_BY_LIGHTING[lighting];
-  const bg = BG_BY_LIGHTING[lighting];
-  const ambient = AMBIENT_BY_LIGHTING[lighting];
-  const spot = SPOT_BY_LIGHTING[lighting];
+  const isGem = isGemPresetId(preset);
+  const hdrFile = isGem ? GEM_HDR_FILE_BY_LIGHTING[lighting] : HDR_FILE_BY_LIGHTING[lighting];
+  const bg = isGem ? GEM_BG_BY_LIGHTING[lighting] : BG_BY_LIGHTING[lighting];
+  const ambient = isGem ? GEM_AMBIENT_BY_LIGHTING[lighting] : AMBIENT_BY_LIGHTING[lighting];
+  const spot = isGem ? GEM_SPOT_BY_LIGHTING[lighting] : SPOT_BY_LIGHTING[lighting];
   const exposure = TONE_EXPOSURE_BY_LIGHTING[lighting];
   const contactShadow = CONTACT_SHADOW_OPACITY[lighting];
 
   return (
+    <>
     <WebGPUCanvas
       className="h-full w-full touch-none"
       shadows
       dpr={[1, 2]}
-      camera={{ position: [0, 0.35, 2.2], fov: 45, near: 0.01, far: 200 }}
+      camera={{ position: [0, 1.9, 3.8], fov: 40, near: 0.01, far: 200 }}
     >
       <color attach="background" args={[bg]} />
       <ambientLight intensity={ambient} />
@@ -77,7 +84,7 @@ export function StoneCanvas({ cut, preset, autoRotate, lighting }: StoneCanvasPr
       />
       <Suspense fallback={null}>
         <Center key={preset}>
-          <GemGpuDiamondShimmer object={meshNode} active={isGemPresetId(preset)} />
+          <GemGpuDiamondShimmer object={meshNode} active={isGem} />
           <primitive object={meshNode} />
         </Center>
         <Environment files={hdrFile} background={false} />
@@ -108,5 +115,13 @@ export function StoneCanvas({ cut, preset, autoRotate, lighting }: StoneCanvasPr
         <OrbitControlsBridge />
       </Suspense>
     </WebGPUCanvas>
+    <GemFireOverlay
+      geometry={geometry}
+      preset={isGem ? (preset as GemPresetId) : null}
+      hdrFile={hdrFile}
+      background={bg}
+      paused={autoRotate}
+    />
+    </>
   );
 }

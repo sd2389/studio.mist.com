@@ -69,7 +69,13 @@ function buildOutputNode(
     THREE.ACESFilmicToneMapping,
     THREE.SRGBColorSpace,
   );
-  return smaa(toned);
+
+  // A small post-tonemap contrast lift (display-referred, pivot mid-grey) — the punchier
+  // look of reference PBR viewers comes partly from this, not from ACES alone.
+  const CONTRAST = 1.08;
+  const contrasted = vec4(toned.rgb.sub(0.5).mul(CONTRAST).add(0.5), toned.a);
+
+  return smaa(contrasted);
 }
 
 /**

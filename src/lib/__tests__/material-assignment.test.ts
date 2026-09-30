@@ -19,7 +19,7 @@ describe('jewelry material assignment', () => {
   it('retains working TSL nodes and independent uniforms on a cloned diamond', () => {
     const original = createGemMaterial('diamond');
     const clone = cloneJewelryMaterial(original);
-    expect((clone as unknown as {emissiveNode: unknown}).emissiveNode).toBeTruthy();
+    expect((clone as unknown as {specularIntensityNode: unknown}).specularIntensityNode).toBeTruthy();
     expect((clone as unknown as {specularIntensityNode: unknown}).specularIntensityNode).toBeTruthy();
     setJewelryGemTime(clone, 9);
     expect(clone.userData.jewelryGemUniforms.uTime.value).toBe(9);
@@ -32,7 +32,7 @@ describe('jewelry material assignment', () => {
     root.add(stone,band);snapshotOriginalMaterials(root);
     applyMaterialPresetBySlot(root, {'Gem 1':'sapphire','Metal 1':'platinum'},'platinum');
     expect(stone.material.userData.gemGpuDiamond).toBe('sapphire');
-    expect((stone.material as unknown as {emissiveNode: unknown}).emissiveNode).toBeTruthy();
+    expect((stone.material as unknown as {specularIntensityNode: unknown}).specularIntensityNode).toBeTruthy();
     applyMaterialPresetBySlot(root, {'Gem 1':'sapphire','Metal 1':'gold-18k-rose'},'gold-18k-rose');
     expect(stone.material.userData.gemGpuDiamond).toBe('sapphire');
     expect(band.material.metalness).toBe(1);

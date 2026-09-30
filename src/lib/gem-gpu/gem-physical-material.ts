@@ -24,15 +24,26 @@ export function createGemMaterial(
     ior: cfg.ior,
     dispersion: cfg.dispersionBase,
     transparent: transmission > 0,
-    envMapIntensity: cfg.envMapIntensity * 1.25,
+    // No boost multiplier: that 1.25x was compensating for a flat environment. Against a
+    // source-rich gem HDR it just blows the crown out to a white blob and kills facet read.
+    // Gems sit on a near-white backdrop, so the environment has to push hard to produce
+    // the near-blown facet highlights that read as "icy" rather than "grey glass".
+    envMapIntensity: cfg.envMapIntensity * 2.1,
     attenuationColor: new THREE.Color(cfg.attenuationColor),
     attenuationDistance: cfg.attenuationDistance,
     specularIntensity: 1.0,
     specularColor: new THREE.Color(0xffffff),
-    clearcoat: cfg.clearcoat ?? 0,
-    clearcoatRoughness: cfg.clearcoat ? 0.02 : 0,
+    // Clearcoat adds a second, softer specular lobe over the facets. On a polished stone
+    // that reads as haze and blunts the facet edges, so it stays off for gems.
+    clearcoat: 0,
+    clearcoatRoughness: 0,
     iridescence: cfg.iridescence ?? 0,
     iridescenceIOR: cfg.iridescence ? 1.3 : 1,
+    // Raster transmission refracts the backdrop once; it never sees the stone's own back
+    // facets, which is why a single-sided gem renders as a flat white shell. Drawing both
+    // sides puts the pavilion facets behind the crown where the eye expects them, and that
+    // criss-cross of bright and dark windows is what reads as a cut stone.
+    side: THREE.DoubleSide,
     flatShading: false,
   });
   m.userData[GEM_GPU_USER_KEY] = presetId;

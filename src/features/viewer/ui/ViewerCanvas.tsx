@@ -30,6 +30,7 @@ import { resolveSourceAssetUrl } from "@/lib/source-catalog";
 import {
   AMBIENT_BY_LIGHTING,
   BG_BY_LIGHTING,
+  GEM_HDR_FILE_BY_LIGHTING,
   HDR_FILE_BY_LIGHTING,
   SPOT_BY_LIGHTING,
   TONE_EXPOSURE_BY_LIGHTING,
@@ -94,9 +95,13 @@ export function ViewerCanvas({
   const advanced = sceneSettings?.advanced;
   const environmentSettings = (kind: "metal" | "gem", item: EnvironmentItem | null) => {
     const legacy = sceneSettings?.[kind === "metal" ? "ENVIRONMENT-METAL" : "ENVIRONMENT-GEM"];
+    // Gems default to a source-rich environment. Falling back to the metal HDR gives every
+    // facet the same near-uniform grey to reflect, which is what reads as glass.
+    const fallbackHdr =
+      kind === "gem" ? GEM_HDR_FILE_BY_LIGHTING[lighting] : HDR_FILE_BY_LIGHTING[lighting];
     return {
-      file: item ? resolveEnvironmentUrl(item, HDR_FILE_BY_LIGHTING[lighting])
-        : legacy ? resolveSourceAssetUrl(legacy) : HDR_FILE_BY_LIGHTING[lighting],
+      file: item ? resolveEnvironmentUrl(item, fallbackHdr)
+        : legacy ? resolveSourceAssetUrl(legacy) : fallbackHdr,
       rotation: degreesToRadians(envRotationDegrees(advanced, kind, item?.default_rotation ?? 0)),
       intensity: envIntensityMultiplier(advanced, kind, item?.default_intensity ?? 1),
     };
@@ -128,7 +133,7 @@ export function ViewerCanvas({
         className="h-full w-full touch-none"
         shadows={{ type: THREE.PCFShadowMap }}
         dpr={[1, dprCap]}
-        camera={{ position: [0, 0.35, 2.2], fov: 45, near: 0.01, far: 200 }}
+        camera={{ position: [0.62, 0.88, 2.25], fov: 42, near: 0.01, far: 200 }}
       >
         {bg ? <color attach="background" args={[bg]} /> : null}
         <ambientLight intensity={ambient} />

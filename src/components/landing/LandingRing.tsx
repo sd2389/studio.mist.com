@@ -56,7 +56,7 @@ export function LandingRing({ active, ...props }: Props) {
     <WebGPUCanvas camera={{ position: [0, 0.45, 3.2], fov: 35, near: 0.01, far: 30 }} dpr={[1, 1.5]} frameloop={active ? 'always' : 'never'} style={{ pointerEvents: 'none' }}>
       <ambientLight intensity={0.3} />
       <directionalLight position={[2, 4, 3]} intensity={1.4} />
-      <Environment files='/hdr/photo_studio_01_1k.hdr' />
+      <Environment files='/hdr/photo_studio_01_2k.hdr' />
       <Ring {...props} />
     </WebGPUCanvas>
   );

@@ -7,15 +7,17 @@ import { Suspense, useMemo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { createGemMaterial } from "@/lib/gem-gpu/gem-physical-material";
 import { getCutById, type CutId } from "@/lib/stones/cut-geometries";
+import { useCutGeometry } from "@/lib/stones/load-cut-geometry";
+import { GEM_BG_BY_LIGHTING } from "@/lib/viewer-lighting";
 
 type StoneTileProps = { cutId: CutId; label: string; description: string };
 
 export function StoneTile({ cutId, label, description }: StoneTileProps) {
   const cut = getCutById(cutId);
-  const geometry = useMemo(() => (cut ? cut.build() : null), [cut]);
+  const geometry = useCutGeometry(cut ? cutId : null);
   const material = useMemo(() => createGemMaterial("diamond"), []);
 
-  if (!cut || !geometry) return null;
+  if (!cut) return null;
 
   return (
     <Link
@@ -24,24 +26,29 @@ export function StoneTile({ cutId, label, description }: StoneTileProps) {
       aria-label={`Open ${label} in studio`}
     >
       <Card className="overflow-hidden rounded-[1.75rem] border border-black/[0.06] bg-[#eaeff5] p-0 text-black ring-0 transition duration-300 group-hover:bg-white">
-        <div className="relative aspect-square overflow-hidden bg-[radial-gradient(circle_at_50%_42%,#ffffff_0%,#dfe7f0_50%,#cad6e3_100%)]">
+        <div
+          className="relative aspect-square overflow-hidden"
+          style={{ backgroundColor: GEM_BG_BY_LIGHTING.studio }}
+        >
           <span className="absolute left-4 top-4 z-10 border border-white/20 bg-black/30 px-2.5 py-1 text-[8px] uppercase tracking-[0.14em] text-white/60 backdrop-blur">
             Precision cut
           </span>
           <WebGPUCanvas
             className="h-full w-full"
-            camera={{ position: [1.4, 0.9, 1.4], fov: 38, near: 0.01, far: 50 }}
+            camera={{ position: [2.5, 1.9, 2.5], fov: 38, near: 0.01, far: 50 }}
             dpr={[1, 2]}
           >
-            <ambientLight intensity={0.4} />
+            <ambientLight intensity={0.35} />
             <Suspense fallback={null}>
               <Environment
-                files="/hdr/photo_studio_01_1k.hdr"
+                files="/hdr/photo_studio_01_2k.hdr"
                 background={false}
               />
-              <Center>
-                <mesh geometry={geometry} material={material} />
-              </Center>
+              {geometry ? (
+                <Center>
+                  <mesh geometry={geometry} material={material} />
+                </Center>
+              ) : null}
               <OrbitControls
                 makeDefault={false}
                 enableZoom={false}

@@ -8,6 +8,7 @@ import { UploadDropPanel } from "./UploadDropPanel";
 import { UploadLayersEditor } from "./UploadLayersEditor";
 import { UploadMetadataForm } from "./UploadMetadataForm";
 import { UploadModelViewport } from "./UploadModelViewport";
+import { UploadSignInDialog } from "./UploadSignInDialog";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 
@@ -23,6 +24,7 @@ export function UploadModelShell() {
     skuError,
     saveProgress,
     saveMessage,
+    authDialogOpen,
     hiddenSlots,
     slotIds,
     showPolyWarning,
@@ -34,6 +36,8 @@ export function UploadModelShell() {
     handleToggleVisibility,
     handleDecimate,
     handleSave,
+    handleAuthDialogOpenChange,
+    handleAuthSuccess,
   } = flow;
 
   return (
@@ -201,6 +205,12 @@ export function UploadModelShell() {
           </aside>
         </div>
       </div>
+
+      <UploadSignInDialog
+        open={authDialogOpen}
+        onOpenChange={handleAuthDialogOpenChange}
+        onSuccess={handleAuthSuccess}
+      />
     </main>
   );
 }

@@ -1,14 +1,17 @@
 "use client";
 
-import { Bloom, EffectComposer, N8AO, SMAA, ToneMapping } from "@react-three/postprocessing";
-import { useThree } from "@react-three/fiber";
-import { BlendFunction, KernelSize, ToneMappingMode, type EffectComposer as EffectComposerImpl } from "postprocessing";
+import { useFrame, useThree } from "@react-three/fiber";
 import { useLayoutEffect, useMemo, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
+import { asViewerRenderer } from "@/lib/gpu/viewer-renderer";
 import type { SceneAdvancedSettings } from "@/lib/slot-materials/model-config";
 import { resolvePostFXConfig } from "@/lib/viewer-postfx-config";
-import { usePostFXComposerStore } from "@/stores/postfx-composer-store";
+import {
+  createViewerPostFXComposer,
+  type ViewerPostFXComposer,
+} from "@/lib/viewer-postfx-pipeline";
 import { applyQualityToPostFX } from "@/lib/viewer-quality";
+import { usePostFXComposerStore } from "@/stores/postfx-composer-store";
 import { useViewerQualityStore } from "@/stores/viewer-quality-store";
 
 type ViewerPostFXProps = {
@@ -16,48 +19,44 @@ type ViewerPostFXProps = {
 };
 
 /**
- * Composer pipeline. MSAA is disabled here because the composer's resolve blit
- * conflicts with N8AO's depth-aware downsample on some GPU/driver combos
- * (GL_INVALID_OPERATION: glBlitFramebuffer depth/stencil format mismatch).
- * SMAA below handles edge antialiasing instead. enableNormalPass gives N8AO
- * a dedicated normal target so it stops sampling the multisampled depth.
+ * TSL RenderPipeline (bloom + GTAO + ACES + SMAA).
+ * Takes over the frame so R3F does not also blit an unprocessed beauty pass.
  */
 export function ViewerPostFX({ advanced }: ViewerPostFXProps) {
-  const gl = useThree((state) => state.gl);
-  const composerRef = useRef<EffectComposerImpl>(null);
+  const gl = asViewerRenderer(useThree((state) => state.gl));
+  const scene = useThree((state) => state.scene);
+  const camera = useThree((state) => state.camera);
+  const size = useThree((state) => state.size);
+  const composerRef = useRef<ViewerPostFXComposer | null>(null);
   const setComposerRefs = usePostFXComposerStore((state) => state.setRefs);
   const effective = useViewerQualityStore(useShallow((s) => s.effective));
-  const config = useMemo(() => applyQualityToPostFX(resolvePostFXConfig(advanced), effective), [advanced, effective]);
+  const config = useMemo(
+    () => applyQualityToPostFX(resolvePostFXConfig(advanced), effective),
+    [advanced, effective],
+  );
 
   useLayoutEffect(() => {
-    const composer = composerRef.current;
-    if (!composer) return;
+    const { composer, dispose } = createViewerPostFXComposer(
+      gl,
+      scene,
+      camera,
+      size.width,
+      size.height,
+      config,
+      gl.toneMappingExposure,
+    );
+    composerRef.current = composer;
     setComposerRefs({ composer, gl });
-    return () => setComposerRefs(null);
-  }, [gl, config, setComposerRefs]);
+    return () => {
+      dispose();
+      composerRef.current = null;
+      setComposerRefs(null);
+    };
+  }, [gl, scene, camera, config, size.width, size.height, setComposerRefs]);
 
-  return (
-    <EffectComposer ref={composerRef} multisampling={0} enableNormalPass>
-      <N8AO
-        halfRes={config.ao.halfRes}
-        quality={config.ao.quality}
-        aoRadius={config.ao.aoRadius}
-        intensity={config.aoEnabled ? config.ao.intensity : 0}
-        distanceFalloff={config.ao.distanceFalloff}
-        denoiseRadius={config.ao.denoiseRadius}
-        depthAwareUpsampling={config.ao.depthAwareUpsampling}
-      />
-      <Bloom
-        intensity={config.bloom.intensity}
-        luminanceThreshold={config.bloom.luminanceThreshold}
-        luminanceSmoothing={config.bloom.luminanceSmoothing}
-        mipmapBlur={config.bloom.mipmapBlur}
-        radius={config.bloom.radius}
-        kernelSize={KernelSize.LARGE}
-        blendFunction={BlendFunction.ADD}
-      />
-      <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
-      <SMAA />
-    </EffectComposer>
-  );
+  useFrame(() => {
+    composerRef.current?.render();
+  }, 1);
+
+  return null;
 }

@@ -22,9 +22,15 @@ const nextConfig: NextConfig = {
       tailwindcss: path.join(rootDir, "node_modules/tailwindcss"),
       "tw-animate-css": path.join(rootDir, "node_modules/tw-animate-css"),
       shadcn: path.join(rootDir, "node_modules/shadcn"),
+      // Published stats.js omits build/stats.min.js; point at the source module.
+      "stats.js": path.join(rootDir, "node_modules/stats.js/src/Stats.js"),
     },
   },
   webpack: (config, { isServer }) => {
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      "stats.js": path.join(rootDir, "node_modules/stats.js/src/Stats.js"),
+    };
     if (!isServer) {
       config.resolve.fallback = {
         ...config.resolve.fallback,

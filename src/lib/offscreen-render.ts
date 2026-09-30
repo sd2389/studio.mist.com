@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { createViewerRenderer, type ViewerRenderer } from "@/lib/gpu/viewer-renderer";
 import { applyViewerColorManagement } from "@/lib/render-color-management";
 import {
   DEFAULT_VIEWER_POSTFX,
@@ -12,7 +13,7 @@ import {
 export type ImageExportFormat = "png" | "jpeg";
 
 type RenderOpts = {
-  gl: THREE.WebGLRenderer;
+  gl: ViewerRenderer;
   scene: THREE.Scene;
   camera: THREE.Camera;
   width: number;
@@ -71,11 +72,10 @@ export async function renderAtResolution(opts: RenderOpts): Promise<Blob> {
   const blobQuality = format === "jpeg" ? jpegQuality : undefined;
 
   const canvas = makeCanvas(width, height);
-  const renderer = new THREE.WebGLRenderer({
+  const renderer = await createViewerRenderer({
     canvas,
     antialias: true,
     alpha: true,
-    preserveDrawingBuffer: true,
   });
 
   renderer.setPixelRatio(pixelRatio);
@@ -106,7 +106,7 @@ export async function renderAtResolution(opts: RenderOpts): Promise<Blob> {
   );
 
   try {
-    renderWithPostFX(composer, renderer);
+    renderWithPostFX(composer);
     const blob = await toBlob(canvas, mimeType, blobQuality);
     return blob;
   } finally {
@@ -119,6 +119,5 @@ export async function renderAtResolution(opts: RenderOpts): Promise<Blob> {
       camera.updateProjectionMatrix();
     }
     renderer.dispose();
-    renderer.forceContextLoss();
   }
 }

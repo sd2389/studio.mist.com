@@ -1,9 +1,10 @@
 "use client";
 
-import { Canvas } from "@react-three/fiber";
-import { ContactShadows, Environment, OrbitControls } from "@react-three/drei";
+import { Environment, OrbitControls } from "@react-three/drei";
 import { Suspense, useEffect } from "react";
 import * as THREE from "three";
+import { WebGPUCanvas } from "@/lib/gpu/WebGPUCanvas";
+import { ViewerContactShadows } from "@/lib/gpu/ViewerContactShadows";
 import {
   HiresExportBridge,
   OrbitControlsBridge,
@@ -138,16 +139,11 @@ export function ViewerCanvas({
 
   return (
     <div className="relative h-full w-full">
-      <Canvas
+      <WebGPUCanvas
         className="h-full w-full touch-none"
         shadows={{ type: THREE.PCFShadowMap }}
         dpr={[1, dprCap]}
         camera={{ position: [0, 0.35, 2.2], fov: 45, near: 0.01, far: 200 }}
-        gl={{
-          alpha: true,
-          preserveDrawingBuffer: true,
-          antialias: true,
-        }}
       >
         {bg ? <color attach="background" args={[bg]} /> : null}
         <ambientLight intensity={ambient} />
@@ -178,7 +174,7 @@ export function ViewerCanvas({
           />
           <Environment files={hdrFile} background={false} />
           <SceneEnvironmentBridge rotationRadians={envRotation} intensity={envIntensity} />
-          <ContactShadows
+          <ViewerContactShadows
             position={[0, -0.55, 0]}
             color="#0a0a0a"
             opacity={contactShadow}
@@ -210,7 +206,7 @@ export function ViewerCanvas({
           <JewelryGemCompileFallbackBridge />
           <OrbitControlsBridge />
         </Suspense>
-      </Canvas>
+      </WebGPUCanvas>
       <ViewerToastHost />
     </div>
   );

@@ -30,7 +30,7 @@ export function TransparentCaptureBridge() {
 
       const postfx = getPostFXComposerRefs();
       if (postfx) {
-        renderWithPostFX(postfx.composer, postfx.gl);
+        renderWithPostFX(postfx.composer);
         const dataUrl = postfx.gl.domElement.toDataURL("image/png");
         scene.background = prevBg;
         gl.setClearColor(prevColor, prevAlpha);

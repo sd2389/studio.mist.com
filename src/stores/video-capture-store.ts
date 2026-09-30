@@ -1,8 +1,9 @@
 import * as THREE from "three";
+import type { ViewerRenderer } from "@/lib/gpu/viewer-renderer";
 import { create } from "zustand";
 
 type Refs = {
-  gl: THREE.WebGLRenderer;
+  gl: ViewerRenderer;
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera;
 };

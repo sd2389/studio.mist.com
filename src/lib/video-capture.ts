@@ -6,6 +6,7 @@ import {
   Mp4OutputFormat,
   Output,
 } from "mediabunny";
+import { createViewerRenderer, type ViewerRenderer } from "@/lib/gpu/viewer-renderer";
 import { applyViewerColorManagement } from "@/lib/render-color-management";
 import {
   DEFAULT_VIEWER_POSTFX,
@@ -22,7 +23,7 @@ export type CameraPose = {
 };
 
 export type RecordTurntableOpts = {
-  gl: THREE.WebGLRenderer;
+  gl: ViewerRenderer;
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera;
   width: number;
@@ -234,11 +235,10 @@ export async function recordMultiAngle(opts: RecordMultiAngleOpts): Promise<Blob
   const framesPerPose = Math.max(1, Math.floor(frameCount / poses.length));
 
   const canvas = document.createElement("canvas");
-  const renderer = new THREE.WebGLRenderer({
+  const renderer = await createViewerRenderer({
     canvas,
     antialias: true,
     alpha: true,
-    preserveDrawingBuffer: true,
   });
   renderer.setSize(width, height, false);
   applyViewerColorManagement(renderer, exposure);
@@ -259,7 +259,7 @@ export async function recordMultiAngle(opts: RecordMultiAngleOpts): Promise<Blob
   function renderFrameAt(i: number): HTMLCanvasElement {
     const poseIndex = Math.min(Math.floor(i / framesPerPose), poses.length - 1);
     applyPoseToCamera(camera, poses[poseIndex]!);
-    renderWithPostFX(composer, renderer);
+    renderWithPostFX(composer);
     return canvas;
   }
 
@@ -279,7 +279,6 @@ export async function recordMultiAngle(opts: RecordMultiAngleOpts): Promise<Blob
     dispose();
     restoreCamera(camera, camSnap);
     renderer.dispose();
-    renderer.forceContextLoss();
   }
 }
 
@@ -302,11 +301,10 @@ export async function recordTurntable(opts: RecordTurntableOpts): Promise<Blob> 
   const startY = camera.position.y;
 
   const canvas = document.createElement("canvas");
-  const renderer = new THREE.WebGLRenderer({
+  const renderer = await createViewerRenderer({
     canvas,
     antialias: true,
     alpha: true,
-    preserveDrawingBuffer: true,
   });
   renderer.setSize(width, height, false);
   applyViewerColorManagement(renderer, exposure);
@@ -329,7 +327,7 @@ export async function recordTurntable(opts: RecordTurntableOpts): Promise<Blob> 
     camera.position.set(Math.cos(angle) * radius, startY, Math.sin(angle) * radius);
     camera.lookAt(0, 0, 0);
     camera.updateMatrixWorld(true);
-    renderWithPostFX(composer, renderer);
+    renderWithPostFX(composer);
     return canvas;
   }
 
@@ -349,6 +347,5 @@ export async function recordTurntable(opts: RecordTurntableOpts): Promise<Blob> 
     dispose();
     restoreCamera(camera, camSnap);
     renderer.dispose();
-    renderer.forceContextLoss();
   }
 }

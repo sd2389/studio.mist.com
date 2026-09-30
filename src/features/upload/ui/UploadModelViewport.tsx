@@ -1,7 +1,8 @@
 "use client";
 
 import { Center, OrbitControls } from "@react-three/drei";
-import { Canvas, type ThreeEvent } from "@react-three/fiber";
+import { type ThreeEvent } from "@react-three/fiber";
+import { WebGPUCanvas } from "@/lib/gpu/WebGPUCanvas";
 import { useMemo, useState } from "react";
 import * as THREE from "three";
 import { detectSlots } from "@/lib/slot-materials/detect-slots";
@@ -154,9 +155,8 @@ export function UploadModelViewport({
           <div className="pointer-events-none absolute left-3 top-3 z-10 rounded-full border border-black/10 bg-white/75 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-black/60 backdrop-blur-sm">
             {selectedSlot ? `Layer: ${selectedSlot}` : "Orbit to inspect"}
           </div>
-          <Canvas
+          <WebGPUCanvas
             camera={{ position: [0, 0.55, 2.35], fov: 38 }}
-            gl={{ antialias: true, alpha: false }}
             style={{ background: STUDIO_BG }}
           >
             <color attach="background" args={[STUDIO_BG]} />
@@ -168,7 +168,7 @@ export function UploadModelViewport({
               <primitive object={model} onPointerDown={handlePick} />
             </Center>
             <OrbitControls enablePan={false} />
-          </Canvas>
+          </WebGPUCanvas>
         </>
       ) : (
         <div className="flex h-full min-h-[320px] items-center justify-center px-6 text-center">

@@ -2,6 +2,7 @@
 
 import { useThree } from "@react-three/fiber";
 import { useEffect, useMemo } from "react";
+import { asViewerRenderer } from "@/lib/gpu/viewer-renderer";
 import type { SceneAdvancedSettings } from "@/lib/slot-materials/model-config";
 import { applyViewerColorManagement } from "@/lib/render-color-management";
 import { resolvePostFXConfig } from "@/lib/viewer-postfx-config";
@@ -14,7 +15,7 @@ type RenderFidelityBridgeProps = {
 
 /** Syncs viewport exposure + PostFX settings for offscreen export and video capture. */
 export function RenderFidelityBridge({ exposure, advanced }: RenderFidelityBridgeProps) {
-  const gl = useThree((state) => state.gl);
+  const gl = asViewerRenderer(useThree((state) => state.gl));
   const setRenderFidelity = useRenderFidelityStore((state) => state.setRenderFidelity);
   const postfxConfig = useMemo(() => resolvePostFXConfig(advanced), [advanced]);
 

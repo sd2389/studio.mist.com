@@ -6,6 +6,7 @@ import { fetchMe } from "@/lib/auth/client";
 import { isAuthRequiredError } from "@/lib/auth/is-auth-required-error";
 import { inspectModelFromFile } from "@/lib/convert/to-glb";
 import type { LoadedModel } from "@/lib/convert/types";
+import { viewerIdFromModelKey } from "@/lib/model-key";
 import {
   buildModelConfigFromSlots,
   getDefaultSceneSettings,
@@ -248,9 +249,9 @@ export function useUploadModelFlow() {
         },
       });
       setSaveProgress(100);
-      setSaveMessage("Opening editor…");
+      setSaveMessage("Opening studio…");
       logClientEvent("upload.save.done", { sceneId: result.sceneId, sku: trimmedSku });
-      router.push(`/model/${result.sceneId}`);
+      router.push(`/viewer/${encodeURIComponent(viewerIdFromModelKey(result.modelKey))}`);
     } catch (err) {
       if (isAuthRequiredError(err)) {
         requestSignInForSave();

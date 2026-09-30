@@ -39,6 +39,10 @@ describe("embed-settings", () => {
     expect(snippet).toContain('title="Ring"');
   });
 
+  it("defaults shopper embed to stay on the jeweler site", () => {
+    expect(resolveEmbedSettings(null).showStudioLink).toBe(false);
+  });
+
   it("resolveEmbedKey prefers sku", () => {
     expect(resolveEmbedKey(" ABC ", "viewer-1")).toBe("ABC");
     expect(resolveEmbedKey(null, "viewer-1")).toBe("viewer-1");

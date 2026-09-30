@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
+from app.core.cors_origins import resolve_cors_origins
 from app.core.observability import configure_logging, init_sentry
 from app.database import init_db
 from app.routers import api_router
@@ -19,7 +20,7 @@ app = FastAPI(
     redoc_url="/redoc" if _is_dev else None,
     openapi_url="/openapi.json" if _is_dev else None,
 )
-_cors_origins = [o.strip() for o in _settings.cors_origins.split(",") if o.strip()]
+_cors_origins = resolve_cors_origins(_settings.cors_origins, _settings.app_public_url)
 
 _cors_kw: dict = {
     "allow_origins": _cors_origins,

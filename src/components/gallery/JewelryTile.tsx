@@ -53,7 +53,7 @@ export function JewelryTile({ id, label, description }: Props) {
             <ambientLight intensity={0.4} />
             <Suspense fallback={null}>
               <Environment
-                files="/hdr/photo_studio_01_1k.hdr"
+                files="/hdr/photo_studio_01_2k.hdr"
                 background={false}
               />
               <Center>

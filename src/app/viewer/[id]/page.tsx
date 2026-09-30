@@ -1,3 +1,4 @@
+import { bundledScene } from "@/lib/bundled-scenes";
 import type { Metadata } from "next";
 import { fetchSceneByViewerIdServer } from "@/lib/api/server-fetch";
 import { ViewerShell } from "@/features/viewer";
@@ -8,7 +9,7 @@ type ViewerPageProps = {
 
 export async function generateMetadata({ params }: ViewerPageProps): Promise<Metadata> {
   const { id } = await params;
-  const scene = await fetchSceneByViewerIdServer(id).catch(() => null);
+  const scene = bundledScene(id) ?? await fetchSceneByViewerIdServer(id).catch(() => null);
   return {
     title: scene?.name ? `${scene.name} · MIST Studio` : `Viewer · ${id}`,
   };
@@ -16,7 +17,7 @@ export async function generateMetadata({ params }: ViewerPageProps): Promise<Met
 
 export default async function ViewerPage({ params }: ViewerPageProps) {
   const { id } = await params;
-  const initialScene = await fetchSceneByViewerIdServer(id).catch(() => null);
+  const initialScene = bundledScene(id) ?? await fetchSceneByViewerIdServer(id).catch(() => null);
 
-  return <ViewerShell modelId={id} variant="studio" initialScene={initialScene} />;
+  return <ViewerShell key={id} modelId={id} variant="studio" initialScene={initialScene} />;
 }

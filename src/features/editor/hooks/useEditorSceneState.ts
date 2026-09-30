@@ -48,13 +48,12 @@ export function useEditorSceneState({
   const sceneSettings = useMaterialPresetStore((s) => s.sceneSettings);
   const autoRotate = useMaterialPresetStore((s) => s.autoRotate);
 
-  const hydratedRef = useRef(false);
-  if (!hydratedRef.current) {
-    hydrateEditorSceneStore(initialScene);
-    hydratedRef.current = true;
-  }
-
   const [modelConfig, setModelConfig] = useState(() => resolveModelConfigFromScene(initialScene));
+  const [previousScene, setPreviousScene] = useState(initialScene);
+  if (previousScene !== initialScene) {
+    setPreviousScene(initialScene);
+    setModelConfig(resolveModelConfigFromScene(initialScene));
+  }
   const [catalog, setCatalog] = useState<SourceCatalogPayload | null>(initialCatalog);
   const applyingPersistedState = useRef(true);
   const persistTimer = useRef<number | null>(null);
@@ -91,7 +90,7 @@ export function useEditorSceneState({
   useEffect(() => {
     applyingPersistedState.current = true;
     hydrateEditorSceneStore(initialScene);
-    setModelConfig(resolveModelConfigFromScene(initialScene));
+
     window.setTimeout(() => {
       applyingPersistedState.current = false;
     }, 0);

@@ -49,9 +49,11 @@ export function EditorSettingsTab({
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState<"update" | "thumbnail" | "download" | null>(null);
 
-  useEffect(() => {
+  const [previousInitial, setPreviousInitial] = useState(initialMetadata);
+  if (previousInitial !== initialMetadata) {
+    setPreviousInitial(initialMetadata);
     setMetadata(initialMetadata);
-  }, [initialMetadata]);
+  }
 
   async function handleUpdate() {
     setBusy("update");

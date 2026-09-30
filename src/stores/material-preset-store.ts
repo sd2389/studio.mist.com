@@ -86,7 +86,10 @@ export const useMaterialPresetStore = create<StudioState>((set) => ({
     })),
   replaceSlotSelections: (slotSelections) => set({ slotSelections }),
   resetSlotPresets: () => set({ slotSelections: {} }),
-  autoRotate: true,
+  // Off by default: a spinning camera can never settle, and the path-traced gem pass
+  // (GemFireOverlay) only renders once it does. A still stone with real fire reads far
+  // better than a rotating one without it. Users can still turn rotation on.
+  autoRotate: false,
   setAutoRotate: (autoRotate) => set({ autoRotate }),
   lighting: "studio",
   setLighting: (lighting) => set({ lighting }),

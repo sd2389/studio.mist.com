@@ -125,11 +125,23 @@ def require_owned_scene(scene: Scene | None, user_id: int) -> Scene:
 
 
 def first_scene_for_model(db: Session, model_key: str) -> Scene | None:
-    return db.execute(
+    exact = db.execute(
         select(Scene)
         .where(Scene.model_key == model_key)
         .order_by(Scene.updated_at.desc(), Scene.id.desc())
     ).scalars().first()
+    if exact is not None:
+        return exact
+    # Existing viewer links contain the upload's unique filename, while storage
+    # now includes customers/<id>/models/. Resolve only an unambiguous match.
+    if model_key.startswith("models/") and "/" not in model_key[7:]:
+        matches = db.execute(select(Scene).where(
+            Scene.model_key.startswith("customers/"),
+            Scene.model_key.endswith("/" + model_key[7:], autoescape=True),
+        ).limit(2)).scalars().all()
+        if len(matches) == 1:
+            return matches[0]
+    return None
 
 
 def first_scene_for_sku(db: Session, sku: str) -> Scene | None:

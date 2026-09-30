@@ -1,12 +1,16 @@
 import { Rhino3dmLoader } from "three/examples/jsm/loaders/3DMLoader.js";
+import { Object3D } from "three";
 
 type RhinoObjectAttributes = {
+  id?: string;
   layerIndex?: unknown;
   materialIndex?: unknown;
   materialSource?: { name?: string } | null;
 };
 
 type RhinoObject = {
+  objectType?: string;
+  geometry?: { parentIdefId?: string };
   attributes?: RhinoObjectAttributes;
 };
 
@@ -39,8 +43,25 @@ export function ensureRhinoLoaderPatched(): void {
       if (typeof attrs.materialIndex !== "number") attrs.materialIndex = -1;
       if (typeof attrs.layerIndex !== "number") attrs.layerIndex = -1;
     }
-    return original.call(this, data);
+    const root = original.call(this, data);
+    if (root instanceof Object3D) restoreRhinoInstanceAttributes(root, data);
+    return root;
   };
 
   proto.__dvjPatched = true;
+}
+
+/** Three appends block groups in definition/reference order but drops their attributes. */
+export function restoreRhinoInstanceAttributes(root: Object3D, data: RhinoDecodeData): void {
+  const objects = data.objects ?? [];
+  const references = objects.filter((object) => object.objectType === "InstanceReference");
+  const ordered = objects
+    .filter((object) => object.objectType === "InstanceDefinition")
+    .flatMap((definition) => references.filter((reference) =>
+      reference.geometry?.parentIdefId === definition.attributes?.id));
+  const groups = root.children.slice(root.children.length - ordered.length);
+  if (!ordered.length || groups.length !== ordered.length) return;
+  groups.forEach((group, index) => {
+    group.userData.rhinoInstanceAttributes = ordered[index].attributes;
+  });
 }

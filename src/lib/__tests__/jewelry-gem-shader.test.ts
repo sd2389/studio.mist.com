@@ -8,13 +8,8 @@ import {
   type JewelryGemShaderOpts,
 } from "@/lib/gem-gpu/jewelry-gem-shader";
 
-type NodeSlots = THREE.MeshPhysicalMaterial & {
-  emissiveNode: unknown;
-  specularIntensityNode: unknown;
-};
-
-function nodeSlots(material: THREE.MeshPhysicalMaterial): NodeSlots {
-  return material as NodeSlots;
+function nodeSlots(material: THREE.MeshPhysicalMaterial) {
+  return material;
 }
 
 describe("applyJewelryGemShader", () => {
@@ -28,8 +23,10 @@ describe("applyJewelryGemShader", () => {
     };
     applyJewelryGemShader(m, opts);
     expect(m.userData[JEWELRY_GEM_SHADER_KEY]).toBe(true);
-    expect(nodeSlots(m).emissiveNode).toBeTruthy();
     expect(nodeSlots(m).specularIntensityNode).toBeTruthy();
+    expect(nodeSlots(m).specularColorNode).toBeTruthy();
+    // Facet flash drives reflection, never emission — an emissive gem reads milky.
+    expect(nodeSlots(m).emissiveNode).toBeFalsy();
     expect(m.userData.jewelryGemPath).toBe("full");
     expect(m.userData.jewelryGemSafeMode).toBe(false);
   });
@@ -55,7 +52,7 @@ describe("applyJewelryGemShader", () => {
       qualityReduce: false,
       dispersionAmplitude: 0.035,
     });
-    const fullEmissive = nodeSlots(m).emissiveNode;
+    const fullSpecular = nodeSlots(m).specularIntensityNode;
     const fullPath = m.userData.jewelryGemPath;
 
     enableJewelryGemSafeMode(m);
@@ -63,8 +60,9 @@ describe("applyJewelryGemShader", () => {
     expect(m.userData.jewelryGemSafeMode).toBe(true);
     expect(m.userData.jewelryGemPath).toBe("safe");
     expect(m.userData.jewelryGemPath).not.toBe(fullPath);
-    expect(nodeSlots(m).emissiveNode).toBeTruthy();
-    expect(nodeSlots(m).emissiveNode).not.toBe(fullEmissive);
+    expect(nodeSlots(m).specularIntensityNode).toBeTruthy();
+    expect(nodeSlots(m).specularIntensityNode).not.toBe(fullSpecular);
+    expect(nodeSlots(m).emissiveNode).toBeFalsy();
     expect(m.userData.jewelryGemUniforms.uFireStrength).toBeTruthy();
     expect(m.userData.jewelryGemUniforms.uSparkleStrength).toBeUndefined();
   });

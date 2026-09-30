@@ -52,9 +52,11 @@ export function useSceneVariants({
   const slotSelections = useMaterialPresetStore((s) => s.slotSelections);
   const sceneSettings = useMaterialPresetStore((s) => s.sceneSettings);
 
-  useEffect(() => {
+  const [previousScene, setPreviousScene] = useState(initialScene);
+  if (previousScene.id !== initialScene.id || previousScene.variants !== initialScene.variants) {
+    setPreviousScene(initialScene);
     setVariantsState(normalizeVariantsState(initialScene.variants));
-  }, [initialScene.variants, initialScene.id]);
+  }
 
   const persistVariants = useCallback(
     (next: SceneVariantsState) => {

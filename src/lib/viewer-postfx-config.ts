@@ -3,6 +3,7 @@ import type { SceneAdvancedSettings } from "@/lib/slot-materials/model-config";
 export type PostFXQuality = "performance" | "low" | "medium" | "high" | "ultra";
 
 export type ViewerPostFXConfig = {
+  enabled?: boolean;
   aoEnabled: boolean;
   ao: {
     aoRadius: number;

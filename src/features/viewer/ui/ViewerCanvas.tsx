@@ -30,6 +30,7 @@ import { resolveSourceAssetUrl } from "@/lib/source-catalog";
 import {
   AMBIENT_BY_LIGHTING,
   BG_BY_LIGHTING,
+  GEM_HDR_FILE_BY_LIGHTING,
   HDR_FILE_BY_LIGHTING,
   SPOT_BY_LIGHTING,
   TONE_EXPOSURE_BY_LIGHTING,
@@ -44,7 +45,6 @@ import type {
   RenderQualityMode,
   SceneSettingsBuckets,
 } from "@/lib/slot-materials/model-config";
-import { isGemPresetId } from "@/lib/gem-gpu/gem-configs";
 import type { LightingPresetId, MaterialPresetId } from "@/stores/material-preset-store";
 import { useViewerQualityStore } from "@/stores/viewer-quality-store";
 
@@ -89,35 +89,25 @@ export function ViewerCanvas({
   }, []);
 
   const dprCap = useViewerQualityStore((s) => s.effective.dprCap);
-  const isGemView = isGemPresetId(preset);
-  const activeEnvironment = isGemView
-    ? gemEnvironment ?? metalEnvironment
-    : metalEnvironment ?? gemEnvironment;
-  const envKind = isGemView ? "gem" : "metal";
-
   const qualityMode: RenderQualityMode =
     sceneSettings?.quality_mode === "photometric" ? "photometric" : "standard";
   const photometric = qualityMode === "photometric";
   const advanced = sceneSettings?.advanced;
-
-  const legacyEnvValue = isGemView
-    ? sceneSettings?.["ENVIRONMENT-GEM"] || sceneSettings?.["ENVIRONMENT-METAL"]
-    : sceneSettings?.["ENVIRONMENT-METAL"] || sceneSettings?.["ENVIRONMENT-GEM"];
-
-  const hdrFile = activeEnvironment
-    ? resolveEnvironmentUrl(activeEnvironment, HDR_FILE_BY_LIGHTING[lighting])
-    : legacyEnvValue
-      ? resolveSourceAssetUrl(legacyEnvValue)
-      : HDR_FILE_BY_LIGHTING[lighting];
-
-  const envRotation = degreesToRadians(
-    envRotationDegrees(advanced, envKind, activeEnvironment?.default_rotation ?? 0),
-  );
-  const envIntensity = envIntensityMultiplier(
-    advanced,
-    envKind,
-    activeEnvironment?.default_intensity ?? 1,
-  );
+  const environmentSettings = (kind: "metal" | "gem", item: EnvironmentItem | null) => {
+    const legacy = sceneSettings?.[kind === "metal" ? "ENVIRONMENT-METAL" : "ENVIRONMENT-GEM"];
+    // Gems default to a source-rich environment. Falling back to the metal HDR gives every
+    // facet the same near-uniform grey to reflect, which is what reads as glass.
+    const fallbackHdr =
+      kind === "gem" ? GEM_HDR_FILE_BY_LIGHTING[lighting] : HDR_FILE_BY_LIGHTING[lighting];
+    return {
+      file: item ? resolveEnvironmentUrl(item, fallbackHdr)
+        : legacy ? resolveSourceAssetUrl(legacy) : fallbackHdr,
+      rotation: degreesToRadians(envRotationDegrees(advanced, kind, item?.default_rotation ?? 0)),
+      intensity: envIntensityMultiplier(advanced, kind, item?.default_intensity ?? 1),
+    };
+  };
+  const metalSettings = environmentSettings("metal", metalEnvironment);
+  const gemSettings = environmentSettings("gem", gemEnvironment);
 
   const fallbackBg = photometric ? "#E8E4DC" : BG_BY_LIGHTING[lighting];
   const bg = backgroundColorForCanvas(
@@ -130,7 +120,7 @@ export function ViewerCanvas({
   const exposureBase = photometric
     ? TONE_EXPOSURE_BY_LIGHTING[lighting] * 0.92
     : TONE_EXPOSURE_BY_LIGHTING[lighting];
-  const exposure = advanced?.exposure ? exposureBase * advanced.exposure : exposureBase;
+  const exposure = typeof advanced?.exposure === "number" ? exposureBase * advanced.exposure : exposureBase;
 
   const ground = groundParamsFromItem(groundItem);
   const legacyGroundNone = sceneSettings?.GROUND?.toLowerCase().includes("none");
@@ -143,7 +133,7 @@ export function ViewerCanvas({
         className="h-full w-full touch-none"
         shadows={{ type: THREE.PCFShadowMap }}
         dpr={[1, dprCap]}
-        camera={{ position: [0, 0.35, 2.2], fov: 45, near: 0.01, far: 200 }}
+        camera={{ position: [0.62, 0.88, 2.25], fov: 42, near: 0.01, far: 200 }}
       >
         {bg ? <color attach="background" args={[bg]} /> : null}
         <ambientLight intensity={ambient} />
@@ -166,14 +156,14 @@ export function ViewerCanvas({
         ) : null}
         <Suspense fallback={null}>
           <JewelryModel
-            key={preset}
+            key={modelUrl}
             url={modelUrl}
             preset={preset}
             modelConfig={modelConfig}
             modelTransform={sceneSettings?.modelTransform}
           />
-          <Environment files={hdrFile} background={false} />
-          <SceneEnvironmentBridge rotationRadians={envRotation} intensity={envIntensity} />
+          <Environment files={metalSettings.file} background={false} />
+          <SceneEnvironmentBridge metal={metalSettings} gem={gemSettings} />
           <ViewerContactShadows
             position={[0, -0.55, 0]}
             color="#0a0a0a"

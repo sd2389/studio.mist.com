@@ -1,22 +1,20 @@
 "use client";
 
-import { useThree } from "@react-three/fiber";
-import { useEffect } from "react";
-import * as THREE from "three";
+import { useEnvironment } from "@react-three/drei";
+import { useFrame } from "@react-three/fiber";
+import { useMemo } from "react";
+import { createJewelryEnvironmentApplicator } from "@/lib/apply-jewelry-environments";
 
-type SceneEnvironmentBridgeProps = {
-  rotationRadians: number;
-  intensity: number;
-};
+type EnvironmentSettings = { file: string; rotation: number; intensity: number };
+type SceneEnvironmentBridgeProps = { metal: EnvironmentSettings; gem: EnvironmentSettings };
 
-/** Applies per-scene HDRI rotation and intensity on the Three.js scene. */
-export function SceneEnvironmentBridge({ rotationRadians, intensity }: SceneEnvironmentBridgeProps) {
-  const scene = useThree((state) => state.scene);
-
-  useEffect(() => {
-    scene.environmentRotation = new THREE.Euler(0, rotationRadians, 0);
-    scene.environmentIntensity = intensity;
-  }, [intensity, rotationRadians, scene]);
-
+/** Assign independent HDR lighting to metal and gem materials, including new swatch materials. */
+export function SceneEnvironmentBridge({ metal, gem }: SceneEnvironmentBridgeProps) {
+  const metalTexture = useEnvironment({ files: metal.file });
+  const gemTexture = useEnvironment({ files: gem.file });
+  const apply = useMemo(() => createJewelryEnvironmentApplicator(), []);
+  useFrame(({ scene }) => {
+    apply(scene, { texture: metalTexture, ...metal }, { texture: gemTexture, ...gem });
+  });
   return null;
 }

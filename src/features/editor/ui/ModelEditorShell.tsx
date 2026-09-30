@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { LayoutDashboard, SlidersHorizontal } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useEffect, useState } from "react";
 import { ViewerCanvas } from "@/features/viewer/ui/ViewerCanvas";
 import { useSceneVariants } from "@/features/variants";
 import { ViewportBackground } from "@/features/viewer/ui/ViewportBackground";
@@ -65,8 +65,7 @@ export function ModelEditorShell({
   initialUserGems = null,
   initialUserBackgrounds = null,
 }: ModelEditorShellProps) {
-  const libraryHydratedRef = useRef(false);
-  if (!libraryHydratedRef.current) {
+  useEffect(() => {
     hydrateUserLibraryStore(initialUserMetals, initialUserGems);
     if (initialMetals?.items.length) {
       useCatalogParamsStore.getState().registerMetals(
@@ -78,8 +77,7 @@ export function ModelEditorShell({
         initialGems.items.map((item) => ({ slug: item.slug, params: item.params })),
       );
     }
-    libraryHydratedRef.current = true;
-  }
+  }, [initialUserMetals, initialUserGems, initialMetals, initialGems]);
 
   const viewerId = viewerIdFromModelKey(initialScene.model_key);
   const {

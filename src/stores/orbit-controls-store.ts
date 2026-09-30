@@ -85,7 +85,9 @@ export function applyCameraPose(pose: CameraPose): void {
 
 export function resetCameraToDefault(): void {
   applyCameraPose({
-    cameraPosition: [0, 0.35, 2.2],
+    // Matches StoneCanvas's default camera — CAD gem geometry runs deeper than the
+    // retired procedural cuts, so the shallower pre-CAD framing left the stone cropped.
+    cameraPosition: [0, 1.9, 3.8],
     target: [0, 0, 0],
   });
 }

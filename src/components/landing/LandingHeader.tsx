@@ -69,7 +69,7 @@ export function LandingHeader() {
           Sign in
         </Link>
         <Link
-          href="/login?mode=signup"
+          href="/signup"
           className="rounded-full bg-[#212121] px-4 py-2.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-white sm:px-5 sm:py-3"
         >
           Start creating
@@ -118,7 +118,7 @@ export function LandingHeader() {
               Sign in
             </Link>
             <Link
-              href="/viewer/clearcoat"
+              href="/viewer/mist-solitaire"
               onClick={() => setOpen(false)}
               className="mt-2 rounded-full bg-[#212121] px-4 py-3 text-center text-[10px] font-semibold uppercase tracking-[0.08em] text-white"
             >

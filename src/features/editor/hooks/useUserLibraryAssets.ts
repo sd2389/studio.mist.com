@@ -20,11 +20,13 @@ export function useUserLibraryAssets({
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const [previousInitial, setPreviousInitial] = useState(initialPage);
+  if (previousInitial !== initialPage) {
+    setPreviousInitial(initialPage);
     setItems(initialPage?.items ?? []);
     setTotal(initialPage?.total ?? 0);
     setError(null);
-  }, [initialPage]);
+  }
 
   const hasMore = items.length < total;
 

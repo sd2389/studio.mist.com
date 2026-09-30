@@ -16,6 +16,9 @@ def public_file_url(key: str) -> str | None:
     if not normalized:
         return None
 
+    if keys.is_customer_private_key(normalized):
+        return f"{settings.app_public_url.rstrip('/')}/api/files/{_encode_key_path(normalized)}"
+
     if keys.is_public_published_key(normalized) and settings.r2_public_base_url:
         return f"{settings.r2_public_base_url.rstrip('/')}/{_encode_key_path(normalized)}"
 

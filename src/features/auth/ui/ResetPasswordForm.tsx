@@ -30,6 +30,7 @@ export function ResetPasswordForm() {
 
   useEffect(() => {
     const resolved = readResetToken();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Read and erase the browser-only reset credential after hydration.
     setToken(resolved);
     setTokenStatus(resolved ? "ready" : "missing");
     if (window.location.search || window.location.hash) {

@@ -7,6 +7,7 @@ const rootDir = path.dirname(fileURLToPath(import.meta.url));
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  distDir: process.env.NEXT_BUILD_DIR || ".next",
   allowedDevOrigins: ["127.0.0.1", "localhost"],
   serverExternalPackages: [
     "draco3dgltf",

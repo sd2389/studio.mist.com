@@ -9,6 +9,8 @@ import {
 } from "@/lib/feature-flags/server-fetch";
 import { cn } from "@/lib/utils";
 
+export const dynamic = "force-dynamic";
+
 export const metadata = {
   title: "Diamond cuts · MIST Studio",
 };

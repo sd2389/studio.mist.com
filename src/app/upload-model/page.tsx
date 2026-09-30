@@ -3,6 +3,8 @@ import { FeatureDisabledPage } from "@/features/feature-flags";
 import { UploadModelShell } from "@/features/upload/ui/UploadModelShell";
 import { fetchFeatureFlagsServer, isFeatureEnabled } from "@/lib/feature-flags/server-fetch";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "Upload model · MIST Studio",
   description: "Upload CAD files, rename layers, and save optimized GLB models.",

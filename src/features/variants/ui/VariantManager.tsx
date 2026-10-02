@@ -1,17 +1,24 @@
 "use client";
 
 import { Copy, Plus, Trash2 } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
+import { PlanGate } from "@/components/billing/PlanGate";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { MAX_VARIANTS_PER_MODEL } from "@/lib/variants/constants";
 import type { ModelVariant } from "@/lib/variants/types";
+import { variantLimitMessage } from "@/lib/variants/variant-utils";
 import { cn } from "@/lib/utils";
+import type { VariantPlan } from "../hooks/useVariantPlan";
 
 type VariantManagerProps = {
   items: ModelVariant[];
   activeVariantId: string | null;
   canAdd: boolean;
+  /** The owner's plan once read; it sets the variant cap. */
+  plan: VariantPlan | null;
+  /** Why the server refused the last save, when it went past the cap. */
+  limitError: string | null;
   onSave: () => void;
   onUpdateActive: () => boolean;
   onSwitch: (variantId: string | null) => void;
@@ -19,10 +26,19 @@ type VariantManagerProps = {
   onDelete: (variantId: string) => void;
 };
 
+function variantCountLine(count: number, plan: VariantPlan | null): string {
+  if (!plan) return `Save material, scene, and pose combos (${count} saved).`;
+  const cap = plan.features.max_variants_per_model;
+  if (count >= cap) return variantLimitMessage(plan.planLabel, cap);
+  return `Save material, scene, and pose combos (${count}/${cap}).`;
+}
+
 export function VariantManager({
   items,
   activeVariantId,
   canAdd,
+  plan,
+  limitError,
   onSave,
   onUpdateActive,
   onSwitch,
@@ -32,6 +48,13 @@ export function VariantManager({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [status, setStatus] = useState<string | null>(null);
+
+  // A refused save was rolled back, so an earlier "Variant saved" no longer holds.
+  const [previousLimitError, setPreviousLimitError] = useState(limitError);
+  if (previousLimitError !== limitError) {
+    setPreviousLimitError(limitError);
+    if (limitError) setStatus(null);
+  }
 
   function startRename(variant: ModelVariant) {
     setEditingId(variant.id);
@@ -44,6 +67,23 @@ export function VariantManager({
     setEditName("");
   }
 
+  const saveButton = (
+    <Button
+      type="button"
+      size="sm"
+      variant="outline"
+      className="h-8 shrink-0 gap-1"
+      disabled={!canAdd}
+      onClick={() => {
+        onSave();
+        setStatus("Variant saved");
+      }}
+    >
+      <Plus className="size-3.5" aria-hidden />
+      Save
+    </Button>
+  );
+
   return (
     <div className="space-y-3 rounded-lg border border-border bg-muted/30 p-3">
       <div className="flex items-start justify-between gap-2">
@@ -51,24 +91,25 @@ export function VariantManager({
           <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
             Variants
           </h3>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Save material, scene, and pose combos ({items.length}/{MAX_VARIANTS_PER_MODEL}).
-          </p>
+          <p className="mt-1 text-xs text-muted-foreground">{variantCountLine(items.length, plan)}</p>
         </div>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          className="h-8 shrink-0 gap-1"
-          disabled={!canAdd}
-          onClick={() => {
-            onSave();
-            setStatus("Variant saved");
-          }}
-        >
-          <Plus className="size-3.5" aria-hidden />
-          Save
-        </Button>
+        {/* At the cap, Save turns into an upgrade prompt; the top plan just keeps Save disabled. */}
+        {plan?.canUpgrade ? (
+          <PlanGate
+            features={plan.features}
+            require="variants"
+            currentValue={items.length}
+            fallback={
+              <Link href="/pricing" className={cn(buttonVariants({ size: "sm" }), "h-8 shrink-0")}>
+                Upgrade
+              </Link>
+            }
+          >
+            {saveButton}
+          </PlanGate>
+        ) : (
+          saveButton
+        )}
       </div>
 
       {items.length === 0 ? (
@@ -160,7 +201,11 @@ export function VariantManager({
         </ul>
       )}
 
-      {status ? (
+      {limitError ? (
+        <p className="text-[10px] text-destructive" role="alert">
+          {limitError}
+        </p>
+      ) : status ? (
         <p className="text-[10px] text-muted-foreground" role="status">
           {status}
         </p>

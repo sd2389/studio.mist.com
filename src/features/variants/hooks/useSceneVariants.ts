@@ -11,6 +11,7 @@ import {
   createVariantId,
   emptyVariantsState,
   findVariant,
+  isVariantLimitError,
   nextVariantName,
   normalizeVariantsState,
   removeVariant,
@@ -19,14 +20,10 @@ import {
   upsertVariant,
 } from "@/lib/variants/variant-utils";
 import type { ModelVariant, SceneVariantsState } from "@/lib/variants/types";
-import { MAX_VARIANTS_PER_MODEL } from "@/lib/variants/constants";
 import { sanitizeSlotSelections } from "@/lib/slot-materials/material-rules";
 import type { SlotMaterialRef } from "@/lib/library/custom-material-ref";
-import {
-  useMaterialPresetStore,
-  type LightingPresetId,
-  type MaterialPresetId,
-} from "@/stores/material-preset-store";
+import { useMaterialPresetStore } from "@/stores/material-preset-store";
+import { useVariantPlan } from "./useVariantPlan";
 
 type UseSceneVariantsArgs = {
   sceneId: number;
@@ -44,7 +41,15 @@ export function useSceneVariants({
   const [variantsState, setVariantsState] = useState<SceneVariantsState>(() =>
     normalizeVariantsState(initialScene.variants),
   );
+  /** The server's refusal when a save went past the plan's variant cap. */
+  const [limitError, setLimitError] = useState<string | null>(null);
+  const plan = useVariantPlan();
+  const maxVariants = plan?.features.max_variants_per_model ?? null;
   const persistTimer = useRef<number | null>(null);
+  /** What the server last accepted; a refused save rolls back to it. */
+  const savedState = useRef<SceneVariantsState>(variantsState);
+  /** Numbers each save, so only a refusal of the latest one rolls back. */
+  const saveSeq = useRef(0);
   const applyingVariant = useRef(false);
 
   const preset = useMaterialPresetStore((s) => s.preset);
@@ -56,13 +61,32 @@ export function useSceneVariants({
   if (previousScene.id !== initialScene.id || previousScene.variants !== initialScene.variants) {
     setPreviousScene(initialScene);
     setVariantsState(normalizeVariantsState(initialScene.variants));
+    setLimitError(null);
   }
+
+  useEffect(() => {
+    savedState.current = normalizeVariantsState(initialScene.variants);
+  }, [initialScene.variants]);
 
   const persistVariants = useCallback(
     (next: SceneVariantsState) => {
       if (persistTimer.current !== null) window.clearTimeout(persistTimer.current);
       persistTimer.current = window.setTimeout(() => {
-        void updateScene(sceneId, { variants: next }).catch(() => undefined);
+        const seq = ++saveSeq.current;
+        updateScene(sceneId, { variants: next })
+          .then(() => {
+            savedState.current = next;
+            setLimitError(null);
+          })
+          .catch((error: unknown) => {
+            // Past the plan's cap the server refuses the save (402): show its reason and undo
+            // what it did not keep. Other failures leave the edit for the next save.
+            const message = error instanceof Error ? error.message : "";
+            if (seq !== saveSeq.current || !isVariantLimitError(message)) return;
+            if (persistTimer.current !== null) window.clearTimeout(persistTimer.current);
+            setVariantsState(savedState.current);
+            setLimitError(message);
+          });
       }, 350);
     },
     [sceneId],
@@ -92,7 +116,7 @@ export function useSceneVariants({
 
   const saveVariant = useCallback(
     (name?: string) => {
-      if (!canAddVariant(variantsState.items)) return null;
+      if (!canAddVariant(variantsState.items, maxVariants)) return null;
       const now = new Date().toISOString();
       const variant: ModelVariant = {
         id: createVariantId(),
@@ -105,7 +129,7 @@ export function useSceneVariants({
       commitVariants(next);
       return variant;
     },
-    [captureCurrentSnapshot, commitVariants, variantsState],
+    [captureCurrentSnapshot, commitVariants, maxVariants, variantsState],
   );
 
   const updateActiveVariant = useCallback(() => {
@@ -157,10 +181,11 @@ export function useSceneVariants({
 
   return {
     variantsState,
-    maxVariants: MAX_VARIANTS_PER_MODEL,
+    plan,
+    limitError,
     activeVariantId: variantsState.activeVariantId,
     items: variantsState.items,
-    canAdd: canAddVariant(variantsState.items),
+    canAdd: canAddVariant(variantsState.items, maxVariants),
     saveVariant,
     updateActiveVariant,
     switchVariant,

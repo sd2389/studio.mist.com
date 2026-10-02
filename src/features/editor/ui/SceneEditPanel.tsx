@@ -160,6 +160,8 @@ export function SceneEditPanel({
         variantItems={variants.items}
         activeVariantId={variants.variantsState.activeVariantId}
         canAddVariant={variants.canAdd}
+        variantPlan={variants.plan}
+        variantLimitError={variants.limitError}
         onSaveVariant={() => variants.saveVariant()}
         onUpdateActiveVariant={variants.updateActiveVariant}
         onSwitchVariant={variants.switchVariant}

@@ -5,7 +5,6 @@ import type {
   VariantCaptureInput,
   VariantApplyCallbacks,
 } from "@/lib/variants/types";
-import { MAX_VARIANTS_PER_MODEL } from "@/lib/variants/constants";
 import { getDefaultSceneSettings } from "@/lib/slot-materials/model-config";
 import type { SlotMaterialRef } from "@/lib/library/custom-material-ref";
 import type { LightingPresetId, MaterialPresetId } from "@/stores/material-preset-store";
@@ -19,10 +18,11 @@ export function normalizeVariantsState(raw: unknown): SceneVariantsState {
   if (!raw || typeof raw !== "object") return emptyVariantsState();
   const record = raw as Record<string, unknown>;
   const itemsRaw = Array.isArray(record.items) ? record.items : [];
+  // Every saved variant is kept, even past the plan's cap (e.g. after a downgrade): trimming
+  // here would delete the rest on the next save. The cap only stops adding more.
   const items: ModelVariant[] = itemsRaw
     .map((entry) => normalizeVariant(entry))
-    .filter((item): item is ModelVariant => item !== null)
-    .slice(0, MAX_VARIANTS_PER_MODEL);
+    .filter((item): item is ModelVariant => item !== null);
 
   const activeVariantId =
     typeof record.activeVariantId === "string" &&
@@ -128,8 +128,22 @@ export function nextVariantName(items: ModelVariant[]): string {
   return `Variant ${index}`;
 }
 
-export function canAddVariant(items: ModelVariant[]): boolean {
-  return items.length < MAX_VARIANTS_PER_MODEL;
+/**
+ * Room for one more under the plan's variant cap. `null` means the plan is not read yet; the
+ * server enforces the cap either way.
+ */
+export function canAddVariant(items: ModelVariant[], maxVariants: number | null): boolean {
+  return maxVariants === null || items.length < maxVariants;
+}
+
+/** Mirrors the server's 402 detail so both gates read the same. */
+export function variantLimitMessage(planLabel: string, maxVariants: number): string {
+  return `Variant limit reached for ${planLabel} (max ${maxVariants} per model).`;
+}
+
+/** The server's 402 when a save would go past the plan's variant cap. */
+export function isVariantLimitError(message: string): boolean {
+  return /variant limit reached/i.test(message);
 }
 
 export function upsertVariant(
@@ -140,7 +154,7 @@ export function upsertVariant(
   const items =
     existing >= 0
       ? state.items.map((item, index) => (index === existing ? variant : item))
-      : [...state.items, variant].slice(0, MAX_VARIANTS_PER_MODEL);
+      : [...state.items, variant];
   return { ...state, items };
 }
 

@@ -295,23 +295,6 @@ def release_storage_bytes(db: Session, billing: UserBilling, byte_size: int) -> 
     db.commit()
 
 
-def add_topup_credits(
-    db: Session,
-    billing: UserBilling,
-    *,
-    kind: str,
-    amount: int,
-) -> None:
-    if kind == "model":
-        billing.model_credits_balance += amount
-    elif kind == "ai":
-        billing.ai_image_credits_balance += amount
-    else:
-        raise ValueError(f"Unknown top-up kind: {kind}")
-    billing.updated_at = datetime.utcnow()
-    db.commit()
-
-
 CreditKind = str  # model | ai | render | custom_material | custom_asset | storage
 
 

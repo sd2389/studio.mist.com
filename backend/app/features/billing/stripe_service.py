@@ -13,8 +13,8 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.features.billing import email_service as billing_email
 from app.features.billing.plans import PLAN_LABELS, TOP_UP_PACKS, PlanTier, normalize_tier
+from app.features.billing.purchases import record_topup_purchase
 from app.features.billing.quota_service import (
-    add_topup_credits,
     downgrade_to_free,
     get_or_create_billing,
     reset_allotments,
@@ -271,7 +271,7 @@ def handle_webhook(db: Session, payload: bytes, signature: str | None) -> dict[s
     data_obj = _read_field(_read_field(event, "data"), "object")
 
     if event_type == "checkout.session.completed":
-        _handle_checkout_completed(db, data_obj)
+        _handle_checkout_completed(db, data_obj, event_id)
     elif event_type in {"customer.subscription.created", "customer.subscription.updated"}:
         pair = _user_from_customer(db, _read_field(data_obj, "customer"))
         if pair:
@@ -318,7 +318,7 @@ def handle_webhook(db: Session, payload: bytes, signature: str | None) -> dict[s
     return {"status": "ok"}
 
 
-def _handle_checkout_completed(db: Session, session: object) -> None:
+def _handle_checkout_completed(db: Session, session: object, event_id: str) -> None:
     metadata = _read_metadata(session)
     user_id_raw = metadata.get("user_id")
     if not user_id_raw:
@@ -329,15 +329,7 @@ def _handle_checkout_completed(db: Session, session: object) -> None:
     billing = get_or_create_billing(db, user)
 
     if _read_field(session, "mode") == "payment":
-        kind = metadata.get("topup_kind")
-        credits_raw = metadata.get("topup_credits")
-        if kind and credits_raw:
-            add_topup_credits(db, billing, kind=str(kind), amount=int(credits_raw))
-            billing_email.send_payment_receipt_email(
-                to=user.email,
-                plan_label=f"Top-up ({metadata.get('pack_id', kind)})",
-                amount_label="one-time purchase",
-            )
+        _grant_topup(db, user, billing, session, metadata, event_id)
         return
 
     subscription_id = _read_field(session, "subscription")
@@ -350,4 +342,43 @@ def _handle_checkout_completed(db: Session, session: object) -> None:
         to=user.email,
         plan_label=PLAN_LABELS[tier],
         action="activated",
+    )
+
+
+def _grant_topup(
+    db: Session,
+    user: User,
+    billing: UserBilling,
+    session: object,
+    metadata: dict[str, str],
+    event_id: str,
+) -> None:
+    """Add a paid top-up, recorded in the purchase ledger, once per Checkout Session."""
+    kind = metadata.get("topup_kind")
+    credits_raw = metadata.get("topup_credits")
+    if not kind or not credits_raw:
+        return
+    session_id = str(_read_field(session, "id") or "")
+    if not session_id:
+        logger.error("Top-up checkout in event %s has no session id; no credits added", event_id)
+        return
+    amount_total = _read_field(session, "amount_total")
+    currency = _read_field(session, "currency")
+    added = record_topup_purchase(
+        db,
+        billing,
+        kind=str(kind),
+        credits=int(credits_raw),
+        session_id=session_id,
+        event_id=event_id,
+        amount_total=int(amount_total) if amount_total is not None else None,
+        currency=str(currency) if currency else None,
+    )
+    if not added:
+        logger.info("Checkout session %s already added its top-up", session_id)
+        return
+    billing_email.send_payment_receipt_email(
+        to=user.email,
+        plan_label=f"Top-up ({metadata.get('pack_id', kind)})",
+        amount_label="one-time purchase",
     )

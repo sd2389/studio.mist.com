@@ -63,3 +63,23 @@ class CreditAdjustment(Base):
     delta: Mapped[int] = mapped_column(Integer)
     reason: Mapped[str] = mapped_column(String(512))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class CreditPurchase(Base):
+    """Paid top-up ledger: one row per Stripe Checkout Session that added credits."""
+
+    __tablename__ = "credit_purchases"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    # The top-up kind from the session metadata: "ai" or "model".
+    kind: Mapped[str] = mapped_column(String(32))
+    credits: Mapped[int] = mapped_column(Integer)
+    stripe_checkout_session_id: Mapped[str] = mapped_column(String(255), unique=True)
+    stripe_event_id: Mapped[str] = mapped_column(String(255))
+    # What Stripe charged, in the currency's smallest unit (cents for USD), when it says.
+    amount_total: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { AdminShell } from "@/features/admin/ui/AdminShell";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatBytesShort, formatCount, formatMoneyFromCents } from "@/lib/admin/format";
 import type { AdminAnalytics, TopUserRow } from "@/lib/admin/types";
 import { formatStorageGb } from "@/lib/billing/format";

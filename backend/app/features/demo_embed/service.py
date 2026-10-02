@@ -22,9 +22,6 @@ DEMO_SKU = "DEMO-EMBED-RING"
 DEMO_NAME = "Demo solitaire"
 DEMO_MODEL_KEY = "models/demo-embed-ring.glb"
 DEMO_EMAIL = "demo-embed@devjewels.test"
-# The demo account's old fixed password, public in this repo's history. Kept only so a demo
-# account still using it is moved off it the next time the demo is seeded.
-_RETIRED_DEMO_PASSWORD = "demo-embed-not-for-prod"
 DEMO_FIXTURE_NAME = "demo-embed-ring.glb"
 
 CLOSER_METALS = [
@@ -146,11 +143,13 @@ def _get_or_create_demo_user(db: Session) -> User:
     user = db.execute(select(User).where(User.email == DEMO_EMAIL)).scalars().first()
     if user is not None:
         configured = get_settings().demo_embed_password
-        if configured and not verify_password(configured, user.password_hash):
+        if not configured:
+            # Nobody signs in as the demo, so without DEMO_EMBED_PASSWORD every seed gives it a
+            # fresh random password, which also moves it off any older one.
+            _set_demo_password(db, user, _demo_password())
+        elif not verify_password(configured, user.password_hash):
             # The configured password wins, so setting or rotating DEMO_EMBED_PASSWORD takes effect.
             _set_demo_password(db, user, configured)
-        elif verify_password(_RETIRED_DEMO_PASSWORD, user.password_hash):
-            _set_demo_password(db, user, _demo_password())
         return user
     now = datetime.utcnow()
     user = User(

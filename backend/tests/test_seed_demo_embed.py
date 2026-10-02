@@ -67,18 +67,23 @@ def test_write_demo_ring_glb_roundtrip(tmp_path: Path):
     assert b"Gem 1" in data
 
 
-def test_demo_user_never_gets_the_retired_password(db, monkeypatch):
+def test_demo_user_without_a_configured_password_gets_a_fresh_one_each_seed(db, monkeypatch):
     from types import SimpleNamespace
 
-    from app.core.security import verify_password
+    from app.core.security import hash_password, verify_password
     from app.features.demo_embed import service
 
     monkeypatch.setattr(service, "get_settings", lambda: SimpleNamespace(demo_embed_password=None))
     user = service._get_or_create_demo_user(db)
-    assert not verify_password(service._RETIRED_DEMO_PASSWORD, user.password_hash)
+    user.password_hash = hash_password("an-older-demo-password")
+    db.commit()
+
+    again = service._get_or_create_demo_user(db)
+    assert again.id == user.id
+    assert not verify_password("an-older-demo-password", again.password_hash)
 
 
-def test_demo_user_on_the_retired_password_is_moved_off_it(db, monkeypatch):
+def test_the_configured_demo_password_wins(db, monkeypatch):
     from types import SimpleNamespace
 
     from app.core.security import hash_password, verify_password
@@ -86,13 +91,16 @@ def test_demo_user_on_the_retired_password_is_moved_off_it(db, monkeypatch):
 
     monkeypatch.setattr(service, "get_settings", lambda: SimpleNamespace(demo_embed_password="chosen-for-this-deploy"))
     user = service._get_or_create_demo_user(db)
-    user.password_hash = hash_password(service._RETIRED_DEMO_PASSWORD)
+    user.password_hash = hash_password("an-older-demo-password")
     db.commit()
 
     again = service._get_or_create_demo_user(db)
     assert again.id == user.id
-    assert not verify_password(service._RETIRED_DEMO_PASSWORD, again.password_hash)
+    assert not verify_password("an-older-demo-password", again.password_hash)
     assert verify_password("chosen-for-this-deploy", again.password_hash)
+    # Re-seeding with the same configured password leaves it alone.
+    unchanged = again.password_hash
+    assert service._get_or_create_demo_user(db).password_hash == unchanged
 
 
 def test_moving_the_demo_user_off_a_password_signs_out_its_sessions(db, monkeypatch):
@@ -107,11 +115,11 @@ def test_moving_the_demo_user_off_a_password_signs_out_its_sessions(db, monkeypa
     settings = SimpleNamespace(demo_embed_password=None)
     monkeypatch.setattr(service, "get_settings", lambda: settings)
     user = service._get_or_create_demo_user(db)
-    user.password_hash = hash_password(service._RETIRED_DEMO_PASSWORD)
+    user.password_hash = hash_password("an-older-demo-password")
     db.add(DbSession(token=new_session_token(), user_id=user.id, expires_at=session_expires_at()))
     db.commit()
 
-    # Re-seeding moves it off the retired password and revokes the session made with it.
+    # Re-seeding moves it off that password and revokes the session made with it.
     service._get_or_create_demo_user(db)
     assert db.execute(sql_select(DbSession).where(DbSession.user_id == user.id)).first() is None
 

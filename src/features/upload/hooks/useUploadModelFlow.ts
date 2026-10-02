@@ -268,9 +268,10 @@ export function useUploadModelFlow() {
     if (!shouldRetry) return;
 
     try {
+      // The plan just signed into, not the one this render saw (the guest fallback).
       const cap = await refreshPolygonCap();
-      if (parsed != null && parsed.polyCount > cap) {
-        setError(overPolyLimitMessage(planLabel, cap));
+      if (parsed != null && parsed.polyCount > cap.maxPolygons) {
+        setError(overPolyLimitMessage(cap.planLabel, cap.maxPolygons));
         return;
       }
       await persistReadyModel();
@@ -279,7 +280,7 @@ export function useUploadModelFlow() {
         saveFlowActiveRef.current = false;
       }
     }
-  }, [parsed, persistReadyModel, planLabel, refreshPolygonCap]);
+  }, [parsed, persistReadyModel, refreshPolygonCap]);
 
   return {
     phase,

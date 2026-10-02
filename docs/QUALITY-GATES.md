@@ -29,11 +29,11 @@ Its four checks are required on `main`:
 | `frontend-quality` | Lint, import boundaries, type check |
 | `unit` | Vitest and the backend's pytest suite |
 | `golden` | Production build with the render harness, then the SSIM comparison |
-| `dependency-audit` | `npm audit` (production, high and above), `pip-audit` on the backend requirements, and GitHub's dependency review of anything a pull request adds |
+| `dependency-audit` | `npm audit` (production, high and above) and `pip-audit` on the backend requirements |
 
-A pull request only runs the checks its files need (`scripts/ci/changed-areas.sh`): docs alone
-run nothing, backend changes skip the frontend checks, and only changes to the studio pipeline
-run the goldens. A skipped check counts as passing. Changes to CI or to the lockfile run
+A pull request only runs the checks its files need (`scripts/ci/changed-areas.mjs`): docs alone
+run nothing, backend changes skip the frontend checks, and only files the render harness can
+load (found by following its imports) run the goldens. A skipped check counts as passing. Changes to CI or to the lockfile run
 everything, and so does every push to `main`.
 
 The workflow reads the repo and nothing else (`permissions: {}`, with `contents: read` per job),

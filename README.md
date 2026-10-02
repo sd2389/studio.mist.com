@@ -28,6 +28,8 @@ MIST Studio is a jewelry studio that runs in the browser. Upload a CAD file and 
 
 Viewing needs a browser with WebGPU or WebGL 2.
 
+Third-party assets and libraries, with their licences and where they are used, are listed in [docs/THIRD-PARTY.md](docs/THIRD-PARTY.md).
+
 ## Quick start (Docker)
 
 Requires Docker with Compose v2.

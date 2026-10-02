@@ -88,14 +88,23 @@ def get_render_job(
 def claim_render_job(
     response: Response,
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
     _: None = Depends(_worker_auth),
 ):
-    """Claim oldest queued job. Returns {job_id, page_token} or 204 when empty."""
-    job = render_job_service.claim_job(db)
+    """Claim the next job. Returns {job_id, page_token, lease_seconds} or 204 when empty.
+
+    The worker has to finish within lease_seconds; after that the next claim
+    takes the job back and page_token stops working.
+    """
+    job = render_job_service.claim_job(db, settings)
     if job is None:
         response.status_code = 204
         return None
-    return {"job_id": job.id, "page_token": job.worker_token}
+    return {
+        "job_id": job.id,
+        "page_token": job.worker_token,
+        "lease_seconds": settings.render_job_lease_seconds,
+    }
 
 
 @router.get("/{job_id}/payload", response_model=RenderJobPayload)

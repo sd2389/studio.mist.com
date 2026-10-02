@@ -4,7 +4,8 @@ const API = process.env.RENDER_API_URL ?? "http://localhost:8765";
 const TOKEN = process.env.RENDER_WORKER_TOKEN;
 const ONCE = process.argv.includes("--once");
 const POLL_MS = 5000;
-const JOB_TIMEOUT_MS = 15 * 60 * 1000;
+/** What a job's lease keeps in hand when the worker gives up: loading the page and reporting the failure. */
+const LEASE_MARGIN_MS = 60 * 1000;
 
 if (!TOKEN) { console.error("RENDER_WORKER_TOKEN required"); process.exit(1); }
 
@@ -15,7 +16,7 @@ async function claim() {
   return res.json();
 }
 
-async function runJob(browser, { job_id, page_token }) {
+async function runJob(browser, { job_id, page_token, lease_seconds }) {
   const context = await browser.newContext({ viewport: { width: 1024, height: 1024 }, deviceScaleFactor: 1 });
   const page = await context.newPage();
   try {
@@ -24,7 +25,8 @@ async function runJob(browser, { job_id, page_token }) {
       await page.waitForFunction(
         () => window.__JOB_STATE__ === "done" || String(window.__JOB_STATE__).startsWith("error"),
         null,             // arg (unused by the predicate)
-        { timeout: JOB_TIMEOUT_MS },  // options
+        // Give up before the lease runs out; after that the next claim takes the job back.
+        { timeout: lease_seconds * 1000 - LEASE_MARGIN_MS },
       );
       const state = await page.evaluate(() => window.__JOB_STATE__);
       console.log(`job ${job_id}: ${state}`);

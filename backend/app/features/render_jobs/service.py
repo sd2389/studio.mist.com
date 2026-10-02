@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
+from uuid import uuid4
 
 from fastapi import HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
@@ -115,42 +116,70 @@ def require_worker_token(
 # ---------------------------------------------------------------------------
 
 
-def claim_job(db: Session) -> RenderJob | None:
-    """Atomically claim oldest queued job.
+MAX_ATTEMPTS = 3
+LEASE_EXPIRED_ERROR = "worker lease expired"
 
-    Sets status='running', increments attempts.
-    Returns None when the queue is empty (router should respond 204).
+
+def claim_job(db: Session, settings: Settings | None = None) -> RenderJob | None:
+    """Atomically claim the oldest queued job, or a running one whose lease ran out.
+
+    Sets status='running', increments attempts, issues a fresh per-job token and
+    a lease of RENDER_JOB_LEASE_SECONDS. Returns None when nothing is claimable
+    (router should respond 204).
+
+    A lease runs out when its worker crashed or hung, so that attempt counts as
+    failed, as if the worker had called fail: a job already at MAX_ATTEMPTS
+    fails for good instead of being claimed again. The fresh token shuts the
+    worker that lost the lease out of payload, complete and fail.
 
     Uses SELECT ... FOR UPDATE SKIP LOCKED for safe concurrent claiming.
     SQLite (tests only, concurrency irrelevant) doesn't support the clause,
     so it takes an explicit no-lock path gated on the dialect — real errors
     on other databases propagate.
     """
+    if settings is None:
+        settings = get_settings()
+
+    now = datetime.utcnow()
+    lapsed = and_(RenderJob.status == "running", RenderJob.lease_expires_at < now)
     stmt = (
         select(RenderJob)
-        .where(RenderJob.status == "queued")
+        .where(or_(RenderJob.status == "queued", lapsed))
         .order_by(RenderJob.created_at)
         .limit(1)
     )
     if db.get_bind().dialect.name != "sqlite":
         stmt = stmt.with_for_update(skip_locked=True)
-    job = db.execute(stmt).scalars().first()
 
-    if job is None:
-        return None
+    while True:
+        job = db.execute(stmt).scalars().first()
+        if job is None:
+            return None
 
-    job.status = "running"
-    job.attempts += 1
-    job.updated_at = datetime.utcnow()
-    db.commit()
-    db.refresh(job)
-    return job
+        if job.status == "running":
+            # Its worker never reported back: that attempt failed, as if it had called fail.
+            job.error = LEASE_EXPIRED_ERROR
+            if job.attempts >= MAX_ATTEMPTS:
+                job.status = "failed"
+                job.updated_at = now
+                db.commit()
+                continue
+
+        job.status = "running"
+        job.attempts += 1
+        job.worker_token = uuid4().hex
+        job.lease_expires_at = now + timedelta(seconds=settings.render_job_lease_seconds)
+        job.updated_at = now
+        db.commit()
+        db.refresh(job)
+        return job
 
 
 def get_job_payload(db: Session, job_id: int, token: str) -> RenderJobPayload:
     """Return render parameters for a job.
 
-    Raises 401 if token != job.worker_token.
+    Raises 401 if token != job.worker_token (a claim that lost its lease holds
+    an outdated one).
     model_url is the model_ref as-is when it starts with 'http',
     otherwise a presigned GET URL.
     """
@@ -182,7 +211,7 @@ def complete_job(db: Session, job_id: int, token: str, data: bytes) -> RenderJob
     """Mark a running job completed; store PNG; consume 1 render credit.
 
     Raises:
-        401 – wrong token.
+        401 – wrong token, including one from a claim that lost its lease.
         409 – job is not in 'running' state (idempotency guard).
     """
     job = db.execute(
@@ -234,12 +263,12 @@ def fail_job(db: Session, job_id: int, token: str, error: str) -> RenderJob:
     """Record a worker failure.
 
     Raises:
-        401 – wrong token.
+        401 – wrong token, including one from a claim that lost its lease.
         409 – job is not in 'running' state.
 
     Retry logic (attempts already incremented at claim time):
-        attempts < 3  → status = 'queued'  (retry)
-        attempts >= 3 → status = 'failed'  (terminal)
+        attempts < MAX_ATTEMPTS  → status = 'queued'  (retry)
+        attempts >= MAX_ATTEMPTS → status = 'failed'  (terminal)
 
     Never touches billing credits.
     """
@@ -259,7 +288,7 @@ def fail_job(db: Session, job_id: int, token: str, error: str) -> RenderJob:
     job.error = error
     job.updated_at = datetime.utcnow()
 
-    if job.attempts >= 3:
+    if job.attempts >= MAX_ATTEMPTS:
         job.status = "failed"
     else:
         job.status = "queued"

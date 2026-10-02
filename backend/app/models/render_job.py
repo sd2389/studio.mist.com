@@ -20,7 +20,8 @@ class RenderJob(Base):
     height: Mapped[int] = mapped_column(Integer, default=2048)
     status: Mapped[str] = mapped_column(String(16), default="queued", index=True)
     attempts: Mapped[int] = mapped_column(Integer, default=0)
-    worker_token: Mapped[str] = mapped_column(String(64), default=lambda: uuid4().hex)
+    worker_token: Mapped[str] = mapped_column(String(64), default=lambda: uuid4().hex)  # reissued on every claim
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # set on every claim
     result_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
     error: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

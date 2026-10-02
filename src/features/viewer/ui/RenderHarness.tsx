@@ -68,7 +68,7 @@ export function RenderHarness() {
     const apiBase = getPublicApiUrl();
     if (!apiBase) {
       // Without an API base every fetch below would go relative to the Next.js
-      // origin and hang the worker until its 15-minute timeout. Fail fast.
+      // origin and hang the worker until its timeout. Fail fast.
       window.__JOB_STATE__ = "error:API base URL not configured (set NEXT_PUBLIC_API_URL)";
       return;
     }

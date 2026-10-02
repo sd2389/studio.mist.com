@@ -78,6 +78,9 @@ class Settings(BaseSettings):
     # The embed demo's owner account. Unset, it gets a random password nobody needs to know.
     demo_embed_password: str | None = Field(default=None, validation_alias="DEMO_EMBED_PASSWORD")
     render_worker_token: str | None = Field(default=None, validation_alias="RENDER_WORKER_TOKEN")
+    # How long a claimed render job stays with its worker. A job still running when this runs
+    # out is taken back by the next claim; the worker gives up a minute before that.
+    render_job_lease_seconds: int = Field(default=600, ge=120, validation_alias="RENDER_JOB_LEASE_SECONDS")
 
     @model_validator(mode="after")
     def validate_production_settings(self) -> Self:

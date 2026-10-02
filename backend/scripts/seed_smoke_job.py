@@ -126,7 +126,6 @@ def main() -> None:
         user_id = user.id
         job_id = job.id
         job_model_ref = job.model_ref
-        job_worker_token = job.worker_token
 
     path = "BOGUS (failure path)" if args.bogus else "HAPPY (success path)"
     print()
@@ -135,7 +134,6 @@ def main() -> None:
     print(f"[seed] render_credits   : {balance}")
     print(f"[seed] job_id           : {job_id}")
     print(f"[seed] model_ref        : {job_model_ref}")
-    print(f"[seed] worker_token     : {job_worker_token}")
     print(f"[seed] RENDER_WORKER_TOKEN (server): {token}")
     print()
     print("Next step — run the worker:")

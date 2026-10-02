@@ -1,7 +1,8 @@
 /**
- * The shape of the home film's galaxy, shared by its points and its strings: a grand-design
- * spiral — two major arms opposite each other and fainter spurs between them — wound as
- * logarithmic spirals, which is how real spiral arms open out from the core.
+ * The shape of the home film's galaxy, shared by its points and its strings: a many-armed
+ * spiral — two major arms opposite each other, two secondary arms between them and fainter
+ * spurs — wound as logarithmic spirals, which is how real spiral arms open out from the core,
+ * with the inner and outer rings that many real spirals carry.
  */
 
 export type GalaxyArm = { phase: number; weight: number };
@@ -9,12 +10,21 @@ export type GalaxyArm = { phase: number; weight: number };
 export const GALAXY_ARMS: readonly GalaxyArm[] = [
   { phase: 0, weight: 3 },
   { phase: Math.PI, weight: 3 },
-  { phase: 0.95, weight: 1 },
-  { phase: 2.15, weight: 1 },
-  { phase: 4.1, weight: 1 },
-  { phase: 5.3, weight: 1 },
-  { phase: 5.85, weight: 0.6 },
+  { phase: Math.PI / 2, weight: 2 },
+  { phase: (3 * Math.PI) / 2, weight: 2 },
+  { phase: 0.75, weight: 1 },
+  { phase: 2.35, weight: 1 },
+  { phase: 3.9, weight: 1 },
+  { phase: 5.5, weight: 1 },
+  { phase: 1.2, weight: 0.6 },
+  { phase: 4.3, weight: 0.6 },
 ];
+
+/** Resonance rings (mm): a tight inner ring round the bulge and a wide outer one past the arms. */
+export const GALAXY_RINGS = [
+  { radius: 15, width: 1.4 },
+  { radius: 98, width: 3.2 },
+] as const;
 
 /** Where the arms begin (mm) and how steeply they open: 22°, inside the range spirals show. */
 const ARM_ROOT = 4;

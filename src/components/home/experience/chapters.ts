@@ -85,8 +85,8 @@ export function gatherAt(i: number, p: number): number {
  * The swarm lands base to top, in order of height: landings are spread over this much of
  * `gather`, and each point's flight in takes `LANDING_FLIGHT` of it.
  */
-export const LANDING_SPREAD = 0.75;
-export const LANDING_FLIGHT = 0.25;
+export const LANDING_SPREAD = 0.65;
+export const LANDING_FLIGHT = 0.35;
 
 /** Share of the swarm that has landed. */
 export const landedAt = (i: number, p: number) => clamp01((gatherAt(i, p) - LANDING_FLIGHT) / LANDING_SPREAD);

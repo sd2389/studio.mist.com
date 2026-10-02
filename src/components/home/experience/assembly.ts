@@ -50,7 +50,7 @@ const MM = 0.12;
 /** How far the stone lifts clear of its claws to take its spark, mm. */
 const STONE_LIFT = 7;
 /** The galaxy's arms and the strings laid along them. */
-const GALAXY_STRINGS = 560;
+const GALAXY_STRINGS = 900;
 const STRING_SEGMENTS = 40;
 /** Faint stars of the halo and the sky behind it. */
 const HALO_STARS = 6000;
@@ -362,8 +362,13 @@ export function createAssembly(): Assembly {
     camera.position.addScaledVector(right, -key.shift * wide);
   }
 
-  function build(i: number, p: number) {
+  function build(i: number, p: number, time: number) {
     u.gather.value = gatherAt(i, p);
+    // While the swarm is all free, keep the moment the gather would start from (see createSwarm).
+    if (u.gather.value <= 0) {
+      u.gatherClock.value = time;
+      u.gatherSpin.value = u.spin.value;
+    }
     u.wire.value = wireAt(i, p);
     u.climb.value = climbAt(i, p);
     u.sweep.value = stoneTop - sweepAt(i, p) * stoneDepth;
@@ -447,7 +452,7 @@ export function createAssembly(): Assembly {
       if (frames === 4) story.ready = true;
       const { index: i, progress: p } = filmMoment();
       aim(camera, i + p, time);
-      build(i, p);
+      build(i, p, time);
       play(camera, i, time, dt);
       turn(i, dt);
       lightStone(i, p);

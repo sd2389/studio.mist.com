@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import {
   abs,
+  atan,
   attribute,
   clamp,
   color,
@@ -109,6 +110,9 @@ export function createNanoUniforms() {
     now: uniform(0),
     /** Extra turn of the free disc, radians (fast scrolls spin it). */
     spin: uniform(0),
+    /** The clock and spin when the swarm last began to gather: fixes which way each point winds in. */
+    gatherClock: uniform(0),
+    gatherSpin: uniform(0),
     /** Wireframe draw-in scan, 0..1, and its overall strength. */
     wire: uniform(0),
     wireAlpha: uniform(0),
@@ -203,9 +207,14 @@ export function themeHologram(materials: readonly HologramMaterial[], light: boo
   }
 }
 
+/** How far round its orbit a free point of the galaxy is at `clock` (unwrapped radians). */
+function orbitAngle(orbit: Vec3Node, clock: FloatNode, spin: FloatNode): FloatNode {
+  return orbit.y.add(clock.mul(float(0.09).add(float(1.1).div(orbit.x.add(8))))).add(spin);
+}
+
 /** Where a free point of the galaxy is now: the disc turns almost rigidly, so its arms keep their shape. */
 function orbiting(orbit: Vec3Node, discY: number, u: NanoUniforms): Vec3Node {
-  const angle = orbit.y.add(time.mul(float(0.09).add(float(1.1).div(orbit.x.add(8))))).add(u.spin);
+  const angle = orbitAngle(orbit, time, u.spin);
   return vec3(cos(angle).mul(orbit.x), orbit.z.add(discY), sin(angle).mul(orbit.x));
 }
 
@@ -360,13 +369,20 @@ export function createSwarm(data: SwarmData, u: NanoUniforms): { swarm: THREE.Sp
 
   const free = orbiting(orbit, data.discY, u);
   const t = clamp(u.gather.sub(seed.x.mul(LANDING_SPREAD)).div(LANDING_FLIGHT), 0, 1);
-  const landed = t.mul(t).mul(float(3).sub(t.mul(2)));
+  // Smootherstep: each point leaves and arrives at rest, so the stream has no jolts.
+  const landed = t.mul(t).mul(t).mul(t.mul(t.mul(6).sub(15)).add(10));
   const loose = float(1).sub(landed);
-  const p = mix(free, target, landed);
-  // One swirl for every point, unwinding as it lands: the free disc keeps its arms, and each
-  // point spirals in on its own schedule.
-  const swirl = loose.mul(2.4);
-  const spun = vec3(p.x.mul(cos(swirl)).sub(p.z.mul(sin(swirl))), p.y, p.x.mul(sin(swirl)).add(p.z.mul(cos(swirl))));
+  // Each point spirals in along the disc's own turn, like matter falling into a vortex: its
+  // radius, angle and height ease from its orbit to its place on the ring. Its target angle is
+  // taken one turn ahead of where its orbit stood when the gather began, so the winding is fixed
+  // for the whole flight and every path stays continuous while the disc keeps turning.
+  const TURN = Math.PI * 2;
+  const a1 = atan(target.z, target.x);
+  const startedAt = orbitAngle(orbit, u.gatherClock, u.gatherSpin);
+  const landingAngle = a1.add(startedAt.sub(a1).div(TURN).ceil().mul(TURN));
+  const angle = mix(orbitAngle(orbit, time, u.spin), landingAngle, landed);
+  const radius = mix(orbit.x, length(target.xz), landed);
+  const spun = vec3(cos(angle).mul(radius), mix(free.y, target.y, landed), sin(angle).mul(radius));
   const cursor = cursorField(spun, u);
 
   const material = hologramMaterial(new PointsNodeMaterial({ sizeAttenuation: true }));
@@ -438,7 +454,10 @@ export function createStringMaterial(discY: number, u: NanoUniforms): LineBasicN
   const material = hologramMaterial(new LineBasicNodeMaterial());
   const orbit = attribute<"vec3">("aOrbit", "vec3");
   const along = attribute<"vec2">("aAlong", "vec2");
-  const free = orbiting(orbit, discY, u);
+  // As the swarm leaves for the ring the arms wind up and draw in toward it, then fade.
+  const collapse = smoothstep(0, 0.42, u.gather);
+  const drawn = float(1).sub(collapse.mul(0.55));
+  const free = orbiting(vec3(orbit.x.mul(drawn), orbit.y.add(collapse.mul(1.1)), orbit.z.mul(drawn)), discY, u);
   const cursor = cursorField(free, u);
   material.positionNode = free.add(cursor.offset);
   const phase = fract(along.x.sub(time.mul(0.11)).add(along.y)).sub(0.5);

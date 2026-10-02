@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { armAngle, pickArm } from "./galaxy-shape";
+import { armAngle, GALAXY_RINGS, pickArm } from "./galaxy-shape";
 import { mergeVertices } from "three/addons/utils/BufferGeometryUtils.js";
 
 /**
@@ -204,18 +204,24 @@ export function galaxyStrings(count: number, segments: number, random: () => num
   const along = new Float32Array(vertices * 2);
   let v = 0;
   for (let k = 0; k < count; k++) {
-    // Threads follow the arms' logarithmic spirals, more of them on the two major arms.
+    const lift = (random() - 0.5) * 2.4;
+    const wobble = random() * Math.PI * 2;
+    const seed = random();
+    // A fifth of the threads trace the rings as arcs; the rest follow the arms' logarithmic
+    // spirals, more of them on the major arms.
+    const ring = random() < 0.2 ? GALAXY_RINGS[random() < 0.45 ? 0 : 1] : null;
     const arm = pickArm(random);
     const start = 3 + 44 * random() ** 1.3;
     const span = 16 + 40 * random();
     const offset = (random() + random() + random() - 1.5) * 0.18;
-    const lift = (random() - 0.5) * 2.4;
-    const wobble = random() * Math.PI * 2;
-    const seed = random();
+    const ringRadius = ring ? ring.radius + (random() + random() + random() - 1.5) * ring.width : 0;
+    const arcStart = random() * Math.PI * 2;
+    const arc = 0.7 + 1.6 * random();
     for (let i = 0; i < segments; i++) {
       for (const s of [i / segments, (i + 1) / segments]) {
-        const radius = start + span * s;
-        orbit.set([radius, armAngle(arm, radius) + offset + 0.04 * Math.sin(s * 7 + wobble), lift * (1 - s * 0.5) + 0.6 * Math.sin(s * 5 + wobble)], v * 3);
+        const radius = ring ? ringRadius * (1 + 0.012 * Math.sin(s * 9 + wobble)) : start + span * s;
+        const angle = ring ? arcStart + arc * s : armAngle(arm, radius) + offset + 0.04 * Math.sin(s * 7 + wobble);
+        orbit.set([radius, angle, lift * (1 - s * 0.5) + 0.6 * Math.sin(s * 5 + wobble)], v * 3);
         along.set([s, seed], v * 2);
         v += 1;
       }

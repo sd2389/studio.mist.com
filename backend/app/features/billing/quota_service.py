@@ -141,6 +141,18 @@ def assert_polygon_limit(db: Session, user: User, polygon_count: int) -> UserBil
     return billing
 
 
+def assert_variant_limit(db: Session, user: User, variant_count: int) -> UserBilling:
+    billing = get_or_create_billing(db, user)
+    tier = normalize_tier(billing.plan_tier)
+    cap = get_quotas(tier).max_variants_per_model
+    if variant_count > cap:
+        raise HTTPException(
+            status_code=402,
+            detail=f"Variant limit reached for {PLAN_LABELS[tier]} (max {cap} per model).",
+        )
+    return billing
+
+
 def assert_model_credit(db: Session, user: User) -> UserBilling:
     billing = get_or_create_billing(db, user)
     if billing.model_credits_balance <= 0:

@@ -2,6 +2,13 @@ import * as THREE from "three";
 import { getFinishMaps } from "@/lib/finish-textures";
 import { GEM_GPU_USER_KEY } from "@/lib/gem-gpu/gem-physical-material";
 import { applyJewelryGemShader } from "@/lib/gem-gpu/jewelry-gem-shader";
+import {
+  applyGemTrace,
+  GEM_TRACE_BOUNCES,
+  gemTraceParamsFromConfig,
+  isGemTraceCandidate,
+} from "@/lib/gem-gpu/gem-trace-material";
+import type { GemConfig } from "@/lib/gem-gpu/gem-configs";
 import type { FinishId } from "@/stores/material-preset-store";
 import type { UserMaterialItem } from "@/lib/library/types";
 
@@ -68,6 +75,23 @@ export function createGemMaterialFromParams(
   });
 
   m.userData[GEM_GPU_USER_KEY] = true;
+  const traceConfig: GemConfig = {
+    ior: m.ior,
+    dispersionBase: m.dispersion,
+    dispersionAmplitude: 0,
+    roughness: m.roughness,
+    thickness: m.thickness,
+    envMapIntensity: m.envMapIntensity,
+    baseColor,
+    attenuationColor,
+    attenuationDistance: m.attenuationDistance,
+    transmission,
+  };
+  if (isGemTraceCandidate(traceConfig)) {
+    const bounces = qualityReduce ? GEM_TRACE_BOUNCES.performance : GEM_TRACE_BOUNCES.standard;
+    applyGemTrace(m, gemTraceParamsFromConfig(traceConfig, bounces));
+    return m;
+  }
   applyJewelryGemShader(m, {
     sparkleStrength: typeof params.sparkleStrength === "number" ? params.sparkleStrength : 1,
     fireStrength: 1,

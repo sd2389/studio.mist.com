@@ -1,7 +1,7 @@
 "use client";
 
 import { Download, ImageIcon, Loader2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { updateScene } from "@/features/scene";
 import { VariantManager } from "@/features/variants";
 import type { ModelVariant } from "@/lib/variants/types";

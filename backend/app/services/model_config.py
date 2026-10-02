@@ -98,21 +98,23 @@ def _normalize_slot_token(token: str) -> str | None:
     ):
         return "Heads"
 
-    if re.match(r"^(metal|band|shank|setting|bezel)$", value, re.IGNORECASE):
+    # Plurals too: "Gems" / "Stones" are the default stone layers in RhinoGold and MatrixGold.
+    if re.match(r"^(metals?|bands?|shanks?|settings?|bezels?)$", value, re.IGNORECASE):
         return "Metal 1"
 
-    if re.match(r"^(gem|stone|diamond)$", value, re.IGNORECASE):
+    if re.match(r"^(gems?|stones?|diamonds?)$", value, re.IGNORECASE):
         return "Gem 1"
 
-    metal = re.match(r"^metal\s*0*([1-9]\d*)$", value, re.IGNORECASE)
+    # "_" as well: GLB tools often write "Metal_2" for "Metal 2".
+    metal = re.match(r"^metal[\s_]*0*([1-9]\d*)$", value, re.IGNORECASE)
     if metal:
         return f"Metal {int(metal.group(1))}"
 
-    gem = re.match(r"^(gem|stone)\s*0*([1-9]\d*)$", value, re.IGNORECASE)
+    gem = re.match(r"^(gem|stone)[\s_]*0*([1-9]\d*)$", value, re.IGNORECASE)
     if gem:
         return f"Gem {int(gem.group(2))}"
 
-    accent = re.match(r"^accent\s*0*([1-9]\d*)$", value, re.IGNORECASE)
+    accent = re.match(r"^accent[\s_]*0*([1-9]\d*)$", value, re.IGNORECASE)
     if accent:
         return f"Accent {int(accent.group(1))}"
 
@@ -266,7 +268,7 @@ def detect_slot_tokens(filename: str, payload: bytes) -> dict[str, list[str]]:
 
 def _is_generic_gem_token(token: str) -> bool:
     value = token.strip().lower()
-    return bool(re.match(r"^(gem|stone|diamond)(\s*0*[1-9]\d*)?$", value))
+    return bool(re.match(r"^(gems?|stones?|diamonds?)([\s_]*0*[1-9]\d*)?$", value))
 
 
 def _collapse_generic_gem_slots(slot_tokens: dict[str, list[str]]) -> dict[str, list[str]]:

@@ -22,7 +22,7 @@ export function AiVisualsEntryPicker({
 
   return (
     <div className="space-y-2">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+      <p className="font-mono text-[10px] uppercase tracking-[0.24em] text-muted-foreground">
         Entry
       </p>
       <div className={cn("grid gap-2", modelEnabled ? "grid-cols-2" : "grid-cols-1")}>

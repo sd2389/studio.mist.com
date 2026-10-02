@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { CampaignPackLauncher, CaptureNotice, turntableCaptureOptions, videoSizeLabel } from "@/features/render";
 import { ModelMultiSelect, VariantMultiSelect } from "@/features/variants";
 import {
   VIDEO_FPS_OPTIONS,
@@ -22,11 +23,12 @@ import {
   type BatchExportContext,
 } from "@/lib/variants/batch-export";
 import {
+  isAbortError,
   isWebCodecsSupported,
   recordMultiAngle,
   recordTurntable,
-  ZIP_FALLBACK_MIME,
   type CameraPose,
+  type RecordTurntableOpts,
 } from "@/lib/video-capture";
 import type { ModelVariant, SceneVariantsState } from "@/lib/variants/types";
 import type { PersistedModelConfig } from "@/lib/slot-materials/model-config";
@@ -34,9 +36,10 @@ import { mergePoses } from "@/lib/viewer-scene";
 import { fetchBillingAccount } from "@/lib/billing/client";
 import type { PlanFeatures } from "@/lib/billing/types";
 import { cn } from "@/lib/utils";
-import { getRenderFidelity } from "@/stores/render-fidelity-store";
+import { withLiveRenderingPaused } from "@/stores/hires-export-store";
 import { getVideoCaptureRefs } from "@/stores/video-capture-store";
 import { useMaterialPresetStore } from "@/stores/material-preset-store";
+import { Chip } from "@/components/ui/chip";
 
 type VideoMode = "simple" | "multi-angle" | "multiple";
 
@@ -54,35 +57,6 @@ type EditorVideoTabProps = {
   onModelConfigChange: (config: PersistedModelConfig) => void;
   setBatchModelUrl: (url: string | null) => void;
 };
-
-function ChipOption({
-  label,
-  selected,
-  onClick,
-  disabled,
-}: {
-  label: string;
-  selected: boolean;
-  onClick: () => void;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={cn(
-        "relative rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
-        "border-border bg-card text-foreground/90",
-        "hover:border-primary/30 hover:bg-muted/80",
-        "disabled:pointer-events-none disabled:opacity-50",
-        selected && "border-primary/40 bg-primary/10 text-foreground ring-1 ring-primary/20",
-      )}
-    >
-      {label}
-    </button>
-  );
-}
 
 export function EditorVideoTab({
   sceneId,
@@ -115,6 +89,7 @@ export function EditorVideoTab({
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [hasWebCodecs] = useState(() => isWebCodecsSupported());
   const [etaLabel, setEtaLabel] = useState<string | null>(null);
   const [planFeatures, setPlanFeatures] = useState<PlanFeatures | null>(null);
@@ -156,45 +131,31 @@ export function EditorVideoTab({
     [modelConfig, modelUrl, onModelConfigChange, sceneId, setBatchModelUrl, variantsState, viewerId],
   );
 
-  const fileSizeStr = useMemo(() => {
-    const mb = (bps * duration) / 8 / 1024 / 1024;
-    if (mb < 1) return `~${(mb * 1024).toFixed(0)} KB`;
-    return `~${mb.toFixed(1)} MB`;
-  }, [bps, duration]);
+  const fileSizeStr = videoSizeLabel(bps, duration);
 
-  async function renderTurntableBlob(signal: AbortSignal): Promise<Blob> {
-    const refs = getVideoCaptureRefs();
-    if (!refs) throw new Error("Viewer not ready. Wait for the model to load.");
-
-    const { exposure, postfxConfig } = getRenderFidelity();
-    return recordTurntable({
-      gl: refs.gl,
-      scene: refs.scene,
-      camera: refs.camera,
-      width: resolution.width,
-      height: resolution.height,
-      frameCount,
-      fps,
-      bitrate: bps,
-      exposure,
-      postfxConfig,
-      onProgress: (p: number) => {
-        setProgress(p);
-        const start = startedAtRef.current;
-        if (p > 0.01 && start > 0) {
-          const elapsed = (performance.now() - start) / 1000;
-          const total = elapsed / p;
-          const remaining = Math.max(0, total - elapsed);
-          setEtaLabel(`~${Math.round(remaining)}s remaining`);
-        }
-      },
-      signal,
-    });
+  function trackProgress(p: number) {
+    setProgress(p);
+    const start = startedAtRef.current;
+    if (p > 0.01 && start > 0) {
+      const elapsed = (performance.now() - start) / 1000;
+      const remaining = Math.max(0, elapsed / p - elapsed);
+      setEtaLabel(`~${Math.round(remaining)}s remaining`);
+    }
   }
+
+  function captureOptions(signal: AbortSignal, onProgress?: (p: number) => void): RecordTurntableOpts {
+    return turntableCaptureOptions(
+      { width: resolution.width, height: resolution.height, frameCount, fps, bitrate: bps },
+      signal,
+      onProgress,
+    );
+  }
+
 
   async function handleRender() {
     setError(null);
     setStatus(null);
+    setNotice(null);
     setProgress(0);
     setEtaLabel(null);
 
@@ -210,30 +171,7 @@ export function EditorVideoTab({
     setBusy(true);
 
     try {
-      const { exposure, postfxConfig } = getRenderFidelity();
-      const baseOpts = {
-        gl: refs.gl,
-        scene: refs.scene,
-        camera: refs.camera,
-        width: resolution.width,
-        height: resolution.height,
-        frameCount,
-        fps,
-        bitrate: bps,
-        exposure,
-        postfxConfig,
-        onProgress: (p: number) => {
-          setProgress(p);
-          const start = startedAtRef.current;
-          if (p > 0.01 && start > 0) {
-            const elapsed = (performance.now() - start) / 1000;
-            const total = elapsed / p;
-            const remaining = Math.max(0, total - elapsed);
-            setEtaLabel(`~${Math.round(remaining)}s remaining`);
-          }
-        },
-        signal: controller.signal,
-      };
+      const baseOpts = captureOptions(controller.signal, trackProgress);
 
       if (mode === "multiple") {
         if (!batchExportEnabled) {
@@ -262,13 +200,13 @@ export function EditorVideoTab({
         await runBatchExportJobs(jobs, batchContext, async (job) => {
           const label = batchFilenamePrefix(job);
           try {
-            const blob = await renderTurntableBlob(controller.signal);
-            const isZip = blob.type === ZIP_FALLBACK_MIME;
-            const ext = isZip ? "zip" : "mp4";
-            downloadBlob(blob, `${label}-360.${ext}`);
+            const result = await withLiveRenderingPaused(() => recordTurntable(captureOptions(controller.signal)));
+            const ext = result.kind === "png-zip" ? "zip" : "mp4";
+            downloadBlob(result.blob, `${label}-360.${ext}`);
+            if (result.notice) setNotice(result.notice);
             tileResults.push({ ok: true, label });
           } catch (e) {
-            if ((e as { name?: string })?.name === "AbortError") throw e;
+            if (isAbortError(e)) throw e;
             tileResults.push({
               ok: false,
               label,
@@ -294,22 +232,23 @@ export function EditorVideoTab({
         return;
       }
 
-      const blob =
+      const result = await withLiveRenderingPaused(() =>
         mode === "multi-angle"
-          ? await recordMultiAngle({ ...baseOpts, poses: poseAngles })
-          : await recordTurntable(baseOpts);
+          ? recordMultiAngle({ ...baseOpts, poses: poseAngles })
+          : recordTurntable(baseOpts),
+      );
 
-      const isZip = blob.type === ZIP_FALLBACK_MIME;
-      const ext = isZip ? "zip" : "mp4";
+      const isZip = result.kind === "png-zip";
       const suffix = mode === "multi-angle" ? "multi-angle" : "360";
-      downloadBlob(blob, `${viewerId}-${suffix}.${ext}`);
+      downloadBlob(result.blob, `${viewerId}-${suffix}.${isZip ? "zip" : "mp4"}`);
+      setNotice(result.notice);
       setStatus(
         isZip
-          ? `Downloaded ZIP of ${frameCount} PNG frames (MP4 unavailable)`
-          : `Downloaded ${ext.toUpperCase()} (${(blob.size / 1024 / 1024).toFixed(1)} MB)`,
+          ? `Downloaded ZIP of ${frameCount} PNG frames`
+          : `Downloaded MP4 (${(result.blob.size / 1024 / 1024).toFixed(1)} MB · ${result.codec})`,
       );
     } catch (e) {
-      if ((e as { name?: string })?.name === "AbortError") {
+      if (isAbortError(e)) {
         setStatus("Cancelled");
       } else {
         setError(e instanceof Error ? e.message : "Render failed");
@@ -337,6 +276,7 @@ export function EditorVideoTab({
       </div>
 
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
+        <CampaignPackLauncher modelId={viewerId} sceneId={sceneId} modelConfig={modelConfig} />
         {!hasWebCodecs ? (
           <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-foreground/90">
             <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-500" aria-hidden />
@@ -348,7 +288,7 @@ export function EditorVideoTab({
         ) : null}
 
         <div className="space-y-2">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          <p className="font-mono text-[10px] uppercase tracking-[0.24em] text-muted-foreground">
             Mode
           </p>
           <div className="grid grid-cols-3 gap-2">
@@ -408,13 +348,14 @@ export function EditorVideoTab({
           <Label className="text-muted-foreground">Resolution</Label>
           <div className="flex flex-wrap gap-2">
             {VIDEO_RESOLUTIONS.map((r) => (
-              <ChipOption
+              <Chip
                 key={r.id}
-                label={`${r.label}`}
                 selected={resId === r.id}
                 onClick={() => setResId(r.id)}
                 disabled={busy}
-              />
+              >
+                {`${r.label}`}
+              </Chip>
             ))}
           </div>
         </div>
@@ -440,13 +381,14 @@ export function EditorVideoTab({
           <Label className="text-muted-foreground">FPS</Label>
           <div className="flex flex-wrap gap-2">
             {VIDEO_FPS_OPTIONS.map((value) => (
-              <ChipOption
+              <Chip
                 key={value}
-                label={`${value} fps`}
                 selected={fps === value}
                 onClick={() => setFps(value)}
                 disabled={busy}
-              />
+              >
+                {`${value} fps`}
+              </Chip>
             ))}
           </div>
         </div>
@@ -482,6 +424,7 @@ export function EditorVideoTab({
             {error}
           </p>
         ) : null}
+        <CaptureNotice message={notice} />
         {status ? (
           <p className="text-xs text-muted-foreground" role="status">
             {status}

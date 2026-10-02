@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { SiteShell } from "@/components/site/SiteShell";
 import { PricingPageClient } from "@/features/billing/ui/PricingPage";
 import { FeatureDisabledPage } from "@/features/feature-flags";
 import { fetchCurrentUser } from "@/lib/auth/server-session";
@@ -27,9 +28,8 @@ export default async function PricingPage() {
   }
 
   return (
-    <PricingPageClient
-      catalog={catalog ?? FALLBACK_CATALOG}
-      isAuthenticated={Boolean(user)}
-    />
+    <SiteShell>
+      <PricingPageClient catalog={catalog ?? FALLBACK_CATALOG} isAuthenticated={Boolean(user)} />
+    </SiteShell>
   );
 }

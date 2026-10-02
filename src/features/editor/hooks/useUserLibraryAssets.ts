@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { fetchUserAssets } from "@/lib/library/fetch-library";
 import type { LibraryPage, UserAssetItem } from "@/lib/library/types";
 

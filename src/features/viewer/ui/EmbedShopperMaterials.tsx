@@ -32,13 +32,13 @@ export function EmbedShopperMaterials({
 
   return (
     <div
-      className="shrink-0 border-t border-black/10 bg-[#F4F2EE] pb-[max(8px,env(safe-area-inset-bottom))]"
+      className="shrink-0 border-t border-foreground/10 bg-[#F4F2EE] pb-[max(8px,env(safe-area-inset-bottom))]"
       data-testid="embed-shopper-materials"
     >
       {isShortViewport ? (
         <>
           <div
-            className="grid grid-cols-2 border-b border-black/10"
+            className="grid grid-cols-2 border-b border-foreground/10"
             role="tablist"
             aria-label="Metal or gem"
           >
@@ -53,8 +53,8 @@ export function EmbedShopperMaterials({
                   className={cn(
                     "min-h-11 text-[11px] font-medium uppercase tracking-[0.14em]",
                     selected
-                      ? "bg-[#212121] text-white"
-                      : "text-black/45 hover:bg-black/[0.04] hover:text-black",
+                      ? "bg-foreground text-background"
+                      : "text-foreground/45 hover:bg-foreground/[0.04] hover:text-foreground",
                   )}
                   onClick={() => setShortKind(row.kind)}
                 >
@@ -110,15 +110,15 @@ function EmbedShopperKindRow({
 }) {
   return (
     <div
-      className="flex items-center gap-2 border-b border-black/10 px-3 py-2 last:border-b-0"
+      className="flex items-center gap-2 border-b border-foreground/10 px-3 py-2 last:border-b-0"
       role="group"
       aria-label={label}
       data-shopper-kind={kind}
     >
-      <p className="w-14 shrink-0 text-[11px] font-medium uppercase tracking-[0.14em] text-black/45">
+      <p className="w-14 shrink-0 text-[11px] font-medium uppercase tracking-[0.14em] text-foreground/45">
         {label}
       </p>
-      <div className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto pb-0.5">
+      <div role="radiogroup" aria-label="Materials" className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto pb-0.5">
         {entries.map((entry) => (
           <MaterialSwatch
             key={entry.id}

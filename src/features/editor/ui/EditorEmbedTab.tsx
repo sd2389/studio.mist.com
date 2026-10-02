@@ -1,19 +1,17 @@
 "use client";
 
 import { Check, Code, Copy, ExternalLink, Link2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  buildEmbedIframeSnippet,
-  buildEmbedUrl,
-  resolveEmbedKey,
   resolveEmbedSettings,
 } from "@/lib/embed-settings";
 import { useMaterialPresetStore } from "@/stores/material-preset-store";
+import { EmbedKeyNotice, useCopyFeedback, useEmbedCode } from "@/components/embed/embed-code";
 
 type EditorEmbedTabProps = {
   viewerId: string;
@@ -28,34 +26,16 @@ export function EditorEmbedTab({ viewerId, sku, displayName }: EditorEmbedTabPro
   const setEmbedSettings = useMaterialPresetStore((s) => s.setEmbedSettings);
 
   const [showCode, setShowCode] = useState(false);
-  const [copied, setCopied] = useState<CopyTarget>(null);
-
-  const embedKey = resolveEmbedKey(sku, viewerId);
+  const { copied, copy } = useCopyFeedback<NonNullable<CopyTarget>>();
   const settings = resolveEmbedSettings(sceneSettings.embed);
-  const origin = typeof window !== "undefined" ? window.location.origin : "";
-  const canEmbed = Boolean(sku?.trim());
-  const embedUrl = useMemo(
-    () => (canEmbed && origin ? buildEmbedUrl(origin, embedKey, settings) : ""),
-    [canEmbed, origin, embedKey, settings],
-  );
-  const iframeSnippet = useMemo(
-    () =>
-      embedUrl
-        ? buildEmbedIframeSnippet(embedUrl, {
-            title: displayName?.trim() || embedKey,
-          })
-        : "",
-    [embedUrl, displayName, embedKey],
-  );
-
+  const { canEmbed, url: embedUrl, snippet: iframeSnippet } = useEmbedCode({
+    sku,
+    modelId: viewerId,
+    settings,
+    title: displayName?.trim() || undefined,
+  });
   const canCopyEmbed = Boolean(canEmbed && embedUrl);
-
-  async function copyText(text: string, target: CopyTarget) {
-    if (!canCopyEmbed || !text) return;
-    await navigator.clipboard.writeText(text);
-    setCopied(target);
-    window.setTimeout(() => setCopied(null), 2000);
-  }
+  const copyText = (text: string, target: NonNullable<CopyTarget>) => (canCopyEmbed ? copy(text, target) : Promise.resolve());
 
   return (
     <div className="flex h-full flex-col">
@@ -66,20 +46,12 @@ export function EditorEmbedTab({ viewerId, sku, displayName }: EditorEmbedTabPro
             Share a SKU-keyed iframe with branding and viewer controls.
           </p>
         </div>
-        {sku ? (
-          <p className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-            Embed key: <span className="font-medium text-foreground">{sku}</span>
-          </p>
-        ) : (
-          <p className="rounded-lg border border-dashed border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
-            Publish or set a SKU before embedding
-          </p>
-        )}
+        <EmbedKeyNotice sku={sku} />
       </div>
 
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
         <div className="space-y-3 rounded-lg border border-border/60 bg-muted/20 p-3">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          <p className="font-mono text-[10px] uppercase tracking-[0.24em] text-muted-foreground">
             Viewer controls
           </p>
 
@@ -151,7 +123,7 @@ export function EditorEmbedTab({ viewerId, sku, displayName }: EditorEmbedTabPro
         </div>
 
         <div className="space-y-2">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          <p className="font-mono text-[10px] uppercase tracking-[0.24em] text-muted-foreground">
             Embed URL
           </p>
           <Textarea
@@ -163,7 +135,7 @@ export function EditorEmbedTab({ viewerId, sku, displayName }: EditorEmbedTabPro
 
         {showCode ? (
           <div className="space-y-2">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            <p className="font-mono text-[10px] uppercase tracking-[0.24em] text-muted-foreground">
               Iframe code
             </p>
             <Textarea

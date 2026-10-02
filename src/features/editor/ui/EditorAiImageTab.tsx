@@ -160,7 +160,7 @@ export function EditorAiImageTab({ viewerId }: EditorAiImageTabProps) {
             </p>
           </div>
           <div className="shrink-0 rounded-lg border border-border bg-muted/40 px-2.5 py-1.5 text-right">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+            <p className="font-mono text-[10px] uppercase tracking-[0.24em] text-muted-foreground">
               AI credits
             </p>
             <p className="text-sm font-semibold tabular-nums text-foreground">{creditsLabel}</p>

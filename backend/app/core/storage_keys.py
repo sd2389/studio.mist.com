@@ -38,7 +38,7 @@ def customer_assets_prefix(user_id: int) -> str:
 
 
 def model_key(user_id: int, filename: str) -> str:
-    safe = _safe_name(filename, force_glb=True)
+    safe = _safe_glb_name(filename)
     return f"{customer_models_prefix(user_id)}/{uuid4().hex}-{safe}"
 
 
@@ -100,17 +100,13 @@ def is_legacy_upload_key(key: str) -> bool:
     )
 
 
-def _safe_name(name: str, *, force_glb: bool = False) -> str:
+def _safe_glb_name(name: str) -> str:
+    """Stored models are always GLB (the browser converts every CAD format before upload)."""
     from pathlib import Path
 
     base = Path(name or "model.glb").name
     stem = re.sub(r"[^a-zA-Z0-9._-]", "_", Path(base).stem)[:120] or "model"
-    if force_glb:
-        return f"{stem}.glb"
-    suf = Path(base).suffix.lower()
-    if suf not in (".glb", ".gltf", ".stl", ".3dm"):
-        suf = ".glb"
-    return f"{stem}{suf}"
+    return f"{stem}.glb"
 
 
 def _safe_thumbnail_name(name: str) -> str:

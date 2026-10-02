@@ -1,4 +1,5 @@
 import { Camera, Moon, Sparkles, Sun, SunDim, type LucideIcon } from "lucide-react";
+import { fancyDiamondLabel, parseFancyDiamondId } from "@/lib/gem-gpu/fancy-diamonds";
 import type { SlotMaterialRef } from "@/lib/library/custom-material-ref";
 import type { SceneSettingBucketKey } from "@/lib/slot-materials/model-config";
 import {
@@ -132,6 +133,8 @@ export const FINISHES: { id: FinishId; label: string; hint: string }[] = [
 
 export function prettyName(id: MaterialPresetId): string {
   if (id === "original") return "Original";
+  const fancy = parseFancyDiamondId(id);
+  if (fancy) return fancyDiamondLabel(fancy.hue, fancy.grade);
   const match = ALL_ENTRIES.find((x) => x.entry.id === id);
   if (!match) return id;
   return match.entry.label;
@@ -139,6 +142,7 @@ export function prettyName(id: MaterialPresetId): string {
 
 export function groupOf(id: MaterialPresetId): string {
   if (id === "original") return "As uploaded";
+  if (parseFancyDiamondId(id)) return "Fancy colour";
   return ALL_ENTRIES.find((x) => x.entry.id === id)?.groupTitle ?? "";
 }
 

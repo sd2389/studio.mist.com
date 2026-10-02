@@ -7,6 +7,7 @@ import {
 } from "@/lib/gem-gpu/apply-split-diamond";
 import { createGemMaterial, isGemGpuMaterial } from "@/lib/gem-gpu/gem-physical-material";
 import { ensureFacetedGemNormalsOnMesh } from "@/lib/gem-gpu/ensure-faceted-gem-normals";
+import { isGemTraceMaterial, prepareGemTraceMesh } from "@/lib/gem-gpu/gem-trace-material";
 import { isGemPresetId } from "@/lib/gem-gpu/gem-configs";
 import {
   createGemMaterialFromParams,
@@ -248,7 +249,9 @@ function assignMaterial(mesh: THREE.Mesh, template: THREE.Material): void {
     mesh.material.dispose();
     mesh.material = template;
   }
-  if (isGemGpuMaterial(template)) {
+  if (isGemTraceMaterial(template)) {
+    prepareGemTraceMesh(mesh);
+  } else if (isGemGpuMaterial(template)) {
     ensureFacetedGemNormalsOnMesh(mesh);
   }
 }

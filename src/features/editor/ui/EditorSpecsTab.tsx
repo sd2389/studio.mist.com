@@ -1,7 +1,7 @@
 "use client";
 
 import { Loader2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { updateScene } from "@/features/scene";
 import { Button } from "@/components/ui/button";
 import type { ProductSpecs } from "@/lib/product-specs/types";
@@ -26,12 +26,15 @@ export function EditorSpecsTab({
   onSuggestFromMaterials,
 }: EditorSpecsTabProps) {
   const [specs, setSpecs] = useState(initialSpecs);
+  const [syncedSpecs, setSyncedSpecs] = useState(initialSpecs);
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
+  // A new saved value replaces the local draft (React's "adjust state on prop change" pattern).
+  if (syncedSpecs !== initialSpecs) {
+    setSyncedSpecs(initialSpecs);
     setSpecs(initialSpecs);
-  }, [initialSpecs]);
+  }
 
   function patch(partial: Partial<ProductSpecs>) {
     setSpecs((prev) => ({ ...prev, ...partial }));

@@ -64,19 +64,19 @@ export function StudioTopBar({ modelId, sku, displayName }: StudioTopBarProps) {
   }
 
   return (
-    <header className="relative z-50 flex h-[52px] shrink-0 items-center gap-2 border-b border-black/10 bg-[#F4F2EE] px-2 text-[#212121] sm:gap-3 sm:px-3">
+    <header className="relative z-50 flex h-[52px] shrink-0 items-center gap-2 border-b border-foreground/10 bg-background px-2 text-foreground sm:gap-3 sm:px-3">
       <Link
         href="/dashboard"
-        className="grid size-8 shrink-0 place-items-center rounded-md text-black/55 transition hover:bg-black/[0.04] hover:text-black"
+        className="grid size-8 shrink-0 place-items-center rounded-md text-foreground/55 transition hover:bg-foreground/[0.04] hover:text-foreground"
         aria-label="Back to workshop"
       >
         <ChevronLeft className="size-4" aria-hidden />
       </Link>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[13px] font-medium tracking-tight text-black">
+        <p className="truncate text-[13px] font-medium tracking-tight text-foreground">
           {displayName || sceneDisplayName(modelId)}
         </p>
-        <p className="truncate text-[10px] text-black/40">
+        <p className="truncate text-[10px] text-foreground/40">
           {preset} · {lighting}
         </p>
       </div>
@@ -86,7 +86,7 @@ export function StudioTopBar({ modelId, sku, displayName }: StudioTopBarProps) {
           type="button"
           variant="outline"
           size="sm"
-          className="inline-flex h-8 rounded-md border-black/15 bg-transparent px-2 text-[10px] font-medium uppercase tracking-[0.1em] text-black/65 shadow-none hover:bg-white hover:text-black"
+          className="inline-flex h-8 rounded-md border-foreground/15 bg-transparent px-2 font-mono text-[10px] uppercase tracking-[0.24em] text-foreground/65 shadow-none hover:bg-surface hover:text-foreground"
           aria-label="Save look on this device"
           onClick={savePreset}
         >
@@ -100,7 +100,7 @@ export function StudioTopBar({ modelId, sku, displayName }: StudioTopBarProps) {
           type="button"
           variant="ghost"
           size="sm"
-          className="inline-flex h-8 rounded-md px-2 text-[10px] font-medium uppercase tracking-[0.1em] text-black/65 hover:bg-black/[0.04] hover:text-black"
+          className="inline-flex h-8 rounded-md px-2 font-mono text-[10px] uppercase tracking-[0.24em] text-foreground/65 hover:bg-foreground/[0.04] hover:text-foreground"
           aria-label="Copy share link"
           onClick={() => void shareEmbed()}
           disabled={!canShare}
@@ -116,7 +116,7 @@ export function StudioTopBar({ modelId, sku, displayName }: StudioTopBarProps) {
       </div>
       {toast ? (
         <p
-          className="absolute left-1/2 top-[calc(100%+8px)] z-50 -translate-x-1/2 rounded-md border border-black/10 bg-white px-3 py-1.5 text-xs text-black shadow-sm"
+          className="absolute left-1/2 top-[calc(100%+8px)] z-50 -translate-x-1/2 rounded-md border border-foreground/10 bg-surface px-3 py-1.5 text-xs text-foreground shadow-sm"
           role="status"
         >
           {toast}

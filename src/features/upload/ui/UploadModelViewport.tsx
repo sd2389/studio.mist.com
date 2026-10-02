@@ -6,10 +6,13 @@ import { WebGPUCanvas } from "@/lib/gpu/WebGPUCanvas";
 import { useMemo, useState } from "react";
 import * as THREE from "three";
 import { detectSlots } from "@/lib/slot-materials/detect-slots";
+import { useFilmTheme } from "@/components/scroll-film/film-theme";
 import { cn } from "@/lib/utils";
 
-const FIT_SIZE = 1.8;
-const STUDIO_BG = "#eef2f7";
+/** The camera below sees ~1.65 units vertically at its distance; leave a margin. */
+const FIT_SIZE = 1.35;
+/** The inspection stage follows the site's look (it previews an upload, not a saved scene). */
+const STAGE_BG = { light: "#eef2f7", dark: "#0b0c10" } as const;
 const GEM_SCALE = ["#3b82f6", "#60a5fa", "#2563eb", "#93c5fd"];
 const METAL_SCALE = ["#d7dde6", "#c3cad6", "#b0b9c8", "#9aa5b6"];
 const DEFAULT_METAL = "#c9d0da";
@@ -115,6 +118,8 @@ function applyPreviewMaterials(
 
 type UploadModelViewportProps = {
   root: THREE.Object3D | null;
+  /** Bump when `root`'s geometry changed in place (e.g. decimation) to rebuild the preview. */
+  revision?: number;
   slots: string[];
   hiddenSlots?: Set<string>;
   slotTokens?: Record<string, string[]>;
@@ -124,12 +129,14 @@ type UploadModelViewportProps = {
 
 export function UploadModelViewport({
   root,
+  revision = 0,
   slots,
   hiddenSlots = new Set(),
   slotTokens,
   className,
   emptyLabel = "Drop a model to preview",
 }: UploadModelViewportProps) {
+  const stageBg = STAGE_BG[useFilmTheme() ?? "light"];
   const slotList = useMemo(() => (slots.length > 0 ? slots : ["Metal 01"]), [slots]);
   const slotColors = useMemo(() => buildSlotColorMap(slotList), [slotList]);
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
@@ -137,7 +144,9 @@ export function UploadModelViewport({
   const model = useMemo(() => {
     if (!root) return null;
     return applyPreviewMaterials(root, slotColors, hiddenSlots, slotTokens);
-  }, [root, slotColors, hiddenSlots, slotTokens]);
+    // `revision` is a dependency on purpose: it invalidates the clone after in-place edits.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [root, revision, slotColors, hiddenSlots, slotTokens]);
 
   const handlePick = (event: ThreeEvent<PointerEvent>) => {
     event.stopPropagation();
@@ -148,18 +157,18 @@ export function UploadModelViewport({
   return (
     <div
       className={cn("relative h-full min-h-[320px] overflow-hidden", className)}
-      style={{ background: STUDIO_BG }}
+      style={{ background: stageBg }}
     >
       {model ? (
         <>
-          <div className="pointer-events-none absolute left-3 top-3 z-10 rounded-full border border-black/10 bg-white/75 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-black/60 backdrop-blur-sm">
+          <div className="pointer-events-none absolute left-3 top-3 z-10 rounded-full border border-foreground/10 bg-surface/75 px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.24em] text-foreground/60 backdrop-blur-sm">
             {selectedSlot ? `Layer: ${selectedSlot}` : "Orbit to inspect"}
           </div>
           <WebGPUCanvas
             camera={{ position: [0, 0.55, 2.35], fov: 38 }}
-            style={{ background: STUDIO_BG }}
+            style={{ background: stageBg }}
           >
-            <color attach="background" args={[STUDIO_BG]} />
+            <color attach="background" args={[stageBg]} />
             <hemisphereLight args={["#ffffff", "#c8d2de", 0.95]} />
             <ambientLight intensity={0.55} />
             <directionalLight position={[4, 6, 3]} intensity={1.05} color="#ffffff" />

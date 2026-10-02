@@ -1,16 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { Loader2 } from "lucide-react";
-import { formatPolyCount } from "@/lib/upload/polygon-limits";
+import { useDesignHandoffImport } from "@/features/upload/hooks/useDesignHandoffImport";
 import { useUploadModelFlow } from "@/features/upload/hooks/useUploadModelFlow";
 import { UploadDropPanel } from "./UploadDropPanel";
 import { UploadLayersEditor } from "./UploadLayersEditor";
 import { UploadMetadataForm } from "./UploadMetadataForm";
+import { UploadModelSummary, UploadParsingState, UploadPolyLimitNotice } from "./UploadModelStatus";
 import { UploadModelViewport } from "./UploadModelViewport";
 import { UploadSignInDialog } from "./UploadSignInDialog";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { BuyCreditsLink, outOfCredits } from "@/features/billing/ui/BuyCreditsLink";
 
 export function UploadModelShell() {
   const flow = useUploadModelFlow();
@@ -31,8 +32,13 @@ export function UploadModelShell() {
     maxPolygons,
     planLabel,
     busy,
+    decimating,
+    parseStatus,
+    previewRevision,
     reset,
     ingestFile,
+    ingestFiles,
+    showError,
     handleSample,
     handleRename,
     handleToggleVisibility,
@@ -41,9 +47,10 @@ export function UploadModelShell() {
     handleAuthDialogOpenChange,
     handleAuthSuccess,
   } = flow;
+  useDesignHandoffImport(ingestFile, showError);
 
   return (
-    <main className="relative isolate min-h-[100dvh] overflow-hidden bg-white p-2.5 text-[#212121] sm:p-4">
+    <main className="relative isolate min-h-[100dvh] overflow-hidden bg-surface p-2.5 text-foreground sm:p-4">
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0 overflow-hidden"
@@ -52,15 +59,15 @@ export function UploadModelShell() {
       </div>
 
       <div className="ice-panel relative z-10 mx-auto flex min-h-[calc(100dvh-20px)] max-w-[1600px] flex-col overflow-hidden sm:min-h-[calc(100dvh-32px)]">
-        <header className="flex flex-wrap items-end justify-between gap-4 border-b border-black/10 px-6 py-6 lg:px-10">
+        <header className="flex flex-wrap items-end justify-between gap-4 border-b border-foreground/10 px-6 py-6 lg:px-10">
           <div>
             <Link
               href="/dashboard"
-              className="inline-flex text-[9px] uppercase tracking-[0.14em] text-black/45 transition-colors hover:text-black"
+              className="inline-flex font-mono text-[10px] uppercase tracking-[0.24em] text-foreground/45 transition-colors hover:text-foreground"
             >
               MIST Studio
             </Link>
-            <h1 className="mt-3 text-[clamp(3rem,6vw,6rem)] font-light leading-[0.78] tracking-[-0.075em] text-black">
+            <h1 className="mt-3 text-[clamp(3rem,6vw,6rem)] font-light leading-[0.78] tracking-[-0.075em] text-foreground">
               Drop your <strong className="font-semibold">CAD.</strong>
             </h1>
           </div>
@@ -78,24 +85,13 @@ export function UploadModelShell() {
         </header>
 
         <div className="grid flex-1 gap-0 lg:grid-cols-[1.35fr_0.65fr]">
-          <section className="relative min-h-[420px] overflow-hidden border-b border-black/[0.06] bg-[#eef2f7] lg:min-h-[650px] lg:border-b-0 lg:border-r lg:border-black/[0.06]">
+          <section className="relative min-h-[420px] overflow-hidden border-b border-foreground/[0.06] bg-muted lg:min-h-[650px] lg:border-b-0 lg:border-r lg:border-foreground/[0.06]">
             {phase === "parsing" ? (
-              <div className="flex h-full min-h-[420px] flex-col items-center justify-center gap-4 bg-[#eef2f7]">
-                <Loader2
-                  className="size-8 animate-spin text-primary"
-                  aria-hidden
-                />
-                <p className="text-sm font-medium text-foreground">
-                  Parsing to glb file…
-                </p>
-                <p className="max-w-sm text-center text-xs text-muted-foreground">
-                  Converting CAD in your browser. Your file stays on-device
-                  until you save.
-                </p>
-              </div>
+              <UploadParsingState status={parseStatus} />
             ) : (
               <UploadModelViewport
                 root={parsed?.preloaded.root ?? null}
+                revision={previewRevision}
                 slots={slotIds}
                 hiddenSlots={hiddenSlots}
                 slotTokens={parsed?.modelConfig.slotTokens}
@@ -109,61 +105,38 @@ export function UploadModelShell() {
             )}
           </section>
 
-          <aside className="flex flex-col gap-4 bg-white/28 p-5 lg:p-7">
+          <aside className="flex flex-col gap-4 bg-surface/28 p-5 lg:p-7">
             {phase === "idle" || phase === "error" ? (
               <>
                 <UploadDropPanel
                   busy={busy}
-                  onFile={ingestFile}
+                  onFiles={ingestFiles}
                   onSample={handleSample}
                 />
                 {error ? (
                   <div
-                    className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300"
+                    className="rounded-xl border border-red-600/25 bg-red-500/[0.07] px-4 py-3 text-sm text-red-950"
                     role="alert"
                   >
                     {error}
+                    {outOfCredits(error) ? <BuyCreditsLink /> : null}
                   </div>
                 ) : null}
               </>
             ) : null}
 
             {phase === "ready" || phase === "saving" ? (
-              <div className="flex flex-col gap-5 rounded-[1.75rem] border border-black/[0.06] bg-white/55 p-5">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                    Model details
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {parsed?.file.name} ·{" "}
-                    {formatPolyCount(parsed?.polyCount ?? 0)} polys
-                  </p>
-                </div>
+              <div className="flex flex-col gap-5 rounded-[1.75rem] border border-foreground/[0.06] bg-surface/55 p-5">
+                <UploadModelSummary parsed={parsed} />
 
                 {overPolyLimit ? (
-                  <div
-                    className="rounded-xl border border-red-600/25 bg-red-500/[0.07] px-4 py-3 text-sm text-red-950"
-                    role="alert"
-                  >
-                    <p>
-                      This model has {formatPolyCount(parsed?.polyCount ?? 0)} polygons — your{" "}
-                      {planLabel} plan allows up to {formatPolyCount(maxPolygons)}.
-                    </p>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <Link href="/pricing" className={buttonVariants({ size: "sm" })}>
-                        Upgrade plan
-                      </Link>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="border-red-800/25 text-red-950 hover:bg-red-500/10"
-                        onClick={handleDecimate}
-                      >
-                        Decimate to ~{formatPolyCount(maxPolygons)}
-                      </Button>
-                    </div>
-                  </div>
+                  <UploadPolyLimitNotice
+                    polyCount={parsed?.polyCount ?? 0}
+                    planLabel={planLabel}
+                    maxPolygons={maxPolygons}
+                    decimating={decimating}
+                    onDecimate={() => void handleDecimate()}
+                  />
                 ) : null}
 
                 <UploadMetadataForm
@@ -197,14 +170,15 @@ export function UploadModelShell() {
                 ) : null}
 
                 {error ? (
-                  <p className="text-sm text-red-400" role="alert">
+                  <p className="text-sm text-red-700" role="alert">
                     {error}
+                    {outOfCredits(error) ? <BuyCreditsLink /> : null}
                   </p>
                 ) : null}
 
                 <Button
                   type="button"
-                  className="w-full rounded-full bg-[#212121] py-6 text-[10px] font-semibold uppercase tracking-[0.1em] text-white hover:bg-black"
+                  className="w-full rounded-full bg-foreground py-6 font-mono text-[10px] uppercase tracking-[0.24em] text-background hover:bg-foreground"
                   disabled={busy || overPolyLimit}
                   onClick={() => void handleSave()}
                 >

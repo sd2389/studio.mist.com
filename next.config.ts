@@ -9,6 +9,10 @@ const nextConfig: NextConfig = {
   output: "standalone",
   distDir: process.env.NEXT_BUILD_DIR || ".next",
   allowedDevOrigins: ["127.0.0.1", "localhost"],
+  // The film previews became the home page.
+  async redirects() {
+    return ["/home-2", "/home-3"].map((source) => ({ source, destination: "/", permanent: false }));
+  },
   serverExternalPackages: [
     "draco3dgltf",
     "draco3d",

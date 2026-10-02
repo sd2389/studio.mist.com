@@ -91,11 +91,11 @@ export function AuthPanel() {
         ) : null
       }
     >
-      <div className="mb-6 grid grid-cols-2 gap-1 rounded-full bg-black/[0.04] p-1">
+      <div className="mb-6 grid grid-cols-2 gap-1 rounded-full bg-foreground/[0.04] p-1">
         <button
           type="button"
           className={`rounded-full px-3 py-2 text-sm font-medium transition-colors ${
-            !isSignup ? "bg-white text-black shadow-sm" : "text-black/50"
+            !isSignup ? "bg-surface text-foreground shadow-sm" : "text-foreground/50"
           }`}
           onClick={() => setMode("signin")}
         >
@@ -104,7 +104,7 @@ export function AuthPanel() {
         <button
           type="button"
           className={`rounded-full px-3 py-2 text-sm font-medium transition-colors ${
-            isSignup ? "bg-white text-black shadow-sm" : "text-black/50"
+            isSignup ? "bg-surface text-foreground shadow-sm" : "text-foreground/50"
           }`}
           onClick={() => setMode("signup")}
         >

@@ -98,7 +98,7 @@ export function RenderHarness() {
       }
       window.__JOB_STATE__ = "error:" + message;
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [isJobMode, jobId, jobToken]);
 
   // Golden / export mode: only runs when NOT in job mode

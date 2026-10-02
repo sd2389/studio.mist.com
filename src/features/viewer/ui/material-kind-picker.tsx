@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { Fragment, useMemo } from "react";
 import { motion } from "framer-motion";
 import { MaterialSwatch } from "@/components/ui/material-swatch";
 import { cn } from "@/lib/utils";
@@ -16,6 +16,7 @@ import {
 } from "@/features/viewer/ui/studio-material-groups";
 import { useStudioSlotContext } from "@/features/viewer/ui/useStudioSlotContext";
 import { SlotTargetGrid } from "@/features/viewer/ui/SlotTargetGrid";
+import { FancyDiamondPicker } from "@/features/viewer/ui/FancyDiamondPicker";
 
 function filterGroupsByKind(kind: "metal" | "gem"): MaterialGroup[] {
   return MATERIAL_GROUPS.map((group) => ({
@@ -64,12 +65,12 @@ export function MaterialKindPicker({
     <div className={cn("flex min-h-0 flex-1 flex-col gap-0 overflow-hidden", className)}>
       <div className="space-y-3 px-4 pt-3">
         {kindSlotIds.length > 0 ? (
-          <div className="rounded-md border border-black/10 bg-white/40 p-2.5">
+          <div className="rounded-md border border-foreground/10 bg-surface/40 p-2.5">
             <div className="mb-2 flex items-baseline justify-between gap-2">
-              <h4 className="text-[10px] font-medium uppercase tracking-[0.16em] text-black/70">
+              <h4 className="font-mono text-[10px] uppercase tracking-[0.24em] text-foreground/70">
                 {kind === "gem" ? "Gem slots" : "Metal slots"}
               </h4>
-              <span className="text-[9px] font-medium uppercase tracking-[0.18em] text-black/35">
+              <span className="font-mono text-[10px] uppercase tracking-[0.24em] text-foreground/35">
                 Target
               </span>
             </div>
@@ -82,7 +83,7 @@ export function MaterialKindPicker({
             />
           </div>
         ) : null}
-        <p className="text-[10px] font-medium uppercase tracking-[0.16em] text-black/40">
+        <p className="font-mono text-[10px] uppercase tracking-[0.24em] text-foreground/40">
           Catalog
         </p>
       </div>
@@ -90,41 +91,47 @@ export function MaterialKindPicker({
       <div className="mt-1 flex-1 overflow-y-auto px-4 pb-4">
         <div className="space-y-5">
           {groups.map((group, gi) => (
-            <motion.section
-              key={group.title}
-              initial={{ opacity: 0, y: 4 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: gi * 0.025, duration: 0.25 }}
-              aria-label={group.title}
-            >
-              <div className="mb-2 flex items-baseline justify-between gap-2">
-                <h3 className="text-[10.5px] font-medium uppercase tracking-[0.16em] text-black/70">
-                  {group.title}
-                </h3>
-                {group.tagline ? (
-                  <span className="text-[9px] font-medium uppercase tracking-[0.16em] text-black/35">
-                    {group.tagline}
-                  </span>
-                ) : null}
-              </div>
-              <div className="grid grid-cols-4 gap-1 sm:grid-cols-5">
-                {group.items.map((item) => {
-                  const selected =
-                    selectedPresetForActiveSlot === item.id ||
-                    (activePhysicalSlots.length === 0 && preset === item.id);
-                  return (
-                    <MaterialSwatch
-                      key={item.id}
-                      id={item.id}
-                      label={item.label}
-                      selected={selected}
-                      onClick={() => applyPreset(item.id)}
-                      variant="paper"
-                    />
-                  );
-                })}
-              </div>
-            </motion.section>
+            <Fragment key={group.title}>
+              <motion.section
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: gi * 0.025, duration: 0.25 }}
+                aria-label={group.title}
+              >
+                <div className="mb-2 flex items-baseline justify-between gap-2">
+                  <h3 className="text-[10.5px] font-medium uppercase tracking-[0.16em] text-foreground/70">
+                    {group.title}
+                  </h3>
+                  {group.tagline ? (
+                    <span className="font-mono text-[10px] uppercase tracking-[0.24em] text-foreground/35">
+                      {group.tagline}
+                    </span>
+                  ) : null}
+                </div>
+                <div role="radiogroup" aria-label={group.title} className="grid grid-cols-4 gap-1 sm:grid-cols-5">
+                  {group.items.map((item) => {
+                    const selected =
+                      selectedPresetForActiveSlot === item.id ||
+                      (activePhysicalSlots.length === 0 && preset === item.id);
+                    return (
+                      <MaterialSwatch
+                        key={item.id}
+                        id={item.id}
+                        label={item.label}
+                        selected={selected}
+                        onClick={() => applyPreset(item.id)}
+                      />
+                    );
+                  })}
+                </div>
+              </motion.section>
+              {kind === "gem" && group.items.some((item) => item.id === "diamond") ? (
+                <FancyDiamondPicker
+                  selected={activePhysicalSlots.length === 0 ? preset : (selectedPresetForActiveSlot ?? null)}
+                  onSelect={applyPreset}
+                />
+              ) : null}
+            </Fragment>
           ))}
         </div>
       </div>

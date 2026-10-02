@@ -19,7 +19,7 @@ type ViewerPostFXProps = {
 };
 
 /**
- * TSL RenderPipeline (bloom + GTAO + ACES + SMAA).
+ * TSL RenderPipeline (bloom + GTAO + PBR Neutral + SMAA).
  * Takes over the frame so R3F does not also blit an unprocessed beauty pass.
  */
 export function ViewerPostFX({ advanced }: ViewerPostFXProps) {
@@ -30,8 +30,10 @@ export function ViewerPostFX({ advanced }: ViewerPostFXProps) {
   const composerRef = useRef<ViewerPostFXComposer | null>(null);
   const setComposerRefs = usePostFXComposerStore((state) => state.setRefs);
   const effective = useViewerQualityStore(useShallow((s) => s.effective));
+  // The live viewport accumulates jittered frames (temporal AA); exports build their own
+  // config without it, since a single export frame has no history to resolve against.
   const config = useMemo(
-    () => applyQualityToPostFX(resolvePostFXConfig(advanced), effective),
+    () => ({ ...applyQualityToPostFX(resolvePostFXConfig(advanced), effective), temporalAA: true }),
     [advanced, effective],
   );
 

@@ -5,3 +5,15 @@ export { RenderFidelityBridge } from "./ui/RenderFidelityBridge";
 export { ScreenshotBridge } from "./ui/ScreenshotBridge";
 export { TransparentCaptureBridge } from "./ui/TransparentCaptureBridge";
 export { VideoCaptureBridge } from "./ui/VideoCaptureBridge";
+export { CampaignPackDialog, CampaignPackLauncher } from "./campaign-pack";
+export { prepareCutoutScene, sceneHasStudioSet } from "./lib/stage-visibility";
+export { JpegQualityField } from "./ui/JpegQualityField";
+export { CaptureNotice } from "./ui/CaptureNotice";
+export {
+  DEFAULT_STILL_EXPORT,
+  exportStill,
+  StillExportSettings,
+  stillExportLabel,
+  type StillExportOptions,
+} from "./ui/StillExportSettings";
+export { turntableCaptureOptions, videoSizeLabel, type TurntableSettings } from "./lib/turntable-capture";

@@ -14,6 +14,7 @@ import { Progress } from "@/components/ui/progress";
 import { formatCredits, formatStorageGb, storagePercent } from "@/lib/billing/format";
 import { openBillingPortal, startSubscriptionCheckout } from "@/lib/billing/client";
 import type { UserBillingSnapshot } from "@/lib/billing/types";
+import { BuyCreditsCard } from "./BuyCreditsCard";
 import { logOut } from "@/lib/auth/client";
 import type { AuthUser } from "@/lib/auth/types";
 
@@ -225,6 +226,8 @@ export function ProfileShell({ initialUser, initialBilling }: ProfileShellProps)
               </div>
             </CardContent>
           </Card>
+
+          <BuyCreditsCard />
 
           <Card>
             <CardHeader>

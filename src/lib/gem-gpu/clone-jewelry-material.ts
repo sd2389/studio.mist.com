@@ -1,9 +1,14 @@
 import * as THREE from "three";
 import { applyJewelryGemShader, enableJewelryGemSafeMode, JEWELRY_GEM_SHADER_KEY, setJewelryGemTime } from "./jewelry-gem-shader";
+import { cloneGemTrace, isGemTraceMaterial } from "./gem-trace-material";
 
 /** Material.copy does not copy custom TSL slots. Rebuild them with independent uniforms. */
 export function cloneJewelryMaterial<T extends THREE.Material>(source: T): T {
   const clone = source.clone();
+  if (isGemTraceMaterial(source) && clone instanceof THREE.MeshPhysicalMaterial) {
+    cloneGemTrace(source, clone);
+    return clone;
+  }
   if (source instanceof THREE.MeshPhysicalMaterial && clone instanceof THREE.MeshPhysicalMaterial && source.userData[JEWELRY_GEM_SHADER_KEY]) {
     const uniforms = source.userData.jewelryGemUniforms;
     applyJewelryGemShader(clone, {

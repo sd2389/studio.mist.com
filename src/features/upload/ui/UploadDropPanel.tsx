@@ -1,52 +1,64 @@
 "use client";
 
 import { UploadCloud } from "lucide-react";
+import { useState } from "react";
+import { MODEL_FILE_ACCEPT, SUPPORTED_FORMATS_LABEL } from "@/lib/upload/model-files";
 import { SAMPLE_MODELS, type SampleModel } from "@/lib/upload/sample-models";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
-const ACCEPT =
-  ".glb,.gltf,.stl,.3dm,model/gltf-binary,model/gltf+json,model/stl,application/sla,model/vnd.rhino";
-
 type UploadDropPanelProps = {
   busy?: boolean;
-  onFile: (file: File) => void;
+  /** Everything dropped or picked at once: the model plus its MTL, textures or .bin. */
+  onFiles: (files: File[]) => void;
   onSample: (sample: SampleModel) => void;
   className?: string;
 };
 
-export function UploadDropPanel({ busy, onFile, onSample, className }: UploadDropPanelProps) {
+export function UploadDropPanel({ busy, onFiles, onSample, className }: UploadDropPanelProps) {
+  const [dragging, setDragging] = useState(false);
+
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
-    const file = e.dataTransfer.files[0];
-    if (file) onFile(file);
+    setDragging(false);
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length > 0) onFiles(files);
   };
 
   return (
     <div className={cn("flex flex-col gap-6", className)}>
       <div
-        onDragOver={(e) => e.preventDefault()}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragging(true);
+        }}
+        onDragLeave={() => setDragging(false)}
         onDrop={handleDrop}
         className={cn(
           "flex flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-border bg-card/80 px-6 py-10 text-center shadow-sm transition-colors hover:border-primary/30",
+          dragging && "border-primary/50 bg-primary/5",
           busy && "pointer-events-none opacity-60",
         )}
       >
         <UploadCloud className="size-10 text-primary/80" aria-hidden />
         <div>
           <p className="text-base font-medium text-foreground">Drag & drop your CAD file</p>
-          <p className="mt-1 text-xs text-muted-foreground">or browse manually — .3dm, .glb, .stl</p>
+          <p className="mt-1 text-xs text-muted-foreground">or browse manually — {SUPPORTED_FORMATS_LABEL}</p>
+          <p className="mt-1 text-[11px] text-muted-foreground/80">
+            Bringing an OBJ? Select its .mtl and textures with it.
+          </p>
         </div>
         <label>
           <span className="sr-only">Choose model file</span>
           <input
             type="file"
-            accept={ACCEPT}
+            accept={MODEL_FILE_ACCEPT}
+            multiple
             className="hidden"
             disabled={busy}
             onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) onFile(file);
+              const files = Array.from(e.target.files ?? []);
+              if (files.length > 0) onFiles(files);
               e.target.value = "";
             }}
           />
@@ -62,8 +74,8 @@ export function UploadDropPanel({ busy, onFile, onSample, className }: UploadDro
         </p>
         <ul className="mt-3 space-y-2 text-sm leading-relaxed text-muted-foreground">
           <li>Polygon limits depend on your plan (Free 100k · Grow 500k · Studio 2M).</li>
-          <li>Separate diamond meshes into their own layers for accurate cuts.</li>
-          <li>Include at least one mesh for proper viewing.</li>
+          <li>Metal and faceted stones are detected automatically, even from a single merged mesh.</li>
+          <li>Keep stones as separate solids (not fused into the metal) for accurate cuts.</li>
         </ul>
       </div>
 

@@ -54,7 +54,8 @@ export async function generateModelThumbnail(root: THREE.Object3D): Promise<Blob
   });
   renderer.setSize(THUMB_SIZE, THUMB_SIZE, false);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  // Match the studio's PBR Neutral tone mapping so thumbnails read like the viewer.
+  renderer.toneMapping = THREE.NeutralToneMapping;
   renderer.toneMappingExposure = 1.05;
 
   try {

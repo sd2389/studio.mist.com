@@ -63,7 +63,7 @@ export function ResetPasswordForm() {
         title="Checking link…"
         description="One moment while we verify your reset link."
       >
-        <p className="text-sm text-black/45">Please wait…</p>
+        <p className="text-sm text-foreground/45">Please wait…</p>
       </AuthShell>
     );
   }

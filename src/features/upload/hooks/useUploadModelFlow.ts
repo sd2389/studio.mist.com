@@ -4,17 +4,8 @@ import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { fetchMe } from "@/lib/auth/client";
 import { isAuthRequiredError } from "@/lib/auth/is-auth-required-error";
-import { inspectModelFromFile } from "@/lib/convert/to-glb";
-import type { LoadedModel } from "@/lib/convert/types";
 import { viewerIdFromModelKey } from "@/lib/model-key";
-import {
-  buildModelConfigFromSlots,
-  getDefaultSceneSettings,
-  type PersistedModelConfig,
-} from "@/lib/slot-materials/model-config";
 import { DEFAULT_JEWELRY_CATEGORY } from "@/lib/upload/categories";
-import { countPolygons } from "@/lib/upload/count-polygons";
-import { formatPolyCount } from "@/lib/upload/polygon-limits";
 import { decimateModelRoot } from "@/lib/upload/decimate-model";
 import {
   applyLayerRename,
@@ -25,21 +16,13 @@ import {
 } from "@/lib/upload/layer-state";
 import { skuFromFilename, stemFromFilename } from "@/lib/upload/metadata-from-filename";
 import { captureClientException, logClientEvent } from "@/lib/observability/sentry";
-import { isSupportedModelFile, persistUploadedModel } from "@/lib/upload/persist-model";
-import { fetchSampleModelFile, type SampleModel } from "@/lib/upload/sample-models";
+import { persistUploadedModel } from "@/lib/upload/persist-model";
+import { overPolyLimitMessage, type ParsedUpload } from "@/features/upload/lib/parsed-upload";
 import type { UploadMetadata } from "@/features/upload/ui/UploadMetadataForm";
+import { useModelIngest } from "@/features/upload/hooks/useModelIngest";
 import { usePolygonCap } from "@/features/upload/hooks/usePolygonCap";
 
 export type UploadPhase = "idle" | "parsing" | "ready" | "saving" | "error";
-
-type ParsedUpload = {
-  file: File;
-  preloaded: LoadedModel;
-  modelConfig: PersistedModelConfig;
-  slotSelections: Record<string, string>;
-  sceneSettings: ReturnType<typeof getDefaultSceneSettings>;
-  polyCount: number;
-};
 
 const EMPTY_METADATA: UploadMetadata = {
   name: "",
@@ -47,43 +30,6 @@ const EMPTY_METADATA: UploadMetadata = {
   category: DEFAULT_JEWELRY_CATEGORY,
   note: "",
 };
-
-/** Mirrors the server's 402 detail so both gates read the same. */
-function overPolyLimitMessage(planLabel: string, cap: number): string {
-  return `Polygon limit exceeded for ${planLabel} (max ${formatPolyCount(cap)}). Upgrade your plan or decimate the mesh.`;
-}
-
-function buildParsedUpload(file: File, inspected: Awaited<ReturnType<typeof inspectModelFromFile>>): ParsedUpload {
-  const polyCount = countPolygons(inspected.loaded.root);
-  const slots = Object.keys(inspected.loaded.slotTokens);
-  const slotNames =
-    slots.length > 0
-      ? slots
-      : Object.keys(inspected.materialProps).length > 0
-        ? Object.keys(inspected.materialProps)
-        : ["Metal 01"];
-
-  const modelConfig = buildModelConfigFromSlots(slotNames);
-  modelConfig.slotTokens = inspected.loaded.slotTokens;
-  modelConfig.materialProps = inspected.materialProps;
-
-  return {
-    file,
-    preloaded: inspected.loaded,
-    modelConfig,
-    slotSelections: modelConfig.defaultMaterials,
-    sceneSettings: getDefaultSceneSettings(),
-    polyCount,
-  };
-}
-
-function parseErrorMessage(err: unknown): string {
-  if (!(err instanceof Error)) return "Could not parse model";
-  if (err.message.includes("Rhino") || err.message.includes("3dm")) {
-    return "Could not parse this .3dm file. Check that it is a valid Rhino model with at least one mesh.";
-  }
-  return err.message;
-}
 
 export function useUploadModelFlow() {
   const router = useRouter();
@@ -96,6 +42,9 @@ export function useUploadModelFlow() {
   const [saveProgress, setSaveProgress] = useState(0);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [authDialogOpen, setAuthDialogOpen] = useState(false);
+  const [decimating, setDecimating] = useState(false);
+  /** Bumped when geometry changes in place (decimation) so the preview re-clones it. */
+  const [previewRevision, setPreviewRevision] = useState(0);
   const { maxPolygons, planLabel, refresh: refreshPolygonCap } = usePolygonCap();
   const pendingSaveAfterAuthRef = useRef(false);
   /** Serializes Save: acquired before fetchMe, held through auth dialog / persist. */
@@ -107,7 +56,7 @@ export function useUploadModelFlow() {
   );
   const slotIds = useMemo(() => layers.map((layer) => layer.slotId), [layers]);
   const overPolyLimit = parsed != null && parsed.polyCount > maxPolygons;
-  const busy = phase === "parsing" || phase === "saving";
+  const busy = phase === "parsing" || phase === "saving" || decimating;
 
   const reset = useCallback(() => {
     setPhase("idle");
@@ -123,58 +72,41 @@ export function useUploadModelFlow() {
     saveFlowActiveRef.current = false;
   }, []);
 
-  const ingestFile = useCallback(async (file: File) => {
-    if (!isSupportedModelFile(file)) {
-      setError("Supports GLB, glTF, STL, and 3DM only.");
-      setPhase("error");
-      return;
-    }
+  const startParsing = useCallback(() => {
     setPhase("parsing");
     setError(null);
     setSkuError(null);
-    logClientEvent("upload.parse.start", { filename: file.name, size: file.size });
-    try {
-      const inspected = await inspectModelFromFile(file);
-      const nextParsed = buildParsedUpload(file, inspected);
-      const layerRows = buildLayerRows(
-        nextParsed.preloaded.root,
-        nextParsed.modelConfig.slotTokens ?? {},
-        nextParsed.modelConfig.slotRenames ?? {},
-        nextParsed.modelConfig.materialProps ?? {},
-      );
-      setParsed(nextParsed);
-      setLayers(layerRows);
-      setMetadata({
-        name: stemFromFilename(file.name),
-        sku: skuFromFilename(file.name),
-        category: DEFAULT_JEWELRY_CATEGORY,
-        note: "",
-      });
-      logClientEvent("upload.parse.done", {
-        filename: file.name,
-        polyCount: nextParsed.polyCount,
-        slotCount: layerRows.length,
-      });
-      setPhase("ready");
-    } catch (err) {
-      captureClientException(err, { stage: "upload.parse", filename: file.name });
-      setError(parseErrorMessage(err));
-      setPhase("error");
-    }
   }, []);
 
-  const handleSample = useCallback(
-    async (sample: SampleModel) => {
-      try {
-        const file = await fetchSampleModelFile(sample);
-        await ingestFile(file);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Could not load sample");
-        setPhase("error");
-      }
-    },
-    [ingestFile],
-  );
+  const acceptParsed = useCallback((next: ParsedUpload) => {
+    setParsed(next);
+    setLayers(
+      buildLayerRows(
+        next.preloaded.root,
+        next.modelConfig.slotTokens ?? {},
+        next.modelConfig.slotRenames ?? {},
+        next.modelConfig.materialProps ?? {},
+      ),
+    );
+    setMetadata({
+      name: stemFromFilename(next.file.name),
+      sku: skuFromFilename(next.file.name),
+      category: DEFAULT_JEWELRY_CATEGORY,
+      note: "",
+    });
+    setPhase("ready");
+  }, []);
+
+  const showError = useCallback((message: string) => {
+    setError(message);
+    setPhase("error");
+  }, []);
+
+  const { parseStatus, ingestFiles, ingestFile, handleSample } = useModelIngest({
+    onStart: startParsing,
+    onParsed: acceptParsed,
+    onError: showError,
+  });
 
   const handleRename = useCallback(
     (rawName: string, nextSlotId: string) => {
@@ -205,12 +137,21 @@ export function useUploadModelFlow() {
     [parsed],
   );
 
-  const handleDecimate = useCallback(() => {
-    if (!parsed) return;
-    const nextCount = decimateModelRoot(parsed.preloaded.root, maxPolygons);
-    setParsed({ ...parsed, polyCount: nextCount });
-    setError(null);
-  }, [maxPolygons, parsed]);
+  const handleDecimate = useCallback(async () => {
+    if (!parsed || decimating) return;
+    setDecimating(true);
+    try {
+      const nextCount = await decimateModelRoot(parsed.preloaded.root, maxPolygons);
+      setParsed({ ...parsed, polyCount: nextCount });
+      setPreviewRevision((revision) => revision + 1);
+      setError(nextCount > maxPolygons ? overPolyLimitMessage(planLabel, maxPolygons) : null);
+    } catch (err) {
+      captureClientException(err, { stage: "upload.decimate" });
+      setError(err instanceof Error ? err.message : "Decimation failed");
+    } finally {
+      setDecimating(false);
+    }
+  }, [decimating, maxPolygons, parsed, planLabel]);
 
   const requestSignInForSave = useCallback(() => {
     pendingSaveAfterAuthRef.current = true;
@@ -355,8 +296,13 @@ export function useUploadModelFlow() {
     maxPolygons,
     planLabel,
     busy,
+    decimating,
+    parseStatus,
+    previewRevision,
     reset,
     ingestFile,
+    ingestFiles,
+    showError,
     handleSample,
     handleRename,
     handleToggleVisibility,

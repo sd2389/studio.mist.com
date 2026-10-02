@@ -58,7 +58,7 @@ export function MoreCatalogGrid({
             <h3 className="text-[10.5px] font-medium uppercase tracking-[0.16em] text-foreground/80">
               {resolvedActiveSlot}
             </h3>
-            <span className="text-[9px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+            <span className="font-mono text-[10px] uppercase tracking-[0.24em] text-muted-foreground">
               Persisted options
             </span>
           </div>
@@ -128,7 +128,7 @@ export function MoreCatalogGrid({
             <h3 className="text-[10.5px] font-medium uppercase tracking-[0.16em] text-foreground/80">
               {resolvedActiveSlot}
             </h3>
-            <span className="text-[9px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+            <span className="font-mono text-[10px] uppercase tracking-[0.24em] text-muted-foreground">
               {slotCatalogItems.length} options
             </span>
           </div>
@@ -202,15 +202,14 @@ export function MoreCatalogGrid({
                 {group.title}
               </h3>
               {group.tagline ? (
-                <span className="text-[9px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                <span className="font-mono text-[10px] uppercase tracking-[0.24em] text-muted-foreground">
                   {group.tagline}
                 </span>
               ) : null}
             </div>
-            <div className="grid grid-cols-3 gap-1.5">
+            <div role="radiogroup" aria-label={group.title} className="grid grid-cols-3 gap-1.5">
               {group.items.map((item) => (
                 <MaterialSwatch
-                  variant="paper"
                   key={item.id}
                   id={item.id}
                   label={item.label}

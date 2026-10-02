@@ -5,7 +5,7 @@ import { simplifyMaterialsForExport } from "./simplify-for-export";
 import { fitModelToUnit, stampSlotMetadata } from "./stamp-slots";
 import { generateModelThumbnail } from "./thumbnail";
 import { cloneOwnedModel } from "./clone-owned-model";
-import type { ConvertToGlbOptions, ConvertToGlbResult, LoadedModel } from "./types";
+import type { ConvertToGlbOptions, ConvertToGlbResult, LoadedModel, ModelLoadOptions } from "./types";
 
 const COMPRESS_MAX_BYTES = 12 * 1024 * 1024;
 
@@ -33,9 +33,12 @@ export type InspectedModel = {
   glbFilename: string;
 };
 
-/** Parse CAD in-browser for slot review — no GLB export (fast path for .3dm). */
-export async function inspectModelFromFile(file: File): Promise<InspectedModel> {
-  const loaded = await loadModelFromFile(file);
+/** Parse CAD in-browser for slot review — no GLB export yet. */
+export async function inspectModelFromFile(
+  file: File,
+  options: ModelLoadOptions = {},
+): Promise<InspectedModel> {
+  const loaded = await loadModelFromFile(file, options);
   fitModelToUnit(loaded.root);
   const materialProps = stampSlotMetadata(loaded.root, { slotTokens: loaded.slotTokens });
   return {

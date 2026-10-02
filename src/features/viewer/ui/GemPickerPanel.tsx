@@ -3,6 +3,8 @@
 import type { PersistedModelConfig } from "@/lib/slot-materials/model-config";
 import type { SlotId } from "@/features/viewer/ui/studio-material-groups";
 import { MaterialKindPicker } from "@/features/viewer/ui/material-kind-picker";
+import { GemScopeCard } from "@/features/viewer/ui/GemScopeCard";
+import { cn } from "@/lib/utils";
 
 type GemPickerPanelProps = {
   modelConfig?: PersistedModelConfig;
@@ -18,12 +20,15 @@ export function GemPickerPanel({
   className,
 }: GemPickerPanelProps) {
   return (
-    <MaterialKindPicker
-      kind="gem"
-      modelConfig={modelConfig}
-      activeSlot={activeSlot}
-      onActiveSlotChange={onActiveSlotChange}
-      className={className}
-    />
+    <div className={cn("flex min-h-0 flex-1 flex-col", className)}>
+      <MaterialKindPicker
+        kind="gem"
+        modelConfig={modelConfig}
+        activeSlot={activeSlot}
+        onActiveSlotChange={onActiveSlotChange}
+        className="min-h-0 flex-1"
+      />
+      <GemScopeCard />
+    </div>
   );
 }

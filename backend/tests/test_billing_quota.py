@@ -5,7 +5,7 @@ from app.features.billing.plans import PLAN_QUOTAS, get_quotas
 
 def test_free_plan_allotments():
     quotas = get_quotas("free")
-    assert quotas.model_credits == 50
+    assert quotas.model_credits == 3
     assert quotas.ai_image_credits == 150
     assert quotas.max_variants_per_model == 3
     assert quotas.max_polygons == 100_000

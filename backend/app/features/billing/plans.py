@@ -26,7 +26,8 @@ class PlanQuotas:
 
 PLAN_QUOTAS: dict[PlanTier, PlanQuotas] = {
     "free": PlanQuotas(
-        model_credits=50,
+        # Enough to try the studio on a few real pieces; packs and plans add more.
+        model_credits=3,
         ai_image_credits=150,
         render_credits=25,
         custom_material_credits=5,

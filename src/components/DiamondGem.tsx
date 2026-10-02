@@ -4,6 +4,7 @@ import { useRef, useLayoutEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { GEM_CONFIGS } from "@/lib/gem-gpu/gem-configs";
+import { isGemTraceMaterial } from "@/lib/gem-gpu/gem-trace-material";
 import {
   gemPresetIdFromMaterial,
   isGemGpuMaterial,
@@ -49,7 +50,8 @@ export function useGemShimmer(root: THREE.Object3D, active: boolean): void {
         if (!(o instanceof THREE.Mesh)) return;
         const materials = Array.isArray(o.material) ? o.material : [o.material];
         for (const m of materials) {
-          if (!isGemGpuMaterial(m)) continue;
+          // Traced stones produce real, view-dependent fire; wobbling their dispersion would only fake it.
+          if (!isGemGpuMaterial(m) || isGemTraceMaterial(m)) continue;
           const id = gemPresetIdFromMaterial(m);
           if (!id) continue;
           const cfg = GEM_CONFIGS[id];

@@ -261,6 +261,7 @@ export function EditorBackgroundTab({
             <div className="grid grid-cols-4 gap-2">
               {filteredItems.map((item) => (
                 <CatalogSwatchTile
+                image
                   key={item.slug}
                   item={item}
                   selected={!customBackground && selectedSlug === item.slug}

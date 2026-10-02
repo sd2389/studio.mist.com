@@ -79,7 +79,7 @@ export function MoreSceneControls({
             const bucketItems = envOptions[bucket] ?? [];
             return (
               <div key={bucket} className="rounded-xl border border-border/60 bg-card/60 p-2.5">
-                <p className="mb-1.5 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                <p className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.24em] text-muted-foreground">
                   {bucket}
                 </p>
                 <div className="grid grid-cols-2 gap-1.5">

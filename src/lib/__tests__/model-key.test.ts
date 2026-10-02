@@ -9,6 +9,12 @@ describe("modelExtFromUrl", () => {
     expect(modelExtFromUrl("ring.3dm")).toBe("3dm");
   });
 
+  it("matches every uploadable CAD format", () => {
+    for (const ext of ["step", "stp", "iges", "igs", "obj", "fbx", "ply", "3mf"]) {
+      expect(modelExtFromUrl(`ring.${ext}`)).toBe(ext);
+    }
+  });
+
   it("is case-insensitive on the extension", () => {
     expect(modelExtFromUrl("ring.GLB")).toBe("glb");
   });

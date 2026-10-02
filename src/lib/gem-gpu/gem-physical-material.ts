@@ -1,6 +1,12 @@
 import * as THREE from "three";
 import { GEM_CONFIGS, type GemConfig, type GemPresetId } from "@/lib/gem-gpu/gem-configs";
 import { applyJewelryGemShader } from "@/lib/gem-gpu/jewelry-gem-shader";
+import {
+  applyGemTrace,
+  GEM_TRACE_BOUNCES,
+  gemTraceParamsFromConfig,
+  isGemTraceCandidate,
+} from "@/lib/gem-gpu/gem-trace-material";
 
 export const GEM_GPU_USER_KEY = "gemGpuDiamond" as const;
 
@@ -47,6 +53,14 @@ export function createGemMaterial(
     flatShading: false,
   });
   m.userData[GEM_GPU_USER_KEY] = presetId;
+
+  // Transparent stones are ray-traced through their own facets; only translucent and
+  // opaque stones (pearl, opal, onyx, cabochons) keep the surface-shaded path below.
+  if (isGemTraceCandidate(cfg)) {
+    const bounces = options.qualityReduce ? GEM_TRACE_BOUNCES.performance : GEM_TRACE_BOUNCES.standard;
+    applyGemTrace(m, gemTraceParamsFromConfig(cfg, bounces));
+    return m;
+  }
 
   applyJewelryGemShader(m, {
     sparkleStrength: cfg.sparkleStrength ?? 1,

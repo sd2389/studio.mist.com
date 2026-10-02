@@ -30,8 +30,40 @@ from app.services.model_config import (
     merge_slot_material_config,
 )
 
-SUPPORTED_MODEL_SUFFIXES = (".glb", ".gltf", ".stl", ".3dm")
+# Mirrors SUPPORTED_MODEL_EXTS in src/lib/model-key.ts. The browser converts every one of
+# these to GLB before upload, so stored model keys always end in CANONICAL_MODEL_SUFFIX.
+SUPPORTED_MODEL_SUFFIXES = (
+    ".glb",
+    ".gltf",
+    ".3dm",
+    ".step",
+    ".stp",
+    ".iges",
+    ".igs",
+    ".obj",
+    ".fbx",
+    ".stl",
+    ".ply",
+    ".3mf",
+)
 CANONICAL_MODEL_SUFFIX = ".glb"
+
+
+def model_suffix(name: str | None) -> str:
+    return Path(name or "").suffix.lower()
+
+
+def is_supported_model_filename(name: str | None) -> bool:
+    return model_suffix(name) in SUPPORTED_MODEL_SUFFIXES
+
+
+def require_supported_model_filename(name: str | None) -> None:
+    if not is_supported_model_filename(name):
+        supported = ", ".join(suffix.lstrip(".") for suffix in SUPPORTED_MODEL_SUFFIXES)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported model format '{model_suffix(name) or 'none'}'. Supported: {supported}",
+        )
 
 
 def safe_filename(name: str, *, force_glb: bool = False) -> str:
@@ -176,6 +208,7 @@ def save_direct_multipart(
     scene_settings_raw: Any,
     polygon_count: int,
 ) -> dict[str, int | str]:
+    require_supported_model_filename(filename)
     safe_name = safe_filename(filename, force_glb=True)
     key = keys.model_key(user.id, safe_name)
 
@@ -236,6 +269,7 @@ def presign_upload_url(
         key = keys.thumbnail_key(user_id, safe)
         ctype = content_type or "image/webp"
     else:
+        require_supported_model_filename(filename)
         safe = safe_filename(filename, force_glb=True)
         key = keys.model_key(user_id, safe)
         ctype = content_type or "model/gltf-binary"

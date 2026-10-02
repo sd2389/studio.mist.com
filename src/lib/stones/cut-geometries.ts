@@ -1,82 +1,140 @@
-import * as THREE from "three";
-import { buildBrilliantCut, IDEAL_ROUND_BRILLIANT, ROUND_OUTLINE } from "@/lib/stones/brilliant-cut";
+import { getCadCut, type CadCutId } from "@/lib/stones/cad-cuts";
 
-export type CutId =
-  | "round"
-  | "princess"
-  | "emerald"
-  | "asscher"
-  | "marquise"
-  | "oval"
-  | "pear"
-  | "cushion";
+export type CutId = CadCutId;
+
+export type CutGroupId = "brilliant" | "step" | "side" | "antique";
 
 export type CutInfo = {
   id: CutId;
   label: string;
   description: string;
+  group: CutGroupId;
 };
 
-/** Round brilliant — true 57-facet topology (table, stars, kites, girdle halves, mains). */
-function roundBrilliant(): THREE.BufferGeometry {
-  return buildBrilliantCut(ROUND_OUTLINE, IDEAL_ROUND_BRILLIANT);
-}
+export const CUT_GROUPS: readonly { id: CutGroupId; label: string }[] = [
+  { id: "brilliant", label: "Brilliant cuts" },
+  { id: "step", label: "Step cuts" },
+  { id: "side", label: "Side stones" },
+  { id: "antique", label: "Antique cuts" },
+];
+
+type CatalogEntry = { group: CutGroupId; description: string; label?: string };
 
 /**
- * Catalog metadata for the stone pages. Actual gem geometry for every cut here comes from
- * the CAD library (see `load-cut-geometry.ts`); this only supplies id/label/description
- * for routing and display.
+ * Catalog copy for the stone pages. Geometry for every cut comes from the generated CAD
+ * library (`cad-cuts.ts`, loaded by `load-cut-geometry.ts`); this adds grouping and text.
  */
-export const STANDARD_CUTS: readonly CutInfo[] = [
-  {
-    id: "round",
+const CATALOG: Record<CutId, CatalogEntry> = {
+  round: {
+    group: "brilliant",
     label: "Round Brilliant",
-    description: "57-facet ideal cut. Maximum optical fire.",
+    description:
+      "57 facets at the angles Tolkowsky set in 1919: 34.5° crown, 40.75° pavilion.",
   },
-  {
-    id: "princess",
-    label: "Princess",
-    description: "Square brilliant. Sharp corners, fierce sparkle.",
+  oval: {
+    group: "brilliant",
+    description: "Elongated brilliant, 1.40 long to wide. Eight bezels, eight mains.",
   },
-  {
-    id: "emerald",
-    label: "Emerald",
-    description: "Rectangular step cut. Long flashes over fire.",
-  },
-  {
-    id: "asscher",
-    label: "Asscher",
-    description: "Square step cut. Art-deco hall-of-mirrors.",
-  },
-  {
-    id: "marquise",
-    label: "Marquise",
-    description: "Pointed oval. Maximum carat-per-surface.",
-  },
-  {
-    id: "oval",
-    label: "Oval",
-    description: "Elongated brilliant. Soft outline, lots of fire.",
-  },
-  {
-    id: "pear",
-    label: "Pear",
-    description: "Teardrop. Half oval, half marquise.",
-  },
-  {
-    id: "cushion",
-    label: "Cushion",
+  cushion: {
+    group: "brilliant",
     description: "Rounded square brilliant. Vintage warmth.",
   },
-];
+  pear: {
+    group: "brilliant",
+    description: "Teardrop. Half oval, half marquise.",
+  },
+  marquise: {
+    group: "brilliant",
+    description: "Pointed oval. Maximum carat-per-surface.",
+  },
+  heart: {
+    group: "brilliant",
+    description: "Two lobes, a cleft and a point. 57 facets, the halves mirrored.",
+  },
+  princess: {
+    group: "brilliant",
+    description: "Square, pointed corners. Its chevron pavilion draws the cross face-up.",
+  },
+  radiant: {
+    group: "brilliant",
+    description:
+      "Cut-corner rectangle: a stepped crown over a chevron pavilion.",
+  },
+  trillion: {
+    group: "brilliant",
+    description: "Curved triangle brilliant. Bold spread for its weight.",
+  },
+  emerald: {
+    group: "step",
+    description: "Cut-corner rectangle in steps, three above and three below.",
+  },
+  asscher: {
+    group: "step",
+    description: "Square step cut with deep corners. Concentric squares face-up.",
+  },
+  octagon: {
+    group: "step",
+    description: "Eight equal sides in steps. Architectural calm.",
+  },
+  hexagon: {
+    group: "step",
+    description: "Six-sided step cut. Modern geometry.",
+  },
+  kite: {
+    group: "step",
+    description: "Four-sided step cut. A geometric accent or statement.",
+  },
+  shield: {
+    group: "step",
+    description: "Five-sided step cut. Deco side stone or bold centre.",
+  },
+  baguette: {
+    group: "side",
+    description:
+      "Long rectangular step cut. Clean lines beside a centre stone.",
+  },
+  "tapered-baguette": {
+    group: "side",
+    description: "Trapezoid step cut. Tapers toward the centre stone.",
+  },
+  "half-moon": {
+    group: "side",
+    description: "Half-round step cut. Set in pairs to frame a centre.",
+  },
+  "old-european": {
+    group: "antique",
+    description:
+      "Pre-1930 round: small table, crown over 40°, short lower halves, open culet.",
+  },
+  "old-mine": {
+    group: "antique",
+    description:
+      "Squarish antique cushion: small table, high crown, open culet.",
+  },
+  rose: {
+    group: "antique",
+    description:
+      "Dutch rose: 24 facets in a dome over a flat base, half as tall as wide.",
+  },
+  briolette: {
+    group: "antique",
+    description:
+      "Faceted teardrop, no table or culet. Made to hang and catch light.",
+  },
+};
+
+export const STANDARD_CUTS: readonly CutInfo[] = (
+  Object.keys(CATALOG) as CutId[]
+).map((id) => {
+  const entry = CATALOG[id];
+  return {
+    id,
+    label: entry.label ?? getCadCut(id).label,
+    description: entry.description,
+    group: entry.group,
+  };
+});
 
 export function getCutById(id: string): CutInfo | null {
   return STANDARD_CUTS.find((c) => c.id === id) ?? null;
-}
-
-/** Reusable diamond geometry for jewelry assemblies. */
-export function diamondGeometry(scale = 1): THREE.BufferGeometry {
-  const g = roundBrilliant();
-  if (scale !== 1) g.scale(scale, scale, scale);
-  return g;
 }

@@ -126,6 +126,9 @@ function attachJewelryNodes(
 ): void {
   material.specularIntensityNode = specularNode;
   material.specularColorNode = fireColorNode;
+  // Node slots on a non-node material all hash alike in the renderer's cache key; give each
+  // material its own identity so it keeps its own uniforms instead of the first compile's.
+  material.customProgramCacheKey = () => `jewelry-gem-${specularNode.id}-${fireColorNode.id}`;
   material.needsUpdate = true;
 }
 

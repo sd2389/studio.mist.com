@@ -1,32 +1,10 @@
 "use client";
 
-import { Center, Environment, OrbitControls } from "@react-three/drei";
-import { WebGPUCanvas } from "@/lib/gpu/WebGPUCanvas";
-import { ViewerContactShadows } from "@/lib/gpu/ViewerContactShadows";
-import { Suspense, useEffect, useMemo } from "react";
-import * as THREE from "three";
+import { useEffect, useMemo } from "react";
 import { GemGpuDiamondShimmer } from "@/components/DiamondGem";
-import {
-  HiresExportBridge,
-  OrbitControlsBridge,
-  RenderFidelityBridge,
-  ScreenshotBridge,
-  TransparentCaptureBridge,
-  VideoCaptureBridge,
-} from "@/features/render";
-import { ViewerPostFX } from "@/features/viewer";
-import { createGemMaterial } from "@/lib/gem-gpu/gem-physical-material";
-import { isGemPresetId } from "@/lib/gem-gpu/gem-configs";
-import { getRole, type JewelryInfo } from "@/lib/jewelry/assembly";
-import { createPresetMaterial } from "@/lib/material-presets";
-import {
-  AMBIENT_BY_LIGHTING,
-  BG_BY_LIGHTING,
-  CONTACT_SHADOW_OPACITY,
-  HDR_FILE_BY_LIGHTING,
-  SPOT_BY_LIGHTING,
-  TONE_EXPOSURE_BY_LIGHTING,
-} from "@/lib/viewer-lighting";
+import { applyGalleryMaterials } from "@/components/gallery/gallery-materials";
+import { StudioCanvas } from "@/features/viewer";
+import type { JewelryInfo } from "@/lib/jewelry/assembly";
 import type { LightingPresetId, MaterialPresetId } from "@/stores/material-preset-store";
 
 type JewelryCanvasProps = {
@@ -38,85 +16,15 @@ type JewelryCanvasProps = {
 
 export function JewelryCanvas({ piece, preset, autoRotate, lighting }: JewelryCanvasProps) {
   const root = useMemo(() => piece.build(), [piece]);
-
-  const metalMaterial = useMemo<THREE.Material>(() => {
-    // Gem chosen → metals fall back to platinum for the band so a coloured stone isn't bullied off.
-    const target: Exclude<MaterialPresetId, "original"> =
-      preset === "original" || isGemPresetId(preset) ? "platinum" : preset;
-    return createPresetMaterial(target);
-  }, [preset]);
-
-  const gemMaterial = useMemo(() => {
-    return isGemPresetId(preset) ? createGemMaterial(preset) : createGemMaterial("diamond");
-  }, [preset]);
-
+  // "original" = as designed; a metal or gem preset from the studio sidebar recolours that role.
   useEffect(() => {
-    root.traverse((o) => {
-      if (!(o instanceof THREE.Mesh)) return;
-      const role = getRole(o);
-      if (role === "metal") o.material = metalMaterial;
-      else if (role === "gem" || role === "accent-gem") o.material = gemMaterial;
-      o.castShadow = true;
-      o.receiveShadow = true;
-    });
-  }, [root, metalMaterial, gemMaterial]);
-
-  const hdrFile = HDR_FILE_BY_LIGHTING[lighting];
-  const bg = BG_BY_LIGHTING[lighting];
-  const ambient = AMBIENT_BY_LIGHTING[lighting];
-  const spot = SPOT_BY_LIGHTING[lighting];
-  const exposure = TONE_EXPOSURE_BY_LIGHTING[lighting];
-  const contactShadow = CONTACT_SHADOW_OPACITY[lighting];
+    applyGalleryMaterials(root, preset);
+  }, [root, preset]);
 
   return (
-    <WebGPUCanvas
-      className="h-full w-full touch-none"
-      shadows
-      dpr={[1, 2]}
-      camera={{ position: [0, 0.35, 2.2], fov: 45, near: 0.01, far: 200 }}
-    >
-      <color attach="background" args={[bg]} />
-      <ambientLight intensity={ambient} />
-      <spotLight
-        position={[4, 6, 4]}
-        angle={0.35}
-        penumbra={0.9}
-        intensity={spot}
-        castShadow
-        shadow-mapSize={[1024, 1024]}
-      />
-      <Suspense fallback={null}>
-        <Center>
-          <GemGpuDiamondShimmer object={root} active />
-          <primitive object={root} />
-        </Center>
-        <Environment files={hdrFile} background={false} />
-        <ViewerContactShadows
-          position={[0, -0.55, 0]}
-          color="#0a0a0a"
-          opacity={contactShadow}
-          scale={12}
-          blur={2.5}
-          far={4.5}
-        />
-        <OrbitControls
-          makeDefault
-          enableDamping
-          dampingFactor={0.06}
-          minDistance={0.4}
-          maxDistance={20}
-          target={[0, 0, 0]}
-          autoRotate={autoRotate}
-          autoRotateSpeed={0.6}
-        />
-        <ViewerPostFX />
-        <RenderFidelityBridge exposure={exposure} />
-        <ScreenshotBridge />
-        <TransparentCaptureBridge />
-        <HiresExportBridge />
-        <VideoCaptureBridge />
-        <OrbitControlsBridge />
-      </Suspense>
-    </WebGPUCanvas>
+    <StudioCanvas lighting={lighting} autoRotate={autoRotate} camera={{ position: [0, 0.35, 2.2], fov: 45 }}>
+      <GemGpuDiamondShimmer object={root} active />
+      <primitive object={root} />
+    </StudioCanvas>
   );
 }

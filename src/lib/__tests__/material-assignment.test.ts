@@ -4,7 +4,8 @@ import { applyMaterialPresetBySlot, snapshotOriginalMaterials } from '@/lib/appl
 import { cloneJewelryMaterial } from '@/lib/gem-gpu/clone-jewelry-material';
 import { GEM_CONFIGS } from '@/lib/gem-gpu/gem-configs';
 import { createGemMaterial } from '@/lib/gem-gpu/gem-physical-material';
-import { setJewelryGemTime } from '@/lib/gem-gpu/jewelry-gem-shader';
+import { GEM_STONE_ROW_ATTRIBUTE } from '@/lib/gem-gpu/gem-trace-atlas';
+import { getGemTraceUniforms, isGemTraceMaterial } from '@/lib/gem-gpu/gem-trace-material';
 import { sanitizeSlotSelections } from '@/lib/slot-materials/material-rules';
 import { useCatalogParamsStore } from '@/stores/catalog-params-store';
 
@@ -16,14 +17,18 @@ describe('jewelry material assignment', () => {
       material.dispose();
     }
   });
-  it('retains working TSL nodes and independent uniforms on a cloned diamond', () => {
+  it('rebuilds an independent trace on a cloned diamond', () => {
     const original = createGemMaterial('diamond');
+    getGemTraceUniforms(original)!.envRotation.value = 1.25;
     const clone = cloneJewelryMaterial(original);
-    expect((clone as unknown as {specularIntensityNode: unknown}).specularIntensityNode).toBeTruthy();
-    expect((clone as unknown as {specularIntensityNode: unknown}).specularIntensityNode).toBeTruthy();
-    setJewelryGemTime(clone, 9);
-    expect(clone.userData.jewelryGemUniforms.uTime.value).toBe(9);
-    expect(original.userData.jewelryGemUniforms.uTime.value).toBe(0);
+    expect(isGemTraceMaterial(clone)).toBe(true);
+    const originalUniforms = getGemTraceUniforms(original)!;
+    const cloneUniforms = getGemTraceUniforms(clone)!;
+    expect(cloneUniforms).not.toBe(originalUniforms);
+    expect(cloneUniforms.envRotation.value).toBe(1.25);
+    cloneUniforms.envIntensity.value = 3;
+    expect(originalUniforms.envIntensity.value).toBe(1);
+    expect(clone.customProgramCacheKey()).not.toBe(original.customProgramCacheKey());
   });
   it('keeps diamond shading through slot assignment and metal changes', () => {
     const root = new THREE.Group();
@@ -32,7 +37,9 @@ describe('jewelry material assignment', () => {
     root.add(stone,band);snapshotOriginalMaterials(root);
     applyMaterialPresetBySlot(root, {'Gem 1':'sapphire','Metal 1':'platinum'},'platinum');
     expect(stone.material.userData.gemGpuDiamond).toBe('sapphire');
-    expect((stone.material as unknown as {specularIntensityNode: unknown}).specularIntensityNode).toBeTruthy();
+    expect(isGemTraceMaterial(stone.material as THREE.Material)).toBe(true);
+    // Assignment prepares the stone for tracing: faceted and registered in the plane atlas.
+    expect(stone.geometry.getAttribute(GEM_STONE_ROW_ATTRIBUTE)).toBeTruthy();
     applyMaterialPresetBySlot(root, {'Gem 1':'sapphire','Metal 1':'gold-18k-rose'},'gold-18k-rose');
     expect(stone.material.userData.gemGpuDiamond).toBe('sapphire');
     expect(band.material.metalness).toBe(1);

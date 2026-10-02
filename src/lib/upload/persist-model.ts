@@ -1,6 +1,7 @@
 import type { PersistedModelConfig, SceneSettingsBuckets } from "@/lib/slot-materials/model-config";
 import { convertUploadToGlb } from "@/lib/convert/to-glb";
 import type { LoadedModel } from "@/lib/convert/types";
+import { isSupportedModelFilename } from "@/lib/model-key";
 
 export type PersistModelMetadata = {
   name: string;
@@ -154,6 +155,5 @@ export async function persistUploadedModel(input: PersistModelInput): Promise<Pe
 }
 
 export function isSupportedModelFile(file: File): boolean {
-  const n = file.name.toLowerCase();
-  return n.endsWith(".glb") || n.endsWith(".gltf") || n.endsWith(".stl") || n.endsWith(".3dm");
+  return isSupportedModelFilename(file.name);
 }

@@ -15,6 +15,7 @@ import { modelExtFromUrl } from "@/lib/model-key";
 import type { ModelTransform, PersistedModelConfig } from "@/lib/slot-materials/model-config";
 import { degreesToRadians, normalizeModelTransform } from "@/lib/viewer-scene";
 import { detectSlots } from "@/lib/slot-materials/detect-slots";
+import { JEWELRY_MODEL_ROOT_KEY } from "@/features/scene-setups";
 import {
   gemShaderQualityReduce,
   readDeviceCaps,
@@ -138,6 +139,7 @@ function PresetWrapper({
 
   return (
     <group
+      userData={{ [JEWELRY_MODEL_ROOT_KEY]: true }}
       position={[transform.position.x, transform.position.y, transform.position.z]}
       rotation={[
         degreesToRadians(transform.rotation.x),

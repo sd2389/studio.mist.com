@@ -1,7 +1,6 @@
 "use client";
 
 import { Trash2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { catalogFallbackColor } from "@/lib/catalog/swatch";
 import type { CatalogItem } from "@/lib/catalog/types";
 import { customMaterialRef } from "@/lib/library/custom-material-ref";

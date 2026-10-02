@@ -3,6 +3,7 @@ import { cloneJewelryMaterial } from "./clone-jewelry-material";
 import { createPresetMaterial } from "@/lib/material-presets";
 import { createGemMaterial, isGemGpuMaterial } from "@/lib/gem-gpu/gem-physical-material";
 import { ensureFacetedGemNormalsOnMesh } from "@/lib/gem-gpu/ensure-faceted-gem-normals";
+import { isGemTraceMaterial, prepareGemTraceMesh } from "@/lib/gem-gpu/gem-trace-material";
 import type { GemPresetId } from "@/lib/gem-gpu/gem-configs";
 
 const GLTF_GEM_SLOT = "Carbon";
@@ -59,7 +60,9 @@ export function applySplitGemBandPreset(
 
     // Align with assignMaterial: facet whenever a gem GPU material is present,
     // not only when the GLTF Carbon slot was the source name.
-    if (meshMaterials(obj).some(isGemGpuMaterial)) {
+    if (meshMaterials(obj).some(isGemTraceMaterial)) {
+      prepareGemTraceMesh(obj);
+    } else if (meshMaterials(obj).some(isGemGpuMaterial)) {
       ensureFacetedGemNormalsOnMesh(obj);
     }
   });

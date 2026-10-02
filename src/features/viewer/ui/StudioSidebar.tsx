@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, type ReactNode } from "react";
 import { RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { SlotMaterialRef } from "@/lib/library/custom-material-ref";
@@ -14,11 +14,9 @@ import {
   buildSlotBadge,
   groupOf,
   prettyName,
-  slotKind,
   type SlotId,
 } from "@/features/viewer/ui/studio-material-groups";
 import {
-  filterSlotsByKind,
   resolveSelectionIsGem,
   resolveSelectionSwatchColor,
 } from "@/features/viewer/ui/studio-selection-utils";
@@ -36,7 +34,11 @@ import { StudioMoreDrawer } from "@/features/viewer/ui/StudioMoreDrawer";
 type StudioSidebarProps = {
   modelId: string;
   sku?: string | null;
+  /** Scene name, used to name exported files. */
+  displayName?: string | null;
   modelConfig?: PersistedModelConfig;
+  /** Content of the Edit tab; the tab only shows when this is set. */
+  editPanel?: ReactNode;
   panel?: StudioPrimaryPanel;
   onPanelChange?: (panel: StudioPrimaryPanel) => void;
   onOpenAi: () => void;
@@ -50,7 +52,9 @@ type StudioSidebarProps = {
 export function StudioSidebar({
   modelId,
   sku,
+  displayName = null,
   modelConfig = buildModelConfigFromSlots([]),
+  editPanel,
   panel: panelProp,
   onPanelChange,
   onOpenAi,
@@ -73,7 +77,6 @@ export function StudioSidebar({
   const setSlotPreset = useMaterialPresetStore((s) => s.setSlotPreset);
 
   const {
-    allSlotIds,
     resolvedActiveSlot,
     activePhysicalSlots,
     selectedPresetForActiveSlot,
@@ -91,7 +94,7 @@ export function StudioSidebar({
   return (
     <div className={cn("flex h-full flex-col overflow-hidden", className)}>
       {chrome === "desktop" || chrome === "responsive" ? (
-        <p className="hidden shrink-0 px-4 pt-3 text-[11px] font-medium text-black/70 md:block">
+        <p className="hidden shrink-0 px-4 pt-3 text-[11px] font-medium text-foreground/70 md:block">
           Studio
         </p>
       ) : null}
@@ -118,7 +121,8 @@ export function StudioSidebar({
             active={panel}
             onChange={handlePanelChange}
             layout="tabs"
-            className="border-b border-black/10"
+            withEdit={Boolean(editPanel)}
+            className="border-b border-foreground/10"
           />
         </div>
       ) : null}
@@ -142,12 +146,15 @@ export function StudioSidebar({
         <ExportSharePanel
           modelId={modelId}
           sku={sku}
+          displayName={displayName}
+          modelConfig={modelConfig}
           onOpenAi={onOpenAi}
           onOpenExport={onOpenExport}
           onOpenHiResExport={onOpenHiResExport}
           onOpenVideo360={onOpenVideo360}
         />
       ) : null}
+      {panel === "edit" ? editPanel : null}
       {panel === "more" ? (
         <StudioMoreDrawer
           modelConfig={modelConfig}
@@ -191,22 +198,22 @@ function NowShowingCard({
   const slotBadge = buildSlotBadge(activeSlot, activeSlotCount);
 
   return (
-    <div className="shrink-0 border-b border-black/10 px-4 py-3">
+    <div className="shrink-0 border-b border-foreground/10 px-4 py-3">
       <div className="flex items-center gap-3">
         <div
-          className="size-8 shrink-0 rounded-[2px] border border-black/10"
+          className="size-8 shrink-0 rounded-[2px] border border-foreground/10"
           style={{ backgroundColor: currentColor }}
           title={currentIsGem ? "Gem" : "Metal"}
         />
         <div className="min-w-0 flex-1">
-          <p className="text-[9px] font-medium uppercase tracking-[0.16em] text-black/40">
+          <p className="font-mono text-[10px] uppercase tracking-[0.24em] text-foreground/40">
             Now showing
           </p>
-          <p className="truncate text-[13px] font-medium text-black">{name}</p>
-          <p className="truncate text-[10px] text-black/40">{group}</p>
+          <p className="truncate text-[13px] font-medium text-foreground">{name}</p>
+          <p className="truncate text-[10px] text-foreground/40">{group}</p>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">
-          <span className="text-[9px] font-medium uppercase tracking-[0.14em] text-black/35">
+          <span className="font-mono text-[10px] uppercase tracking-[0.24em] text-foreground/35">
             {slotBadge}
           </span>
           <button
@@ -214,8 +221,8 @@ function NowShowingCard({
             onClick={onRevert}
             disabled={isOriginal}
             className={cn(
-              "grid size-7 place-items-center rounded-md border border-black/10 text-black/45 transition-colors",
-              "hover:border-black/25 hover:text-black disabled:cursor-not-allowed disabled:opacity-30",
+              "grid size-7 place-items-center rounded-md border border-foreground/10 text-foreground/45 transition-colors",
+              "hover:border-foreground/25 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30",
             )}
             title={isOriginal ? "Already showing the original materials" : "Revert to original"}
             aria-label="Revert to original"

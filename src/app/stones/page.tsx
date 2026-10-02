@@ -1,13 +1,10 @@
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
-import { buttonVariants } from "@/components/ui/button";
+import { PageIntro } from "@/components/site/PageIntro";
+import { SiteShell } from "@/components/site/SiteShell";
+import { ctaSecondary, sectionFrame } from "@/components/site/site-styles";
 import { StonesGrid } from "@/components/stones/StonesGrid";
 import { FeatureDisabledPage } from "@/features/feature-flags";
-import {
-  fetchFeatureFlagsServer,
-  isFeatureEnabled,
-} from "@/lib/feature-flags/server-fetch";
-import { cn } from "@/lib/utils";
+import { fetchFeatureFlagsServer, isFeatureEnabled } from "@/lib/feature-flags/server-fetch";
 
 export const dynamic = "force-dynamic";
 
@@ -20,38 +17,24 @@ export default async function StonesPage() {
   if (!isFeatureEnabled(flags, "stones")) {
     return <FeatureDisabledPage title="Stone viewer unavailable" />;
   }
-  return (
-    <div className="relative min-h-[100dvh] overflow-hidden bg-app-canvas">
-      <div className="relative z-10 mx-auto max-w-[1500px] px-3 py-3 sm:px-4">
-        <header className="ice-panel mb-3 flex flex-col gap-8 p-7 sm:flex-row sm:items-end sm:justify-between lg:p-12">
-          <div>
-            <Link
-              href="/"
-              className="mb-10 inline-flex items-center gap-2 text-[9px] uppercase tracking-[0.14em] text-black/45"
-            >
-              <ArrowLeft className="size-3.5" aria-hidden /> MIST Studio
-            </Link>
-            <h1 className="text-[clamp(4rem,9vw,9rem)] font-light leading-[0.76] tracking-[-0.085em] text-black">
-              Stone <span className="text-black/20">/ Index</span>
-            </h1>
-            <p className="mt-5 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">
-              Study the silhouette, facets, and fire of standard cuts in real
-              time. Open any stone to explore fancy colors and studio lighting.
-            </p>
-          </div>
-          <Link
-            href="/dashboard"
-            className={cn(
-              buttonVariants({ variant: "outline", size: "lg" }),
-              "rounded-full border-black/10 bg-white/45 text-[9px] uppercase tracking-[0.1em] shadow-none",
-            )}
-          >
-            Dashboard
-          </Link>
-        </header>
 
+  return (
+    <SiteShell>
+      <section className={`${sectionFrame} pb-14 pt-20 sm:pt-28`}>
+        <PageIntro
+          kicker="Stones · Index"
+          title="Every cut,"
+          titleItalic="true to proportion."
+          lead="Study the silhouette, facets and fire of each cut in real time — every one ray-traced. Open any stone to explore fancy colours and studio lighting."
+        >
+          <Link href="/design" className={ctaSecondary}>
+            Set one in a ring
+          </Link>
+        </PageIntro>
+      </section>
+      <section className={`${sectionFrame} pb-28`}>
         <StonesGrid />
-      </div>
-    </div>
+      </section>
+    </SiteShell>
   );
 }

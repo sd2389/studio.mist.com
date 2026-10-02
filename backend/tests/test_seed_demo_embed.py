@@ -93,3 +93,32 @@ def test_demo_user_on_the_retired_password_is_moved_off_it(db, monkeypatch):
     assert again.id == user.id
     assert not verify_password(service._RETIRED_DEMO_PASSWORD, again.password_hash)
     assert verify_password("chosen-for-this-deploy", again.password_hash)
+
+
+def test_moving_the_demo_user_off_a_password_signs_out_its_sessions(db, monkeypatch):
+    from types import SimpleNamespace
+
+    from sqlalchemy import select as sql_select
+
+    from app.core.security import hash_password, new_session_token, session_expires_at, verify_password
+    from app.features.demo_embed import service
+    from app.models.user import Session as DbSession
+
+    settings = SimpleNamespace(demo_embed_password=None)
+    monkeypatch.setattr(service, "get_settings", lambda: settings)
+    user = service._get_or_create_demo_user(db)
+    user.password_hash = hash_password(service._RETIRED_DEMO_PASSWORD)
+    db.add(DbSession(token=new_session_token(), user_id=user.id, expires_at=session_expires_at()))
+    db.commit()
+
+    # Re-seeding moves it off the retired password and revokes the session made with it.
+    service._get_or_create_demo_user(db)
+    assert db.execute(sql_select(DbSession).where(DbSession.user_id == user.id)).first() is None
+
+    # Setting DEMO_EMBED_PASSWORD later takes effect on the existing account too.
+    db.add(DbSession(token=new_session_token(), user_id=user.id, expires_at=session_expires_at()))
+    db.commit()
+    settings.demo_embed_password = "set-by-the-operator"
+    again = service._get_or_create_demo_user(db)
+    assert verify_password("set-by-the-operator", again.password_hash)
+    assert db.execute(sql_select(DbSession).where(DbSession.user_id == user.id)).first() is None

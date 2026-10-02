@@ -16,7 +16,7 @@ from app.config import get_settings
 from app.core.security import hash_password, verify_password
 from app.features.publish import service as publish_service
 from app.models.scene import Scene
-from app.models.user import User
+from app.models.user import Session as DbSession, User
 
 DEMO_SKU = "DEMO-EMBED-RING"
 DEMO_NAME = "Demo solitaire"
@@ -133,13 +133,24 @@ def _demo_password() -> str:
     return get_settings().demo_embed_password or secrets.token_urlsafe(24)
 
 
+def _set_demo_password(db: Session, user: User, password: str) -> None:
+    """New password, and every session signed in with an older one revoked, as a password reset does."""
+    user.password_hash = hash_password(password)
+    user.updated_at = datetime.utcnow()
+    for session in db.execute(select(DbSession).where(DbSession.user_id == user.id)).scalars():
+        db.delete(session)
+    db.commit()
+
+
 def _get_or_create_demo_user(db: Session) -> User:
     user = db.execute(select(User).where(User.email == DEMO_EMAIL)).scalars().first()
     if user is not None:
-        if verify_password(_RETIRED_DEMO_PASSWORD, user.password_hash):
-            user.password_hash = hash_password(_demo_password())
-            user.updated_at = datetime.utcnow()
-            db.commit()
+        configured = get_settings().demo_embed_password
+        if configured and not verify_password(configured, user.password_hash):
+            # The configured password wins, so setting or rotating DEMO_EMBED_PASSWORD takes effect.
+            _set_demo_password(db, user, configured)
+        elif verify_password(_RETIRED_DEMO_PASSWORD, user.password_hash):
+            _set_demo_password(db, user, _demo_password())
         return user
     now = datetime.utcnow()
     user = User(

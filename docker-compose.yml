@@ -45,6 +45,7 @@ services:
       EMAIL_FROM: studio@mist.com
       CONTACT_NOTIFY_EMAIL: support@mist.com
       ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+      DEMO_EMBED_PASSWORD: ${DEMO_EMBED_PASSWORD:-}
       # AWS_BUCKET: ${AWS_BUCKET-}
       # AWS_REGION: ${AWS_REGION:-auto}
       # AWS_S3_ENDPOINT: ${AWS_S3_ENDPOINT-}

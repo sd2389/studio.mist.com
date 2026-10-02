@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { armAngle, pickArm } from "./galaxy-shape";
 import { mergeVertices } from "three/addons/utils/BufferGeometryUtils.js";
 
 /**
@@ -197,24 +198,24 @@ export function surfaceSamples(parts: SurfacePart[], total: number, random: () =
  * vertex carries its orbit (radius, angle, height in ring space, mm) and its place along
  * the thread (`aAlong` = s, seed); the shader turns them with the disc.
  */
-export function galaxyStrings(count: number, segments: number, arms: number, random: () => number): THREE.BufferGeometry {
+export function galaxyStrings(count: number, segments: number, random: () => number): THREE.BufferGeometry {
   const vertices = count * segments * 2;
   const orbit = new Float32Array(vertices * 3);
   const along = new Float32Array(vertices * 2);
   let v = 0;
   for (let k = 0; k < count; k++) {
-    const arm = Math.floor(random() * arms) * ((Math.PI * 2) / arms);
-    // Most threads wind through the arms; the longest run out to the disc's rim.
+    // Threads follow the arms' logarithmic spirals, more of them on the two major arms.
+    const arm = pickArm(random);
     const start = 3 + 44 * random() ** 1.3;
     const span = 16 + 40 * random();
-    const offset = (random() + random() + random() - 1.5) * 0.24;
+    const offset = (random() + random() + random() - 1.5) * 0.18;
     const lift = (random() - 0.5) * 2.4;
     const wobble = random() * Math.PI * 2;
     const seed = random();
     for (let i = 0; i < segments; i++) {
       for (const s of [i / segments, (i + 1) / segments]) {
         const radius = start + span * s;
-        orbit.set([radius, arm + radius * 0.07 + offset + 0.05 * Math.sin(s * 7 + wobble), lift * (1 - s * 0.5) + 0.6 * Math.sin(s * 5 + wobble)], v * 3);
+        orbit.set([radius, armAngle(arm, radius) + offset + 0.04 * Math.sin(s * 7 + wobble), lift * (1 - s * 0.5) + 0.6 * Math.sin(s * 5 + wobble)], v * 3);
         along.set([s, seed], v * 2);
         v += 1;
       }

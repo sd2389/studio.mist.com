@@ -156,6 +156,22 @@ def create_portal_session(db: Session, user: User) -> str:
     return session.url
 
 
+def list_paid_topup_sessions(
+    client: stripe.StripeClient, customer_id: str, *, kind: str
+) -> dict[str, int]:
+    """Credits per paid top-up Checkout Session of one kind for a customer, across all pages."""
+    sessions = client.v1.checkout.sessions.list(
+        params={"customer": customer_id, "status": "complete", "limit": 100}
+    )
+    credits_by_session: dict[str, int] = {}
+    for session in sessions.auto_paging_iter():
+        metadata = _read_metadata(session)
+        if _read_field(session, "payment_status") == "paid" and metadata.get("topup_kind") == kind:
+            session_id = str(_read_field(session, "id"))
+            credits_by_session[session_id] = int(metadata.get("topup_credits") or 0)
+    return credits_by_session
+
+
 def _is_event_processed(db: Session, event_id: str) -> bool:
     existing = db.execute(
         select(BillingEvent).where(BillingEvent.stripe_event_id == event_id)

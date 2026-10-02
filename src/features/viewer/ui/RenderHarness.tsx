@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { advance } from "@react-three/fiber";
 import { useSearchParams } from "next/navigation";
 import { ViewerCanvas } from "@/features/viewer/ui/ViewerCanvas";
 import { convertUploadToGlb, inspectModelFromFile } from "@/lib/convert/to-glb";
@@ -25,6 +26,9 @@ declare global {
 
 /** Frames a render job draws before it captures. */
 const JOB_WARMUP_FRAMES = 60;
+
+/** Clock step between golden frames: frame N is drawn at N / 60 s, whatever the wall clock says. */
+const GOLDEN_FRAME_SECONDS = 1 / 60;
 
 function clampWarmup(raw: string | null): number {
   const frames = Math.round(Number(raw));
@@ -177,9 +181,33 @@ export function RenderHarness() {
     };
   }, [isJobMode, modelPath, isGlb, exportMode]);
 
-  // Ready signal + job render: fires after canvas is mounted and warm
+  // Golden mode: once the scene has mounted (everything it suspends on, model and environments,
+  // has loaded), draw exactly `warmup` frames on a fixed clock, then stop. The canvas keeps the
+  // last frame, so the capture depends on neither load speed nor when the screenshot is taken.
   useEffect(() => {
-    if (!modelUrl) return;
+    if (isJobMode || !modelUrl) return;
+
+    let frames = 0;
+    let raf = 0;
+
+    const tick = () => {
+      if (getHiresRefs()) {
+        frames += 1;
+        advance(frames * GOLDEN_FRAME_SECONDS);
+        if (frames >= warmup) {
+          window.__HARNESS_STATE__ = "ready";
+          return;
+        }
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [isJobMode, modelUrl, warmup]);
+
+  // Job render: fires after canvas is mounted and warm
+  useEffect(() => {
+    if (!isJobMode || !modelUrl || !jobPayloadDims) return;
 
     let frames = 0;
     let raf = 0;
@@ -187,36 +215,31 @@ export function RenderHarness() {
     const tick = () => {
       frames += 1;
       if (frames >= warmup) {
-        if (isJobMode && jobPayloadDims) {
-          // Job mode: offscreen render + upload
-          const endpoints = jobEndpoints(getPublicApiUrl(), jobId!);
-          const token = window.__JOB_TOKEN__ ?? "";
-          (async () => {
-            const refs = getHiresRefs();
-            if (!refs) throw new Error("hires refs unavailable");
-            const blob = await renderAtResolution({
-              ...refs,
-              ...getRenderFidelity(),
-              width: jobPayloadDims.width,
-              height: jobPayloadDims.height,
-              pixelRatio: 1,
-              // The API already checked the job's size against the owner's plan (render_jobs/service.py).
-              limits: NO_EXPORT_LIMITS,
-            });
-            const form = new FormData();
-            form.append("file", blob, "render.png");
-            const res = await fetch(endpoints.complete, { method: "POST", body: form, headers: jobHeaders(token) });
-            if (!res.ok) throw new Error(`complete: ${res.status}`);
-            window.__JOB_STATE__ = "done";
-          })().catch(async (e: unknown) => {
-            const message = e instanceof Error ? e.message : String(e);
-            await reportJobFailure(endpoints.fail, token, message);
-            window.__JOB_STATE__ = "error:" + message;
+        // Offscreen render + upload
+        const endpoints = jobEndpoints(getPublicApiUrl(), jobId);
+        const token = window.__JOB_TOKEN__ ?? "";
+        (async () => {
+          const refs = getHiresRefs();
+          if (!refs) throw new Error("hires refs unavailable");
+          const blob = await renderAtResolution({
+            ...refs,
+            ...getRenderFidelity(),
+            width: jobPayloadDims.width,
+            height: jobPayloadDims.height,
+            pixelRatio: 1,
+            // The API already checked the job's size against the owner's plan (render_jobs/service.py).
+            limits: NO_EXPORT_LIMITS,
           });
-        } else {
-          // Golden mode: signal ready
-          window.__HARNESS_STATE__ = "ready";
-        }
+          const form = new FormData();
+          form.append("file", blob, "render.png");
+          const res = await fetch(endpoints.complete, { method: "POST", body: form, headers: jobHeaders(token) });
+          if (!res.ok) throw new Error(`complete: ${res.status}`);
+          window.__JOB_STATE__ = "done";
+        })().catch(async (e: unknown) => {
+          const message = e instanceof Error ? e.message : String(e);
+          await reportJobFailure(endpoints.fail, token, message);
+          window.__JOB_STATE__ = "error:" + message;
+        });
         return;
       }
       raf = requestAnimationFrame(tick);
@@ -232,7 +255,13 @@ export function RenderHarness() {
   return (
     <div style={{ width: activeSize, height: activeSize }} data-harness-canvas>
       {modelUrl ? (
-        <ViewerCanvas modelUrl={modelUrl} preset={activePreset} autoRotate={false} lighting={activeLighting} />
+        <ViewerCanvas
+          modelUrl={modelUrl}
+          preset={activePreset}
+          autoRotate={false}
+          lighting={activeLighting}
+          frameloop={isJobMode ? "always" : "never"}
+        />
       ) : null}
     </div>
   );

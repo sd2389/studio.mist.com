@@ -199,7 +199,7 @@ Backend, from `backend/` with the virtualenv above:
 
 **Render goldens** (`npm run test:golden`):
 
-- Captures `/render-harness` under the 5 lighting setups in headless Chromium with the SwiftShader software renderer, and compares each frame with `tests/goldens/` (SSIM 0.98 or higher).
+- Captures `/render-harness` under the 5 lighting setups in headless Chromium with the SwiftShader software renderer, all at once with one browser each, and compares each frame with `tests/goldens/` (SSIM 0.98 or higher).
 - Needs Playwright's Chromium (`npx playwright install chromium`) and the app running at `HARNESS_BASE_URL` (default `http://localhost:3000`). That can be `npm run dev`, or `NEXT_PUBLIC_ENABLE_RENDER_HARNESS=1 npm run build && npm run start`, which is what CI does.
 - Goldens are pinned to SwiftShader, the Playwright version in `package.json` and the fixture model. Regenerate them only for an approved render change, following [tests/goldens/README.md](tests/goldens/README.md).
 

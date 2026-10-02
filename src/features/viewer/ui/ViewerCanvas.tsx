@@ -39,6 +39,8 @@ type ViewerCanvasProps = {
   gemEnvironment?: EnvironmentItem | null;
   backgroundItem?: BackgroundItem | null;
   groundItem?: GroundItem | null;
+  /** "never" leaves every frame to the caller (R3F's `advance`), as the golden capture does. */
+  frameloop?: "always" | "never";
 };
 
 export function ViewerCanvas({
@@ -52,6 +54,7 @@ export function ViewerCanvas({
   gemEnvironment = null,
   backgroundItem = null,
   groundItem = null,
+  frameloop = "always",
 }: ViewerCanvasProps) {
   useEffect(() => {
     const originalWarn = console.warn;
@@ -84,6 +87,7 @@ export function ViewerCanvas({
     <div className="relative h-full w-full">
       <WebGPUCanvas
         className="h-full w-full touch-none"
+        frameloop={frameloop}
         shadows={{ type: THREE.PCFShadowMap }}
         dpr={[1, dprCap]}
         camera={{ position: [0.62, 0.88, 2.25], fov: 42, near: 0.01, far: 200 }}

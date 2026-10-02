@@ -30,22 +30,20 @@ export function exportPlanFromSnapshot(snapshot: UserBillingSnapshot): ExportPla
   };
 }
 
-const PLAN_REUSE_MS = 60_000;
-let cached: { plan: Promise<ExportPlan>; at: number } | null = null;
+let pending: Promise<ExportPlan> | null = null;
 
 /**
- * The plan's export limits: one request shared by every caller and reused for a minute.
- * When the account can't be read the result is Free's limits, and the next call asks again.
+ * The plan's export limits, read afresh for every export, since signing out or in changes
+ * them; callers asking at the same time share one request. When the account can't be read
+ * the result is Free's limits.
  */
 export function loadExportPlan(): Promise<ExportPlan> {
-  const now = Date.now();
-  if (cached && now - cached.at < PLAN_REUSE_MS) return cached.plan;
-  const plan = fetchBillingAccount().then(exportPlanFromSnapshot, () => {
-    if (cached?.plan === plan) cached = null;
-    return FREE_EXPORT_PLAN;
-  });
-  cached = { plan, at: now };
-  return plan;
+  pending ??= fetchBillingAccount()
+    .then(exportPlanFromSnapshot, () => FREE_EXPORT_PLAN)
+    .finally(() => {
+      pending = null;
+    });
+  return pending;
 }
 
 /** The pack engine's own gate, whatever the dialog showed. */

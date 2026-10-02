@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { QuotaBalances, UserBillingSnapshot } from "@/lib/billing/types";
 
 const { fetchBillingAccount } = vi.hoisted(() => ({
@@ -40,7 +40,7 @@ function snapshot(tier: "free" | "grow" | "studio"): UserBillingSnapshot {
   };
 }
 
-/** A fresh module per test: the plan request is cached at module level. */
+/** A fresh module per test: a pending plan request is shared at module level. */
 async function loadModule() {
   vi.resetModules();
   return import("./export-plan");
@@ -48,10 +48,6 @@ async function loadModule() {
 
 beforeEach(() => {
   fetchBillingAccount.mockReset();
-});
-
-afterEach(() => {
-  vi.useRealTimers();
 });
 
 describe("exportPlanFromSnapshot", () => {
@@ -88,16 +84,20 @@ describe("loadExportPlan", () => {
     expect(fetchBillingAccount).toHaveBeenCalledTimes(2);
   });
 
-  it("shares one request between callers and reuses it for a minute", async () => {
-    vi.useFakeTimers();
+  it("shares one request between callers asking at once", async () => {
     const { loadExportPlan } = await loadModule();
     fetchBillingAccount.mockResolvedValue(snapshot("grow"));
     const [a, b] = await Promise.all([loadExportPlan(), loadExportPlan()]);
     expect(a).toBe(b);
     expect(fetchBillingAccount).toHaveBeenCalledTimes(1);
-    vi.advanceTimersByTime(61_000);
-    await loadExportPlan();
-    expect(fetchBillingAccount).toHaveBeenCalledTimes(2);
+  });
+
+  it("asks again once a request is done, so a sign-out or sign-in counts", async () => {
+    const { FREE_EXPORT_PLAN, loadExportPlan } = await loadModule();
+    fetchBillingAccount.mockResolvedValueOnce(snapshot("studio"));
+    expect(await loadExportPlan()).toMatchObject({ label: "Studio" });
+    fetchBillingAccount.mockRejectedValueOnce(new Error("Unauthorized"));
+    expect(await loadExportPlan()).toEqual(FREE_EXPORT_PLAN);
   });
 });
 

@@ -75,6 +75,8 @@ class Settings(BaseSettings):
         default=None, validation_alias="STRIPE_PRICE_TOPUP_AI_150"
     )
     admin_emails: str = Field(default="", validation_alias="ADMIN_EMAILS")
+    # The embed demo's owner account. Unset, it gets a random password nobody needs to know.
+    demo_embed_password: str | None = Field(default=None, validation_alias="DEMO_EMBED_PASSWORD")
     render_worker_token: str | None = Field(default=None, validation_alias="RENDER_WORKER_TOKEN")
 
     @model_validator(mode="after")

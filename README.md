@@ -122,6 +122,7 @@ Templates: [`.env.example`](.env.example) (web, Compose) and [`backend/.env.exam
 | `EMAIL_FROM`, `CONTACT_NOTIFY_EMAIL`, `SMTP_*` | backend | Password-reset and contact-form email; without `SMTP_HOST`, emails go to the log |
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_*` | backend | Plan subscriptions and top-up packs |
 | `ADMIN_EMAILS` | backend | Comma-separated email addresses that get admin access |
+| `DEMO_EMBED_PASSWORD` | backend | Password for the embed demo's owner account; unset, the seed gives it a random one |
 | `HEALTH_DEPS_TOKEN` | backend | `X-Health-Token` value for `GET /health/deps` in production |
 | `RENDER_WORKER_TOKEN` | backend, worker | Shared secret for the render worker; the job-claim endpoint returns 503 until it is set |
 | `RENDER_API_URL` | worker | Backend URL |

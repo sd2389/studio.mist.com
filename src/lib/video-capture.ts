@@ -14,6 +14,7 @@ import {
   type Vec3,
 } from "@/lib/camera-orbit";
 import { loadBackdropImage, WHITE_BACKDROP, type ExportBackdrop } from "@/lib/export-backdrop";
+import type { ExportLimits } from "@/lib/export-limits";
 import {
   createOffscreenRenderSession,
   encodeCanvas,
@@ -43,6 +44,8 @@ export type RecordTurntableOpts = {
   target?: Vec3;
   /** Painted behind transparent regions (CSS gradient / image backgrounds). */
   backdrop?: ExportBackdrop | null;
+  /** The plan's cap (larger sizes are refused) and watermark (on every frame, ZIP fallback too). */
+  limits: ExportLimits;
   onProgress?: (p: number) => void;
   signal?: AbortSignal;
 };

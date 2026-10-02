@@ -5,6 +5,7 @@ import { getHiresRefs, pauseLiveRendering } from "@/stores/hires-export-store";
 import { useMaterialPresetStore } from "@/stores/material-preset-store";
 import { useOrbitControlsStore } from "@/stores/orbit-controls-store";
 import { getRenderFidelity } from "@/stores/render-fidelity-store";
+import { loadExportPlan } from "../../lib/export-plan";
 import { sceneHasStudioSet } from "../../lib/stage-visibility";
 import { buildPackDocuments } from "../domain/documents";
 import { planCampaignPack } from "../domain/plan";
@@ -79,6 +80,7 @@ function orbitTarget(): Vec3 {
  * paused (not modified) for the duration; everything renders on one offscreen renderer.
  */
 export async function runStudioCampaignPack(input: StudioPackInput): Promise<PackRunResult> {
+  const exportPlan = await loadExportPlan();
   const refs = getHiresRefs();
   if (!refs) throw new Error("Open a model first — the 3D scene must be loaded.");
   if (!(refs.camera instanceof THREE.PerspectiveCamera)) {
@@ -113,6 +115,7 @@ export async function runStudioCampaignPack(input: StudioPackInput): Promise<Pac
       environment,
       finish: useMaterialPresetStore.getState().finish,
       slotTokens: input.slotTokens,
+      limits: exportPlan,
     });
     const generatedAt = new Date();
     return await runCampaignPack({

@@ -10,9 +10,10 @@ import {
   Video,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { CampaignPackLauncher } from "@/features/render";
+import { CampaignPackLauncher, loadExportPlan } from "@/features/render";
 import type { PersistedModelConfig } from "@/lib/slot-materials/model-config";
 import { readViewportBackdrop } from "@/lib/export-backdrop";
+import { pixelRatioWithinLimits } from "@/lib/export-limits";
 import { cn } from "@/lib/utils";
 import { renderAtResolution } from "@/lib/offscreen-render";
 import { captureFrameToDataUrl } from "@/stores/screenshot-store";
@@ -58,14 +59,15 @@ export function ExportSharePanel({
   const embedReady = canOpenEmbed(sku);
 
   async function handleCapture() {
-    const dataUrl = captureFrameToDataUrl();
-    if (!dataUrl) {
-      setStatus("Canvas not ready");
-      return;
-    }
     setSaving(true);
     setStatus(null);
     try {
+      // An export like the others: within the plan's cap, watermarked on Free.
+      const dataUrl = captureFrameToDataUrl(await loadExportPlan());
+      if (!dataUrl) {
+        setStatus("Canvas not ready");
+        return;
+      }
       const res = await fetch("/api/render/save", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -89,6 +91,7 @@ export function ExportSharePanel({
     }
     setStatus("Rendering…");
     try {
+      const plan = await loadExportPlan();
       const { exposure, postfxConfig } = getRenderFidelity();
       const { width, height } = refs.gl.domElement;
       const blob = await renderAtResolution({
@@ -97,10 +100,12 @@ export function ExportSharePanel({
         camera: refs.camera,
         width,
         height,
-        pixelRatio: 2,
+        // Twice the canvas, within the plan's cap (Free: 4096 px on the longest side).
+        pixelRatio: pixelRatioWithinLimits(plan, width, height, 2),
         exposure,
         postfxConfig,
         backdrop: readViewportBackdrop(refs.gl.domElement),
+        limits: plan,
       });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");

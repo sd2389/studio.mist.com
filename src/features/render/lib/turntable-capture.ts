@@ -3,19 +3,22 @@ import type { RecordTurntableOpts } from "@/lib/video-capture";
 import { captureCurrentCameraPose } from "@/stores/orbit-controls-store";
 import { getRenderFidelity } from "@/stores/render-fidelity-store";
 import { getVideoCaptureRefs } from "@/stores/video-capture-store";
+import { loadExportPlan } from "./export-plan";
 
 export type TurntableSettings = Pick<RecordTurntableOpts, "width" | "height" | "frameCount" | "fps" | "bitrate">;
 
 /**
  * Recording options for a turntable of the live studio view: its renderer, scene and camera,
- * the viewport's exposure and post-processing, the orbit target and the CSS backdrop.
+ * the viewport's exposure and post-processing, the orbit target, the CSS backdrop and the
+ * plan's limits (the recorder refuses a size above the cap; Free frames get the watermark).
  * Throws until the 3D view is ready.
  */
-export function turntableCaptureOptions(
+export async function turntableCaptureOptions(
   settings: TurntableSettings,
   signal: AbortSignal,
   onProgress?: (progress: number) => void,
-): RecordTurntableOpts {
+): Promise<RecordTurntableOpts> {
+  const limits = await loadExportPlan();
   const refs = getVideoCaptureRefs();
   if (!refs) throw new Error("3D view not ready — wait for the model to load, then try again.");
   const { exposure, postfxConfig } = getRenderFidelity();
@@ -28,6 +31,7 @@ export function turntableCaptureOptions(
     postfxConfig,
     target: captureCurrentCameraPose()?.target,
     backdrop: readViewportBackdrop(refs.gl.domElement),
+    limits,
     onProgress,
     signal,
   };

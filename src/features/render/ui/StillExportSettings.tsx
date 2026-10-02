@@ -19,6 +19,7 @@ import { DEFAULT_JPEG_QUALITY, renderAtResolution } from "@/lib/offscreen-render
 import { cn } from "@/lib/utils";
 import { getHiresRefs } from "@/stores/hires-export-store";
 import { getRenderFidelity } from "@/stores/render-fidelity-store";
+import { loadExportPlan } from "../lib/export-plan";
 import { prepareCutoutScene } from "../lib/stage-visibility";
 import { JpegQualityField } from "./JpegQualityField";
 
@@ -45,9 +46,11 @@ export function stillExportLabel(options: StillExportOptions): string {
 
 /**
  * Render the current studio view at production resolution — same post-processing as the
- * viewport — and download it as `filename` plus the format's extension.
+ * viewport — and download it as `filename` plus the format's extension. The plan's limits
+ * apply here, not only in the picker: a size above its cap is refused, Free gets the watermark.
  */
 export async function exportStill(options: StillExportOptions, filename: string): Promise<void> {
+  const plan = await loadExportPlan();
   const refs = getHiresRefs();
   if (!refs) throw new Error("Open a model first — the 3D scene must be loaded.");
   const { width, height } = computeImageSize(options.resolution, options.aspect);
@@ -67,6 +70,7 @@ export async function exportStill(options: StillExportOptions, filename: string)
     backdrop: options.transparent ? null : readViewportBackdrop(refs.gl.domElement),
     // Cutouts are the piece alone: no studio set, no contact-shadow catcher.
     prepareScene: options.transparent ? prepareCutoutScene : undefined,
+    limits: plan,
   });
   downloadBlob(blob, `${filename}.${extForImageFormat(options.format)}`);
 }

@@ -143,7 +143,7 @@ export function EditorVideoTab({
     }
   }
 
-  function captureOptions(signal: AbortSignal, onProgress?: (p: number) => void): RecordTurntableOpts {
+  function captureOptions(signal: AbortSignal, onProgress?: (p: number) => void): Promise<RecordTurntableOpts> {
     return turntableCaptureOptions(
       { width: resolution.width, height: resolution.height, frameCount, fps, bitrate: bps },
       signal,
@@ -171,7 +171,7 @@ export function EditorVideoTab({
     setBusy(true);
 
     try {
-      const baseOpts = captureOptions(controller.signal, trackProgress);
+      const baseOpts = await captureOptions(controller.signal, trackProgress);
 
       if (mode === "multiple") {
         if (!batchExportEnabled) {
@@ -200,7 +200,8 @@ export function EditorVideoTab({
         await runBatchExportJobs(jobs, batchContext, async (job) => {
           const label = batchFilenamePrefix(job);
           try {
-            const result = await withLiveRenderingPaused(() => recordTurntable(captureOptions(controller.signal)));
+            const jobOpts = await captureOptions(controller.signal);
+            const result = await withLiveRenderingPaused(() => recordTurntable(jobOpts));
             const ext = result.kind === "png-zip" ? "zip" : "mp4";
             downloadBlob(result.blob, `${label}-360.${ext}`);
             if (result.notice) setNotice(result.notice);

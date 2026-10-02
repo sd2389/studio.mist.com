@@ -106,16 +106,17 @@ export function Video360Modal({ open, onOpenChange, modelId }: Video360ModalProp
 
     try {
       const settings = { width: resolution.width, height: resolution.height, frameCount: frames, fps, bitrate: bps };
-      const result = await withLiveRenderingPaused(() => recordTurntable(turntableCaptureOptions(settings, controller.signal, (p) => {
-          setProgress(p);
-          const start = startedAtRef.current;
-          if (p > 0.01 && start > 0) {
-            const elapsed = (performance.now() - start) / 1000;
-            const total = elapsed / p;
-            const remaining = Math.max(0, total - elapsed);
-            setEtaLabel(`~${Math.round(remaining)}s remaining`);
-          }
-      })));
+      const options = await turntableCaptureOptions(settings, controller.signal, (p) => {
+        setProgress(p);
+        const start = startedAtRef.current;
+        if (p > 0.01 && start > 0) {
+          const elapsed = (performance.now() - start) / 1000;
+          const total = elapsed / p;
+          const remaining = Math.max(0, total - elapsed);
+          setEtaLabel(`~${Math.round(remaining)}s remaining`);
+        }
+      });
+      const result = await withLiveRenderingPaused(() => recordTurntable(options));
 
       const isZip = result.kind === "png-zip";
       downloadBlob(result.blob, `${modelId}-360.${isZip ? "zip" : "mp4"}`);

@@ -1,8 +1,11 @@
+import type { ExportLimits } from "@/lib/export-limits";
 import { create } from "zustand";
 
+type CaptureFn = (limits?: ExportLimits) => string;
+
 type ScreenshotState = {
-  captureFn: (() => string) | null;
-  setCaptureFn: (fn: (() => string) | null) => void;
+  captureFn: CaptureFn | null;
+  setCaptureFn: (fn: CaptureFn | null) => void;
 };
 
 export const useScreenshotStore = create<ScreenshotState>((set) => ({
@@ -10,7 +13,11 @@ export const useScreenshotStore = create<ScreenshotState>((set) => ({
   setCaptureFn: (captureFn) => set({ captureFn }),
 }));
 
-export function captureFrameToDataUrl(): string | null {
+/**
+ * The live frame as a PNG data URL. An export passes the plan's limits: the frame is then
+ * scaled to fit the cap and watermarked when the plan asks. Thumbnails pass none.
+ */
+export function captureFrameToDataUrl(limits?: ExportLimits): string | null {
   const fn = useScreenshotStore.getState().captureFn;
-  return fn?.() ?? null;
+  return fn?.(limits) ?? null;
 }

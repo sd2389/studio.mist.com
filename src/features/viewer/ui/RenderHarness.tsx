@@ -20,6 +20,14 @@ declare global {
   }
 }
 
+/** Frames a render job draws before it captures. */
+const JOB_WARMUP_FRAMES = 60;
+
+function clampWarmup(raw: string | null): number {
+  const frames = Math.round(Number(raw));
+  return Number.isFinite(frames) && frames > 0 ? Math.min(frames, JOB_WARMUP_FRAMES) : JOB_WARMUP_FRAMES;
+}
+
 function isLighting(v: string | null): v is LightingPresetId {
   return v !== null && (LIGHTING_IDS as readonly string[]).includes(v);
 }
@@ -32,6 +40,9 @@ export function RenderHarness() {
   const jobId = params.get("job");
   const jobToken = params.get("token");
   const isJobMode = jobId !== null && jobToken !== null;
+  // Frames drawn before the picture counts as settled. Jobs always take the full count; a golden
+  // capture may ask for fewer (`warmup`), since it only has to match itself run after run.
+  const warmup = isJobMode ? JOB_WARMUP_FRAMES : clampWarmup(params.get("warmup"));
 
   // Golden / export mode params (ignored in job mode)
   const lighting: LightingPresetId = isLighting(params.get("lighting")) ? (params.get("lighting") as LightingPresetId) : "studio";
@@ -163,7 +174,7 @@ export function RenderHarness() {
 
     const tick = () => {
       frames += 1;
-      if (frames >= 60) {
+      if (frames >= warmup) {
         if (isJobMode && jobPayloadDims) {
           // Job mode: offscreen render + upload
           const endpoints = jobEndpoints(getPublicApiUrl(), jobId!, jobToken!);
@@ -205,7 +216,7 @@ export function RenderHarness() {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [modelUrl, isJobMode, jobPayloadDims, jobId, jobToken]);
+  }, [modelUrl, isJobMode, jobPayloadDims, jobId, jobToken, warmup]);
 
   const activePreset = isJobMode ? jobPreset : preset;
   const activeLighting = isJobMode ? jobLighting : lighting;

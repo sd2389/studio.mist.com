@@ -1,72 +1,193 @@
 name: CI
 
 on:
+  pull_request:
   push:
     branches: [main]
-  pull_request:
+  workflow_dispatch:
 
-permissions:
-  contents: read
+# No token permissions unless a job asks for them; every job below only reads the repo.
+permissions: {}
 
-# A newer push to the same pull request cancels its older runs; runs on main always finish.
+# A newer push to the same pull request cancels its older run; runs on main always finish.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+defaults:
+  run:
+    shell: bash
+
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+
+# unit, frontend-quality, golden and dependency-audit are the required checks on main. A check
+# a change does not touch is skipped, which GitHub counts as passing; if `changes` itself
+# fails, every check runs in full instead.
 jobs:
-  # Frontend (Vitest) and backend (pytest) unit tests. The job name is a required check on main.
-  unit:
+  changes:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      web: ${{ steps.areas.outputs.web }}
+      backend: ${{ steps.areas.outputs.backend }}
+      render: ${{ steps.areas.outputs.render }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - name: Frontend tests
+          fetch-depth: 2
+          persist-credentials: false
+      - id: areas
+        name: Decide what the change touches
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" = "pull_request" ]; then
+            # A pull request checks out its merge commit, whose first parent is the base branch.
+            git diff --name-only HEAD^1 HEAD | bash scripts/ci/changed-areas.sh | tee -a "$GITHUB_OUTPUT"
+          else
+            printf 'web=true\nbackend=true\nrender=true\n' | tee -a "$GITHUB_OUTPUT"
+          fi
+
+  frontend-quality:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.web == 'true') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-web
+      - run: npm run lint
+      - run: npm run check:boundaries
+      - name: Type check
+        run: |
+          npx next typegen
+          npx tsc --noEmit
+
+  unit:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.web == 'true' || needs.changes.outputs.backend == 'true') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      WEB: ${{ needs.changes.result != 'success' || needs.changes.outputs.web == 'true' }}
+      BACKEND: ${{ needs.changes.result != 'success' || needs.changes.outputs.backend == 'true' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - if: env.WEB == 'true'
+        uses: ./.github/actions/setup-web
+      - if: env.WEB == 'true'
+        name: Frontend tests (Vitest)
         run: npm test
       # Same Python as backend/Dockerfile.
-      - uses: actions/setup-python@v5
+      - if: env.BACKEND == 'true'
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: backend/requirements*.txt
-      - name: Install backend dependencies
-        run: pip install -r backend/requirements-dev.txt
-      - name: Backend tests
+      - if: env.BACKEND == 'true'
+        name: Install backend dependencies
+        run: python -m pip install --disable-pip-version-check -r backend/requirements-dev.txt
+      - if: env.BACKEND == 'true'
+        name: Backend tests (pytest)
         working-directory: backend
         run: python -m pytest -q
 
-  # Render goldens: the harness page captured in headless Chromium (SwiftShader) and compared
-  # with tests/goldens by SSIM. See tests/goldens/README.md before regenerating them.
+  # The render harness captured in headless Chromium on the SwiftShader software renderer and
+  # compared with tests/goldens by SSIM. Read tests/goldens/README.md before regenerating them.
   golden:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.render == 'true') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 25
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npx playwright install --with-deps chromium
+          persist-credentials: false
+      - uses: ./.github/actions/setup-web
+      - id: playwright
+        name: Read the Playwright version
+        run: echo "version=$(node -p "require('./package-lock.json').packages['node_modules/playwright'].version")" >> "$GITHUB_OUTPUT"
+      - id: browsers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+      - name: Install Chromium
+        env:
+          CACHED: ${{ steps.browsers.outputs.cache-hit }}
+        run: |
+          if [ "$CACHED" = "true" ]; then
+            npx playwright install-deps chromium
+          else
+            npx playwright install --with-deps chromium
+          fi
+      # Webpack's cache from the last build on the same lockfile; a miss is only slower.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .next/cache
+          key: next-harness-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ hashFiles('src/**', 'next.config.ts') }}
+          restore-keys: next-harness-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
       - name: Build app (harness enabled)
-        run: NEXT_PUBLIC_ENABLE_RENDER_HARNESS=1 npm run build
+        env:
+          NEXT_PUBLIC_ENABLE_RENDER_HARNESS: "1"
+        run: npm run build
       - name: Start app
         run: |
           npm run start &
-          for i in $(seq 1 60); do
-            curl -sf http://localhost:3000/render-harness?lighting=studio > /dev/null && break
+          for _ in $(seq 1 60); do
+            curl -sf "http://localhost:3000/render-harness?lighting=studio" > /dev/null && exit 0
             sleep 2
           done
-          curl -sf "http://localhost:3000/render-harness?lighting=studio" > /dev/null || { echo "server never came up"; exit 1; }
+          echo "server never came up"
+          exit 1
       - run: npm run test:golden
       - name: Upload captures on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: golden-failures
           path: /tmp/golden-*
           retention-days: 7
+
+  # Known high or critical advisories fail the check: npm production dependencies, the
+  # backend's Python requirements, and on pull requests any dependency the change adds.
+  dependency-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+      - name: npm audit (production dependencies)
+        run: npm audit --omit=dev --audit-level=high
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: pip-audit (backend requirements)
+        run: |
+          python -m pip install --disable-pip-version-check pip-audit==2.10.1
+          pip-audit --progress-spinner off -r backend/requirements.txt
+      - name: Review dependencies the change adds
+        if: github.event_name == 'pull_request'
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high

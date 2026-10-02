@@ -44,7 +44,7 @@ services:
       APP_PUBLIC_URL: ${APP_PUBLIC_URL:-http://localhost:3000}
       EMAIL_FROM: studio@mist.com
       CONTACT_NOTIFY_EMAIL: support@mist.com
-      ADMIN_EMAILS: sd2389@njit.edu
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
       # AWS_BUCKET: ${AWS_BUCKET-}
       # AWS_REGION: ${AWS_REGION:-auto}
       # AWS_S3_ENDPOINT: ${AWS_S3_ENDPOINT-}

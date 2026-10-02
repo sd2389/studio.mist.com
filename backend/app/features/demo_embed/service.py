@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import secrets
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -11,7 +12,8 @@ from sqlalchemy.orm import Session
 
 from app.core import storage as storage_mod
 from app.core import storage_keys as keys
-from app.core.security import hash_password
+from app.config import get_settings
+from app.core.security import hash_password, verify_password
 from app.features.publish import service as publish_service
 from app.models.scene import Scene
 from app.models.user import User
@@ -20,7 +22,9 @@ DEMO_SKU = "DEMO-EMBED-RING"
 DEMO_NAME = "Demo solitaire"
 DEMO_MODEL_KEY = "models/demo-embed-ring.glb"
 DEMO_EMAIL = "demo-embed@devjewels.test"
-DEMO_PASSWORD = "demo-embed-not-for-prod"
+# The demo account's old fixed password, public in this repo's history. Kept only so a demo
+# account still using it is moved off it the next time the demo is seeded.
+_RETIRED_DEMO_PASSWORD = "demo-embed-not-for-prod"
 DEMO_FIXTURE_NAME = "demo-embed-ring.glb"
 
 CLOSER_METALS = [
@@ -124,14 +128,23 @@ def seed_demo_embed(db: Session, fixture_path: Path | None = None) -> DemoEmbedS
     )
 
 
+def _demo_password() -> str:
+    """DEMO_EMBED_PASSWORD when set; otherwise a random one, since nobody signs in as the demo."""
+    return get_settings().demo_embed_password or secrets.token_urlsafe(24)
+
+
 def _get_or_create_demo_user(db: Session) -> User:
     user = db.execute(select(User).where(User.email == DEMO_EMAIL)).scalars().first()
     if user is not None:
+        if verify_password(_RETIRED_DEMO_PASSWORD, user.password_hash):
+            user.password_hash = hash_password(_demo_password())
+            user.updated_at = datetime.utcnow()
+            db.commit()
         return user
     now = datetime.utcnow()
     user = User(
         email=DEMO_EMAIL,
-        password_hash=hash_password(DEMO_PASSWORD),
+        password_hash=hash_password(_demo_password()),
         name="Embed demo",
         is_active=True,
         role="user",

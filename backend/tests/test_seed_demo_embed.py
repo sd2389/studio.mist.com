@@ -65,3 +65,31 @@ def test_write_demo_ring_glb_roundtrip(tmp_path: Path):
     assert dest.stat().st_size < 500 * 1024
     assert b"Metal 1" in data
     assert b"Gem 1" in data
+
+
+def test_demo_user_never_gets_the_retired_password(db, monkeypatch):
+    from types import SimpleNamespace
+
+    from app.core.security import verify_password
+    from app.features.demo_embed import service
+
+    monkeypatch.setattr(service, "get_settings", lambda: SimpleNamespace(demo_embed_password=None))
+    user = service._get_or_create_demo_user(db)
+    assert not verify_password(service._RETIRED_DEMO_PASSWORD, user.password_hash)
+
+
+def test_demo_user_on_the_retired_password_is_moved_off_it(db, monkeypatch):
+    from types import SimpleNamespace
+
+    from app.core.security import hash_password, verify_password
+    from app.features.demo_embed import service
+
+    monkeypatch.setattr(service, "get_settings", lambda: SimpleNamespace(demo_embed_password="chosen-for-this-deploy"))
+    user = service._get_or_create_demo_user(db)
+    user.password_hash = hash_password(service._RETIRED_DEMO_PASSWORD)
+    db.commit()
+
+    again = service._get_or_create_demo_user(db)
+    assert again.id == user.id
+    assert not verify_password(service._RETIRED_DEMO_PASSWORD, again.password_hash)
+    assert verify_password("chosen-for-this-deploy", again.password_hash)

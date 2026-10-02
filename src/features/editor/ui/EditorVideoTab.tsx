@@ -1,9 +1,13 @@
 "use client";
 
 import { AlertTriangle, Loader2, Video, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { UpgradePrompt } from "@/components/billing/UpgradePrompt";
+import { useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import {
+  useBatchExport,
+  type BatchExportTabProps,
+  type BatchTileResult,
+} from "@/features/editor/hooks/useBatchExport";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -21,13 +25,7 @@ import {
   type VideoFps,
   type VideoResolutionId,
 } from "@/lib/export-presets";
-import {
-  batchFilenamePrefix,
-  buildBatchExportJobs,
-  estimateBatchJobCount,
-  runBatchExportJobs,
-  type BatchExportContext,
-} from "@/lib/variants/batch-export";
+import { batchFilenamePrefix, runBatchExportJobs } from "@/lib/variants/batch-export";
 import {
   isAbortError,
   isWebCodecsSupported,
@@ -36,44 +34,18 @@ import {
   type CameraPose,
   type RecordTurntableOpts,
 } from "@/lib/video-capture";
-import type { ModelVariant, SceneVariantsState } from "@/lib/variants/types";
-import type { PersistedModelConfig } from "@/lib/slot-materials/model-config";
 import { mergePoses } from "@/lib/viewer-scene";
-import { fetchBillingAccount } from "@/lib/billing/client";
-import type { PlanFeatures } from "@/lib/billing/types";
 import { cn } from "@/lib/utils";
 import { withLiveRenderingPaused } from "@/stores/hires-export-store";
 import { getVideoCaptureRefs } from "@/stores/video-capture-store";
 import { useMaterialPresetStore } from "@/stores/material-preset-store";
 import { Chip } from "@/components/ui/chip";
+import { BatchJobEstimate } from "./BatchJobEstimate";
 
 type VideoMode = "simple" | "multi-angle" | "multiple";
 
-type BatchTileResult =
-  | { ok: true; label: string }
-  | { ok: false; label: string; message: string };
-
-type EditorVideoTabProps = {
-  sceneId: number;
-  viewerId: string;
-  modelUrl: string;
-  modelConfig: PersistedModelConfig;
-  variantsState: SceneVariantsState;
-  variantItems: ModelVariant[];
-  onModelConfigChange: (config: PersistedModelConfig) => void;
-  setBatchModelUrl: (url: string | null) => void;
-};
-
-export function EditorVideoTab({
-  sceneId,
-  viewerId,
-  modelUrl,
-  modelConfig,
-  variantsState,
-  variantItems,
-  onModelConfigChange,
-  setBatchModelUrl,
-}: EditorVideoTabProps) {
+export function EditorVideoTab(props: BatchExportTabProps) {
+  const { sceneId, viewerId, modelConfig, variantItems } = props;
   const sceneSettings = useMaterialPresetStore((s) => s.sceneSettings);
   const poses = useMemo(() => mergePoses(sceneSettings.poses), [sceneSettings.poses]);
   const poseAngles: CameraPose[] = useMemo(
@@ -89,8 +61,7 @@ export function EditorVideoTab({
   const [resId, setResId] = useState<VideoResolutionId>("1080p");
   const [durationSec, setDurationSec] = useState("4");
   const [fps, setFps] = useState<VideoFps>(30);
-  const [selectedVariantIds, setSelectedVariantIds] = useState<string[]>([]);
-  const [selectedSceneIds, setSelectedSceneIds] = useState<number[]>([]);
+  const batch = useBatchExport(props);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -98,44 +69,13 @@ export function EditorVideoTab({
   const [notice, setNotice] = useState<string | null>(null);
   const [hasWebCodecs] = useState(() => isWebCodecsSupported());
   const [etaLabel, setEtaLabel] = useState<string | null>(null);
-  const [planFeatures, setPlanFeatures] = useState<PlanFeatures | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const startedAtRef = useRef<number>(0);
 
-  useEffect(() => {
-    fetchBillingAccount()
-      .then((account) => setPlanFeatures(account.features))
-      .catch(() => {});
-  }, []);
-
-  const batchExportEnabled = planFeatures?.batch_export_enabled !== false;
   const resolution = VIDEO_RESOLUTIONS.find((r) => r.id === resId) ?? VIDEO_RESOLUTIONS[1];
   const duration = Math.max(1, Number.parseFloat(durationSec) || 4);
   const frameCount = Math.max(1, Math.round(duration * fps));
   const bps = Math.round(resolution.width * resolution.height * fps * 0.12);
-
-  const estimatedJobCount = useMemo(
-    () =>
-      estimateBatchJobCount({
-        selectedVariantCount: selectedVariantIds.length,
-        variantsStateItemCount: variantItems.length,
-        extraSelectedSceneCount: selectedSceneIds.length,
-      }),
-    [selectedSceneIds.length, selectedVariantIds.length, variantItems.length],
-  );
-
-  const batchContext: BatchExportContext = useMemo(
-    () => ({
-      sceneId,
-      viewerId,
-      modelUrl,
-      modelConfig,
-      variantsState,
-      onModelConfigChange,
-      setBatchModelUrl,
-    }),
-    [modelConfig, modelUrl, onModelConfigChange, sceneId, setBatchModelUrl, variantsState, viewerId],
-  );
 
   const fileSizeStr = videoSizeLabel(bps, duration);
 
@@ -180,20 +120,12 @@ export function EditorVideoTab({
       const baseOpts = await captureOptions(controller.signal, trackProgress);
 
       if (mode === "multiple") {
-        if (!batchExportEnabled) {
+        if (!batch.batchExportEnabled) {
           setError("Batch export requires a plan upgrade.");
           return;
         }
 
-        const jobs = await buildBatchExportJobs({
-          currentSceneId: sceneId,
-          currentViewerId: viewerId,
-          currentModelUrl: modelUrl,
-          currentModelConfig: modelConfig,
-          variantsState,
-          selectedVariantIds,
-          selectedSceneIds,
-        });
+        const jobs = await batch.buildJobs();
 
         if (jobs.length === 0) {
           setError("Select at least one variant or save variants in Settings.");
@@ -203,7 +135,7 @@ export function EditorVideoTab({
         const tileResults: BatchTileResult[] = [];
         let completed = 0;
 
-        await runBatchExportJobs(jobs, batchContext, async (job) => {
+        await runBatchExportJobs(jobs, batch.batchContext, async (job) => {
           const label = batchFilenamePrefix(job);
           try {
             const jobOpts = await captureOptions(controller.signal);
@@ -338,14 +270,14 @@ export function EditorVideoTab({
           <>
             <VariantMultiSelect
               items={variantItems}
-              selectedIds={selectedVariantIds}
-              onChange={setSelectedVariantIds}
+              selectedIds={batch.selectedVariantIds}
+              onChange={batch.setSelectedVariantIds}
               disabled={busy}
             />
             <ModelMultiSelect
               currentSceneId={sceneId}
-              selectedIds={selectedSceneIds}
-              onChange={setSelectedSceneIds}
+              selectedIds={batch.selectedSceneIds}
+              onChange={batch.setSelectedSceneIds}
               disabled={busy}
             />
           </>
@@ -426,15 +358,7 @@ export function EditorVideoTab({
 
         <div className="flex flex-col gap-2">
           {mode === "multiple" ? (
-            <div className="space-y-1 text-xs text-muted-foreground">
-              <p>
-                Estimated jobs:{" "}
-                <span className="font-medium text-foreground">{estimatedJobCount}</span>
-              </p>
-              {!batchExportEnabled ? (
-                <UpgradePrompt className="text-destructive">Batch export requires a plan upgrade.</UpgradePrompt>
-              ) : null}
-            </div>
+            <BatchJobEstimate count={batch.estimatedJobCount} enabled={batch.batchExportEnabled} />
           ) : null}
           {busy ? (
             <Button type="button" variant="outline" onClick={handleCancel} className="gap-2">
@@ -445,7 +369,7 @@ export function EditorVideoTab({
           <Button
             type="button"
             onClick={() => void handleRender()}
-            disabled={busy || (mode === "multiple" && !batchExportEnabled)}
+            disabled={busy || (mode === "multiple" && !batch.batchExportEnabled)}
             className="gap-2"
           >
             {busy ? (
@@ -456,7 +380,7 @@ export function EditorVideoTab({
             ) : (
               <>
                 <Video className="size-4" aria-hidden />
-                {mode === "multiple" ? `Render ${estimatedJobCount} videos` : "Render video"}
+                {mode === "multiple" ? `Render ${batch.estimatedJobCount} videos` : "Render video"}
               </>
             )}
           </Button>

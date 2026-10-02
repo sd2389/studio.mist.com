@@ -84,3 +84,7 @@ docker-compose.override.yml
 
 # Isolated production build used during local verification
 .next-production/
+
+# Local Claude Code state: agent worktrees and this machine's preview ports.
+.claude/worktrees/
+.claude/launch.json

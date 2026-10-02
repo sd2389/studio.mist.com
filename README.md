@@ -186,6 +186,8 @@ npm test                   # Vitest unit tests (src/**/*.test.ts, *.test.tsx)
 npm run build              # production build
 ```
 
+Backend dependencies: `backend/requirements.txt` holds version ranges; the Docker image and CI install the hash-pinned `requirements.lock` and `requirements-dev.lock` (Linux, Python 3.12). After changing a requirements file, regenerate both with `backend/scripts/lock-requirements.sh` (needs [uv](https://docs.astral.sh/uv/)).
+
 Backend, from `backend/` with the virtualenv above:
 
 ```bash

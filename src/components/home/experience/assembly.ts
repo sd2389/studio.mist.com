@@ -144,8 +144,8 @@ function galaxyOrbits(random: () => number): Float32Array {
     const roll = random();
     let radius: number, angle: number, height: number, kind: number;
     if (roll < 0.12) {
-      // Bulge: an exponential ball, densest at the nucleus.
-      radius = Math.min(2 + 7 * -Math.log(Math.max(random(), 1e-6)), 30);
+      // Bulge: an exponential ball sampled from the very centre, so it is densest at the nucleus.
+      radius = Math.min(7 * -Math.log(Math.max(random(), 1e-6)), 30);
       angle = random() * Math.PI * 2;
       height = gauss(random) * (2.5 + 0.55 * (30 - radius));
       kind = STAR_KIND.bulge;

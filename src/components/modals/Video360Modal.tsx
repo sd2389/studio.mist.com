@@ -11,8 +11,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { CaptureNotice, turntableCaptureOptions, videoSizeLabel } from "@/features/render";
-import { downloadBlob } from "@/lib/export-presets";
+import { CaptureNotice, turntableCaptureOptions, VideoResolutionField, videoSizeLabel } from "@/features/render";
+import { downloadBlob, VIDEO_RESOLUTIONS, type VideoResolutionId } from "@/lib/export-presets";
 import { isWebCodecsSupported, recordTurntable } from "@/lib/video-capture";
 import { withLiveRenderingPaused } from "@/stores/hires-export-store";
 import { getVideoCaptureRefs } from "@/stores/video-capture-store";
@@ -23,13 +23,6 @@ type Video360ModalProps = {
   onOpenChange: (open: boolean) => void;
   modelId: string;
 };
-
-const RESOLUTIONS = [
-  { id: "720p", label: "720p", width: 1280, height: 720 },
-  { id: "1080p", label: "1080p", width: 1920, height: 1080 },
-  { id: "4k", label: "4K", width: 3840, height: 2160 },
-] as const;
-type ResolutionId = (typeof RESOLUTIONS)[number]["id"];
 
 const FRAME_COUNTS = [60, 120, 240] as const;
 type FrameCount = (typeof FRAME_COUNTS)[number];
@@ -49,7 +42,7 @@ function bytesPerSecondEstimate(width: number, height: number, fps: number, mult
 }
 
 export function Video360Modal({ open, onOpenChange, modelId }: Video360ModalProps) {
-  const [resId, setResId] = useState<ResolutionId>("1080p");
+  const [resId, setResId] = useState<VideoResolutionId>("1080p");
   const [frames, setFrames] = useState<FrameCount>(120);
   const [fps, setFps] = useState<FpsOption>(30);
   const [bitrateId, setBitrateId] = useState<BitrateId>("med");
@@ -79,7 +72,7 @@ export function Video360Modal({ open, onOpenChange, modelId }: Video360ModalProp
     [onOpenChange],
   );
 
-  const resolution = RESOLUTIONS.find((r) => r.id === resId) ?? RESOLUTIONS[1];
+  const resolution = VIDEO_RESOLUTIONS.find((r) => r.id === resId) ?? VIDEO_RESOLUTIONS[1];
   const bitrate = BITRATES.find((b) => b.id === bitrateId) ?? BITRATES[1];
   const durationSec = frames / fps;
   const bps = bytesPerSecondEstimate(resolution.width, resolution.height, fps, bitrate.multiplier);
@@ -168,21 +161,7 @@ export function Video360Modal({ open, onOpenChange, modelId }: Video360ModalProp
         ) : null}
 
         <div className="space-y-4">
-          <div className="space-y-2">
-            <Label className="text-muted-foreground">Resolution</Label>
-            <div className="flex flex-wrap gap-2">
-              {RESOLUTIONS.map((r) => (
-                <Chip
-                  key={r.id}
-                  selected={resId === r.id}
-                  onClick={() => setResId(r.id)}
-                  disabled={busy}
-                >
-                  {`${r.label} (${r.width}x${r.height})`}
-                </Chip>
-              ))}
-            </div>
-          </div>
+          <VideoResolutionField value={resId} onChange={setResId} disabled={busy} showSize />
 
           <div className="space-y-2">
             <Label className="text-muted-foreground">Frames</Label>

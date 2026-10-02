@@ -1,12 +1,18 @@
 "use client";
 
 import { AlertTriangle, Loader2, Video, X } from "lucide-react";
-import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { UpgradePrompt } from "@/components/billing/UpgradePrompt";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { CampaignPackLauncher, CaptureNotice, turntableCaptureOptions, videoSizeLabel } from "@/features/render";
+import {
+  CampaignPackLauncher,
+  CaptureNotice,
+  turntableCaptureOptions,
+  VideoResolutionField,
+  videoSizeLabel,
+} from "@/features/render";
 import { ModelMultiSelect, VariantMultiSelect } from "@/features/variants";
 import {
   VIDEO_FPS_OPTIONS,
@@ -345,21 +351,7 @@ export function EditorVideoTab({
           </>
         ) : null}
 
-        <div className="space-y-2">
-          <Label className="text-muted-foreground">Resolution</Label>
-          <div className="flex flex-wrap gap-2">
-            {VIDEO_RESOLUTIONS.map((r) => (
-              <Chip
-                key={r.id}
-                selected={resId === r.id}
-                onClick={() => setResId(r.id)}
-                disabled={busy}
-              >
-                {`${r.label}`}
-              </Chip>
-            ))}
-          </div>
-        </div>
+        <VideoResolutionField value={resId} onChange={setResId} disabled={busy} />
 
         <div className="space-y-2">
           <Label htmlFor="video-duration" className="text-muted-foreground">
@@ -440,12 +432,7 @@ export function EditorVideoTab({
                 <span className="font-medium text-foreground">{estimatedJobCount}</span>
               </p>
               {!batchExportEnabled ? (
-                <p className="text-destructive">
-                  Batch export requires a plan upgrade.{" "}
-                  <Link href="/pricing" className="text-primary hover:underline">
-                    Upgrade
-                  </Link>
-                </p>
+                <UpgradePrompt className="text-destructive">Batch export requires a plan upgrade.</UpgradePrompt>
               ) : null}
             </div>
           ) : null}

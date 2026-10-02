@@ -10,7 +10,7 @@ import {
   Video,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { CampaignPackLauncher, loadExportPlan } from "@/features/render";
+import { CampaignPackLauncher, ExportPlanNote, loadExportPlan, useExportPlan } from "@/features/render";
 import type { PersistedModelConfig } from "@/lib/slot-materials/model-config";
 import { readViewportBackdrop } from "@/lib/export-backdrop";
 import { pixelRatioWithinLimits } from "@/lib/export-limits";
@@ -56,6 +56,7 @@ export function ExportSharePanel({
   const lighting = useMaterialPresetStore((s) => s.lighting);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const exportPlan = useExportPlan();
   const embedReady = canOpenEmbed(sku);
 
   async function handleCapture() {
@@ -158,6 +159,7 @@ export function ExportSharePanel({
         <h3 className="text-[10.5px] font-medium uppercase tracking-[0.16em] text-foreground/80">
           Export & share
         </h3>
+        <ExportPlanNote plan={exportPlan} />
         <CampaignPackLauncher modelId={modelId} sku={sku} name={displayName} modelConfig={modelConfig} />
         <Button
           type="button"

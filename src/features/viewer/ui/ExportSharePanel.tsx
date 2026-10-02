@@ -10,6 +10,9 @@ import {
   Video,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { CampaignPackLauncher } from "@/features/render";
+import type { PersistedModelConfig } from "@/lib/slot-materials/model-config";
+import { readViewportBackdrop } from "@/lib/export-backdrop";
 import { cn } from "@/lib/utils";
 import { renderAtResolution } from "@/lib/offscreen-render";
 import { captureFrameToDataUrl } from "@/stores/screenshot-store";
@@ -21,6 +24,10 @@ type ExportSharePanelProps = {
   modelId: string;
   /** Scene SKU — Share/Embed stays gated until a non-empty SKU is set. */
   sku?: string | null;
+  /** Scene name for export file names. */
+  displayName?: string | null;
+  /** Exact slot tokens, so pack metal re-skins match the studio's slot detection. */
+  modelConfig?: PersistedModelConfig;
   onOpenAi: () => void;
   onOpenExport: () => void;
   onOpenHiResExport: () => void;
@@ -36,6 +43,8 @@ function canOpenEmbed(sku: string | null | undefined): boolean {
 export function ExportSharePanel({
   modelId,
   sku,
+  displayName,
+  modelConfig,
   onOpenAi,
   onOpenExport,
   onOpenHiResExport,
@@ -91,6 +100,7 @@ export function ExportSharePanel({
         pixelRatio: 2,
         exposure,
         postfxConfig,
+        backdrop: readViewportBackdrop(refs.gl.domElement),
       });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -143,6 +153,7 @@ export function ExportSharePanel({
         <h3 className="text-[10.5px] font-medium uppercase tracking-[0.16em] text-foreground/80">
           Export & share
         </h3>
+        <CampaignPackLauncher modelId={modelId} sku={sku} name={displayName} modelConfig={modelConfig} />
         <Button
           type="button"
           variant="outline"
@@ -169,7 +180,7 @@ export function ExportSharePanel({
           <Download className="size-4" aria-hidden />
           <span className="flex flex-col items-start leading-tight">
             <span className="text-sm">Hi-res PNG</span>
-            <span className="text-[10px] text-muted-foreground">1080p · 4K · 8K offscreen</span>
+            <span className="text-[10px] text-muted-foreground">HD · 2K · 4K · 8K offscreen</span>
           </span>
         </Button>
         <Button
@@ -241,7 +252,7 @@ export function ExportSharePanel({
           <Download className="size-4" aria-hidden />
           <span className="flex flex-col items-start leading-tight">
             <span className="text-sm">Download source model</span>
-            <span className="text-[10px] text-muted-foreground">Original uploaded GLB/3DM/STL</span>
+            <span className="text-[10px] text-muted-foreground">The converted GLB</span>
           </span>
         </Button>
       </section>

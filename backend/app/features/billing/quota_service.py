@@ -57,6 +57,7 @@ def _features_for_tier(tier: PlanTier) -> PlanFeatures:
     return PlanFeatures(
         max_variants_per_model=quotas.max_variants_per_model,
         max_image_resolution=quotas.max_image_resolution,
+        max_polygons=quotas.max_polygons,
         watermark_exports=quotas.watermark_exports,
         embed_enabled=True,
         batch_export_enabled=tier != "free",
@@ -124,6 +125,20 @@ def downgrade_to_free(db: Session, billing: UserBilling) -> None:
     billing.period_end = None
     _apply_allotment(billing, "free")
     db.commit()
+
+
+def assert_polygon_limit(db: Session, user: User, polygon_count: int) -> UserBilling:
+    if polygon_count < 0:
+        raise HTTPException(status_code=400, detail="polygon_count must be >= 0")
+    billing = get_or_create_billing(db, user)
+    tier = normalize_tier(billing.plan_tier)
+    cap = get_quotas(tier).max_polygons
+    if polygon_count > cap:
+        raise HTTPException(
+            status_code=402,
+            detail=f"Polygon limit exceeded for {PLAN_LABELS[tier]} (max {cap:,}).",
+        )
+    return billing
 
 
 def assert_model_credit(db: Session, user: User) -> UserBilling:

@@ -15,7 +15,7 @@ const JewelryTile = dynamic(
 
 export function JewelryGrid() {
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
       {JEWELRY.map((p) => (
         <JewelryTile key={p.id} id={p.id} label={p.label} description={p.description} />
       ))}

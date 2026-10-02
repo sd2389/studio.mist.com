@@ -1,9 +1,9 @@
 "use client";
 
-import { Center, Environment, OrbitControls, useGLTF } from "@react-three/drei";
-import { WebGPUCanvas } from "@/lib/gpu/WebGPUCanvas";
-import { Suspense, useMemo } from "react";
+import { useGLTF } from "@react-three/drei";
+import { useMemo } from "react";
 import * as THREE from "three";
+import { StudioCanvas } from "@/features/viewer";
 import { modelExtFromUrl } from "@/lib/model-key";
 
 type ScenePreviewCanvasProps = {
@@ -43,20 +43,11 @@ export function ScenePreviewCanvas({ modelUrl }: ScenePreviewCanvasProps) {
   const isGltf = ext === "glb" || ext === "gltf";
 
   return (
-    <div className="aspect-[4/3] w-full overflow-hidden rounded-xl border border-border/60 bg-muted/20">
+    <div className="aspect-[4/3] w-full overflow-hidden rounded-xl border border-border/60 bg-[#f4f1ea]">
       {isGltf ? (
-        <WebGPUCanvas camera={{ position: [0, 0.2, 2.4], fov: 35 }}>
-          <Suspense fallback={null}>
-            <color attach="background" args={["#f4f1ea"]} />
-            <ambientLight intensity={0.55} />
-            <directionalLight position={[2, 3, 2]} intensity={1} />
-            <Environment preset="studio" />
-            <Center>
-              <GltfPreview url={modelUrl} />
-            </Center>
-            <OrbitControls enablePan={false} enableZoom={false} autoRotate autoRotateSpeed={0.8} />
-          </Suspense>
-        </WebGPUCanvas>
+        <StudioCanvas tile lighting="studio" autoRotate camera={{ position: [0, 0.2, 2.4], fov: 35 }}>
+          <GltfPreview url={modelUrl} />
+        </StudioCanvas>
       ) : (
         <LegacyPreviewNotice />
       )}

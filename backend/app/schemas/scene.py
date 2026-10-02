@@ -3,6 +3,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.product_specs import ProductSpecs
+
 
 class SceneListItem(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
@@ -23,6 +25,7 @@ class SceneListItem(BaseModel):
     slot_selections: dict[str, str] = Field(default_factory=dict)
     scene_settings: dict[str, Any] = Field(default_factory=dict)
     variants: dict[str, Any] = Field(default_factory=dict)
+    product_specs: dict[str, Any] = Field(default_factory=dict)
     model_url: str | None
     thumbnail_key: str | None
     thumbnail_url: str | None
@@ -64,6 +67,7 @@ class SceneDetail(BaseModel):
     slot_selections: dict[str, str] = Field(default_factory=dict)
     scene_settings: dict[str, Any] = Field(default_factory=dict)
     variants: dict[str, Any] = Field(default_factory=dict)
+    product_specs: dict[str, Any] = Field(default_factory=dict)
     model_url: str | None
     thumbnail_key: str | None
     thumbnail_url: str | None
@@ -89,3 +93,4 @@ class ScenePatch(BaseModel):
     slot_selections: dict[str, str] | None = None
     scene_settings: dict[str, Any] | None = None
     variants: dict[str, Any] | None = None
+    product_specs: ProductSpecs | None = None

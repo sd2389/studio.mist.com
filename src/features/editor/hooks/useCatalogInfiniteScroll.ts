@@ -60,11 +60,13 @@ export function useCatalogInfiniteScroll<T extends CatalogItem>({
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const [previousInitial, setPreviousInitial] = useState(initialPage);
+  if (previousInitial !== initialPage) {
+    setPreviousInitial(initialPage);
     setItems(initialPage?.items ?? []);
     setTotal(initialPage?.total ?? 0);
     setError(null);
-  }, [initialPage]);
+  }
 
   useEffect(() => {
     if (items.length === 0) return;

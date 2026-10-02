@@ -41,13 +41,13 @@ export function QualityMenu() {
       <DropdownMenuTrigger
         className={cn(
           buttonVariants({ variant: "ghost", size: "sm" }),
-          "h-8 gap-1.5 px-2 text-black/70 hover:bg-black/[0.04] hover:text-black",
+          "h-8 gap-1.5 px-2 text-foreground/70 hover:bg-foreground/[0.04] hover:text-foreground",
         )}
         aria-label="Preview quality"
       >
         <Gauge className="size-3.5" />
         <span className="flex flex-col items-start leading-none">
-          <span className="text-[8px] font-medium uppercase tracking-[0.14em] text-black/40">
+          <span className="font-mono text-[10px] uppercase tracking-[0.24em] text-foreground/40">
             Quality
           </span>
           <span className="text-[11px] font-medium">{label}</span>

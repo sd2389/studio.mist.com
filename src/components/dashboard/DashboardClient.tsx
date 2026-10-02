@@ -52,10 +52,12 @@ export function DashboardClient({
   const [settingsScene, setSettingsScene] = useState<Scene | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
-  useEffect(() => {
+  const [previousInitial, setPreviousInitial] = useState({ scenes: initialScenes, error: initialError });
+  if (previousInitial.scenes !== initialScenes || previousInitial.error !== initialError) {
+    setPreviousInitial({ scenes: initialScenes, error: initialError });
     setScenes(initialScenes);
     setError(initialError);
-  }, [initialScenes, initialError]);
+  }
 
   const refreshScenes = useCallback(async () => {
     setLoading(true);

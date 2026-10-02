@@ -31,7 +31,7 @@ export function AiBackgroundPanel({
   return (
     <>
       <div className="space-y-2">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+        <p className="font-mono text-[10px] uppercase tracking-[0.24em] text-muted-foreground">
           Background type
         </p>
         <div className="grid grid-cols-2 gap-2">
@@ -70,7 +70,7 @@ export function AiBackgroundPanel({
 
       {backgroundKind === "shoot" ? (
         <div className="space-y-2">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          <p className="font-mono text-[10px] uppercase tracking-[0.24em] text-muted-foreground">
             Scene preset
           </p>
           <div className="relative overflow-hidden rounded-xl border border-border">

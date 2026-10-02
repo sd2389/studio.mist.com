@@ -32,6 +32,10 @@ export type SceneAdvancedSettings = {
   exposure?: number;
   bloom?: number;
   ao?: boolean;
+  /** Star-filter sparkle on gem glints; set from the studio scene, overridable by the user. */
+  starGlints?: boolean;
+  /** Shallow macro-lens depth of field focused on the piece. */
+  macroLens?: boolean;
 };
 
 export type ModelTransform = {
@@ -64,6 +68,8 @@ export type SceneSettingsBuckets = Record<SceneSettingBucketKey, string | null> 
   poses?: SavedPose[];
   activePoseId?: string | null;
   embed?: EmbedSettings;
+  /** Studio scene id (see `@/features/scene-setups`); unknown ids fall back to the default. */
+  sceneSetup?: string | null;
 };
 
 export type PersistedModelConfig = {

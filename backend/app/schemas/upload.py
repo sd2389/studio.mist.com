@@ -9,6 +9,7 @@ class PresignRequest(BaseModel):
 
 class RegisterRequest(BaseModel):
     key: str = Field(..., min_length=3, max_length=512)
+    polygon_count: int = Field(..., ge=0)
     name: str | None = Field(default=None, max_length=255)
     sku: str | None = Field(default=None, max_length=128)
     category: str | None = Field(default=None, max_length=128)

@@ -5,9 +5,10 @@ from app.features.billing.plans import PLAN_QUOTAS, get_quotas
 
 def test_free_plan_allotments():
     quotas = get_quotas("free")
-    assert quotas.model_credits == 50
+    assert quotas.model_credits == 3
     assert quotas.ai_image_credits == 150
     assert quotas.max_variants_per_model == 3
+    assert quotas.max_polygons == 100_000
     assert quotas.watermark_exports is True
 
 
@@ -18,7 +19,14 @@ def test_grow_plan_matches_gemora_parity_targets():
     assert quotas.custom_asset_credits == 25
     assert quotas.max_variants_per_model == 15
     assert quotas.max_image_resolution == 8192
+    assert quotas.max_polygons == 500_000
 
 
 def test_all_tiers_defined():
     assert set(PLAN_QUOTAS.keys()) == {"free", "grow", "studio"}
+
+
+def test_plan_quotas_define_max_polygons():
+    assert PLAN_QUOTAS["free"].max_polygons == 100_000
+    assert PLAN_QUOTAS["grow"].max_polygons == 500_000
+    assert PLAN_QUOTAS["studio"].max_polygons == 2_000_000

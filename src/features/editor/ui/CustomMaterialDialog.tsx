@@ -19,7 +19,7 @@ import { buildCustomGemParams, buildCustomMetalParams } from "@/lib/library/buil
 import { createUserMaterial } from "@/lib/library/fetch-library";
 import { customMaterialRef } from "@/lib/library/custom-material-ref";
 import type { UserMaterialItem } from "@/lib/library/types";
-import type { FinishId, MaterialPresetId } from "@/stores/material-preset-store";
+import type { FinishId } from "@/stores/material-preset-store";
 import type { SlotMaterialRef } from "@/lib/library/custom-material-ref";
 
 type CustomMaterialDialogProps = {

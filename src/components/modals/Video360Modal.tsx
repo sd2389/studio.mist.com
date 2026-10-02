@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertTriangle, Loader2, Video, X } from "lucide-react";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -11,14 +11,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { cn } from "@/lib/utils";
-import {
-  isWebCodecsSupported,
-  recordTurntable,
-  ZIP_FALLBACK_MIME,
-} from "@/lib/video-capture";
-import { getRenderFidelity } from "@/stores/render-fidelity-store";
+import { CaptureNotice, turntableCaptureOptions, videoSizeLabel } from "@/features/render";
+import { downloadBlob } from "@/lib/export-presets";
+import { isWebCodecsSupported, recordTurntable } from "@/lib/video-capture";
+import { withLiveRenderingPaused } from "@/stores/hires-export-store";
 import { getVideoCaptureRefs } from "@/stores/video-capture-store";
+import { Chip } from "@/components/ui/chip";
 
 type Video360ModalProps = {
   open: boolean;
@@ -50,35 +48,6 @@ function bytesPerSecondEstimate(width: number, height: number, fps: number, mult
   return Math.round(width * height * fps * mult);
 }
 
-function ChipOption({
-  label,
-  selected,
-  onClick,
-  disabled,
-}: {
-  label: string;
-  selected: boolean;
-  onClick: () => void;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={cn(
-        "relative rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
-        "border-border bg-card text-foreground/90",
-        "hover:border-primary/30 hover:bg-muted/80",
-        "disabled:opacity-50 disabled:pointer-events-none",
-        selected && "border-primary/40 bg-primary/10 text-foreground ring-1 ring-primary/20",
-      )}
-    >
-      {label}
-    </button>
-  );
-}
-
 export function Video360Modal({ open, onOpenChange, modelId }: Video360ModalProps) {
   const [resId, setResId] = useState<ResolutionId>("1080p");
   const [frames, setFrames] = useState<FrameCount>(120);
@@ -88,6 +57,7 @@ export function Video360Modal({ open, onOpenChange, modelId }: Video360ModalProp
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [hasWebCodecs] = useState(() => isWebCodecsSupported());
   const [etaLabel, setEtaLabel] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -99,6 +69,7 @@ export function Video360Modal({ open, onOpenChange, modelId }: Video360ModalProp
         setProgress(0);
         setError(null);
         setStatus(null);
+        setNotice(null);
         setEtaLabel(null);
         abortRef.current?.abort();
         abortRef.current = null;
@@ -113,15 +84,12 @@ export function Video360Modal({ open, onOpenChange, modelId }: Video360ModalProp
   const durationSec = frames / fps;
   const bps = bytesPerSecondEstimate(resolution.width, resolution.height, fps, bitrate.multiplier);
 
-  const fileSizeStr = useMemo(() => {
-    const mb = (bps * durationSec) / 8 / 1024 / 1024;
-    if (mb < 1) return `~${(mb * 1024).toFixed(0)} KB`;
-    return `~${mb.toFixed(1)} MB`;
-  }, [bps, durationSec]);
+  const fileSizeStr = videoSizeLabel(bps, durationSec);
 
   async function handleRender() {
     setError(null);
     setStatus(null);
+    setNotice(null);
     setProgress(0);
     setEtaLabel(null);
 
@@ -137,19 +105,8 @@ export function Video360Modal({ open, onOpenChange, modelId }: Video360ModalProp
     setBusy(true);
 
     try {
-      const { exposure, postfxConfig } = getRenderFidelity();
-      const blob = await recordTurntable({
-        gl: refs.gl,
-        scene: refs.scene,
-        camera: refs.camera,
-        width: resolution.width,
-        height: resolution.height,
-        frameCount: frames,
-        fps,
-        bitrate: bps,
-        exposure,
-        postfxConfig,
-        onProgress: (p) => {
+      const settings = { width: resolution.width, height: resolution.height, frameCount: frames, fps, bitrate: bps };
+      const result = await withLiveRenderingPaused(() => recordTurntable(turntableCaptureOptions(settings, controller.signal, (p) => {
           setProgress(p);
           const start = startedAtRef.current;
           if (p > 0.01 && start > 0) {
@@ -158,21 +115,15 @@ export function Video360Modal({ open, onOpenChange, modelId }: Video360ModalProp
             const remaining = Math.max(0, total - elapsed);
             setEtaLabel(`~${Math.round(remaining)}s remaining`);
           }
-        },
-        signal: controller.signal,
-      });
+      })));
 
-      const isZip = blob.type === ZIP_FALLBACK_MIME;
-      const ext = isZip ? "zip" : "mp4";
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = `${modelId}-360.${ext}`;
-      a.click();
-      URL.revokeObjectURL(a.href);
+      const isZip = result.kind === "png-zip";
+      downloadBlob(result.blob, `${modelId}-360.${isZip ? "zip" : "mp4"}`);
+      setNotice(result.notice);
       setStatus(
         isZip
-          ? `Downloaded ZIP of ${frames} PNG frames (MP4 unavailable)`
-          : `Downloaded ${ext.toUpperCase()} (${(blob.size / 1024 / 1024).toFixed(1)} MB)`,
+          ? `Downloaded ZIP of ${frames} PNG frames`
+          : `Downloaded MP4 (${(result.blob.size / 1024 / 1024).toFixed(1)} MB · ${result.codec})`,
       );
     } catch (e) {
       if ((e as { name?: string })?.name === "AbortError") {
@@ -220,13 +171,14 @@ export function Video360Modal({ open, onOpenChange, modelId }: Video360ModalProp
             <Label className="text-muted-foreground">Resolution</Label>
             <div className="flex flex-wrap gap-2">
               {RESOLUTIONS.map((r) => (
-                <ChipOption
+                <Chip
                   key={r.id}
-                  label={`${r.label} (${r.width}x${r.height})`}
                   selected={resId === r.id}
                   onClick={() => setResId(r.id)}
                   disabled={busy}
-                />
+                >
+                  {`${r.label} (${r.width}x${r.height})`}
+                </Chip>
               ))}
             </div>
           </div>
@@ -235,13 +187,14 @@ export function Video360Modal({ open, onOpenChange, modelId }: Video360ModalProp
             <Label className="text-muted-foreground">Frames</Label>
             <div className="flex flex-wrap gap-2">
               {FRAME_COUNTS.map((f) => (
-                <ChipOption
+                <Chip
                   key={f}
-                  label={`${f} frames`}
                   selected={frames === f}
                   onClick={() => setFrames(f)}
                   disabled={busy}
-                />
+                >
+                  {`${f} frames`}
+                </Chip>
               ))}
             </div>
           </div>
@@ -250,13 +203,14 @@ export function Video360Modal({ open, onOpenChange, modelId }: Video360ModalProp
             <Label className="text-muted-foreground">FPS</Label>
             <div className="flex flex-wrap gap-2">
               {FPS_OPTIONS.map((f) => (
-                <ChipOption
+                <Chip
                   key={f}
-                  label={`${f} fps`}
                   selected={fps === f}
                   onClick={() => setFps(f)}
                   disabled={busy}
-                />
+                >
+                  {`${f} fps`}
+                </Chip>
               ))}
             </div>
           </div>
@@ -265,13 +219,14 @@ export function Video360Modal({ open, onOpenChange, modelId }: Video360ModalProp
             <Label className="text-muted-foreground">Bitrate</Label>
             <div className="flex flex-wrap gap-2">
               {BITRATES.map((b) => (
-                <ChipOption
+                <Chip
                   key={b.id}
-                  label={b.label}
                   selected={bitrateId === b.id}
                   onClick={() => setBitrateId(b.id)}
                   disabled={busy}
-                />
+                >
+                  {b.label}
+                </Chip>
               ))}
             </div>
           </div>
@@ -323,6 +278,7 @@ export function Video360Modal({ open, onOpenChange, modelId }: Video360ModalProp
               ) : null}
             </div>
           ) : null}
+          <CaptureNotice message={notice} />
           {status ? (
             <p className="text-xs text-muted-foreground" role="status">
               {status}

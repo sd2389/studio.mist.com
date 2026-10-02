@@ -74,11 +74,11 @@ export function DashboardScenesPanel({
         <div className="space-y-1">
           <h2
             id="scenes-heading"
-            className="text-[10px] uppercase tracking-[0.16em] text-black/45"
+            className="font-mono text-[10px] uppercase tracking-[0.24em] text-foreground/45"
           >
             Production archive
           </h2>
-          <p className="max-w-md text-xs text-black/60">
+          <p className="max-w-md text-xs text-foreground/60">
             Open in the editor, share embeds, or remove drafts you don&apos;t
             need.
           </p>
@@ -92,7 +92,7 @@ export function DashboardScenesPanel({
               href="/gallery"
               className={cn(
                 buttonVariants({ variant: "ghost", size: "sm" }),
-                "h-10 rounded-full px-4 text-[9px] uppercase tracking-[0.1em] text-black/55 hover:bg-white/45 hover:text-black",
+                "h-10 rounded-full px-4 font-mono text-[10px] uppercase tracking-[0.24em] text-foreground/55 hover:bg-surface/45 hover:text-foreground",
               )}
             >
               Gallery
@@ -103,7 +103,7 @@ export function DashboardScenesPanel({
               href="/stones"
               className={cn(
                 buttonVariants({ variant: "ghost", size: "sm" }),
-                "h-10 rounded-full px-4 text-[9px] uppercase tracking-[0.1em] text-black/55 hover:bg-white/45 hover:text-black",
+                "h-10 rounded-full px-4 font-mono text-[10px] uppercase tracking-[0.24em] text-foreground/55 hover:bg-surface/45 hover:text-foreground",
               )}
             >
               Cuts
@@ -113,7 +113,7 @@ export function DashboardScenesPanel({
             href="/viewer/clearcoat"
             className={cn(
               buttonVariants({ variant: "outline", size: "sm" }),
-              "h-10 gap-2 rounded-full border-black/10 bg-white/45 px-4 text-[9px] uppercase tracking-[0.1em] shadow-none",
+              "h-10 gap-2 rounded-full border-foreground/10 bg-surface/45 px-4 font-mono text-[10px] uppercase tracking-[0.24em] shadow-none",
             )}
           >
             <Plus className="size-4 shrink-0" aria-hidden />
@@ -160,7 +160,7 @@ export function DashboardScenesPanel({
           </CardContent>
         </Card>
       ) : showEmptyFiltered ? (
-        <Card className="rounded-2xl border-dashed border-border/80 bg-muted/20 shadow-sm ring-1 ring-black/[0.03] dark:ring-white/[0.05]">
+        <Card className="rounded-2xl border-dashed border-border/80 bg-muted/20 shadow-sm ring-1 ring-foreground/[0.03] dark:ring-background/[0.05]">
           <CardContent className="flex flex-col items-center gap-4 p-10 text-center sm:p-14">
             <p className="font-display text-xl italic text-foreground">
               No models match your filters
@@ -171,7 +171,7 @@ export function DashboardScenesPanel({
           </CardContent>
         </Card>
       ) : !hasScenes ? (
-        <Card className="rounded-2xl border-dashed border-border/80 bg-muted/20 shadow-sm ring-1 ring-black/[0.03] dark:ring-white/[0.05]">
+        <Card className="rounded-2xl border-dashed border-border/80 bg-muted/20 shadow-sm ring-1 ring-foreground/[0.03] dark:ring-background/[0.05]">
           <CardContent className="flex flex-col items-center gap-6 p-10 text-center sm:p-14">
             <div
               className="flex size-14 items-center justify-center rounded-2xl bg-primary/10 text-primary dark:bg-primary/20"
@@ -217,12 +217,12 @@ export function DashboardScenesPanel({
                     }
               }
             >
-              <Card className="group/card mb-3 grid overflow-hidden rounded-[1.6rem] border border-black/[0.06] bg-white/38 p-0 shadow-none ring-0 transition-colors hover:bg-white/70 md:grid-cols-[1fr_310px]">
+              <Card className="group/card mb-3 grid overflow-hidden rounded-[1.6rem] border border-foreground/[0.06] bg-surface/38 p-0 shadow-none ring-0 transition-colors hover:bg-surface/70 md:grid-cols-[1fr_310px]">
                 <div className="relative aspect-[16/9] overflow-hidden rounded-[1.25rem] bg-[radial-gradient(circle_at_50%_42%,#ffffff_0%,#dfe7f0_48%,#c8d4e1_100%)] md:order-2 md:m-3 md:ml-0">
                   <div className="absolute inset-0">
                     <SceneCardPreview scene={scene} />
                   </div>
-                  <Badge className="pointer-events-none absolute left-3 top-3 border border-white/10 bg-black/30 px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-white/70 shadow-md backdrop-blur-sm">
+                  <Badge className="pointer-events-none absolute left-3 top-3 border border-background/10 bg-foreground/30 px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.24em] text-background/70 shadow-md backdrop-blur-sm">
                     {scene.category?.trim() || sceneLabel(scene)}
                   </Badge>
                   <Button
@@ -239,7 +239,7 @@ export function DashboardScenesPanel({
                 <CardContent className="space-y-5 p-5 md:order-1 md:flex md:flex-col md:justify-center md:px-8">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 space-y-0.5">
-                      <p className="truncate text-3xl font-light leading-none tracking-[-0.055em] text-black sm:text-5xl">
+                      <p className="truncate text-3xl font-light leading-none tracking-[-0.055em] text-foreground sm:text-5xl">
                         {sceneTitle(scene)}
                       </p>
                       {scene.sku?.trim() ? (

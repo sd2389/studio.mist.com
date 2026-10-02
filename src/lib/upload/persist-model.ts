@@ -1,6 +1,7 @@
 import type { PersistedModelConfig, SceneSettingsBuckets } from "@/lib/slot-materials/model-config";
 import { convertUploadToGlb } from "@/lib/convert/to-glb";
 import type { LoadedModel } from "@/lib/convert/types";
+import { isSupportedModelFilename } from "@/lib/model-key";
 
 export type PersistModelMetadata = {
   name: string;
@@ -16,12 +17,21 @@ export type PersistModelInput = {
   slotSelections: Record<string, string>;
   sceneSettings: SceneSettingsBuckets;
   metadata: PersistModelMetadata;
+  polygonCount: number;
 };
 
 export type PersistModelResult = {
   sceneId: number;
   modelKey: string;
 };
+
+/** A save the server refused on its merits — retrying as multipart would fail identically. */
+class RegisterRejectedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RegisterRejectedError";
+  }
+}
 
 async function presignAndPut(
   filename: string,
@@ -55,6 +65,7 @@ async function presignAndPut(
 
 export async function persistUploadedModel(input: PersistModelInput): Promise<PersistModelResult> {
   const { file, preloaded, modelConfig, slotSelections, sceneSettings, metadata } = input;
+  const polygonCount = Math.max(0, Math.round(input.polygonCount));
 
   const converted = await convertUploadToGlb(file, {
     modelConfig,
@@ -94,6 +105,7 @@ export async function persistUploadedModel(input: PersistModelInput): Promise<Pe
         category: metadata.category,
         note: metadata.note,
         thumbnail_key: thumbnailKey,
+        polygon_count: polygonCount,
         model_config: mergedConfig,
         slot_selections: slotSelections,
         scene_settings: sceneSettings,
@@ -101,13 +113,15 @@ export async function persistUploadedModel(input: PersistModelInput): Promise<Pe
     });
     const regJson = (await reg.json()) as { error?: string; scene_id?: number };
     if (!reg.ok) {
-      throw new Error(regJson.error ?? "Register failed");
+      throw new RegisterRejectedError(regJson.error ?? "Register failed");
     }
     if (typeof regJson.scene_id !== "number") {
       throw new Error("Missing scene_id from register response");
     }
     return { sceneId: regJson.scene_id, modelKey: modelPut.key };
   } catch (presignErr) {
+    if (presignErr instanceof RegisterRejectedError) throw presignErr;
+
     const glbFile = new File([converted.glb], converted.glbFilename, {
       type: "model/gltf-binary",
     });
@@ -117,6 +131,7 @@ export async function persistUploadedModel(input: PersistModelInput): Promise<Pe
     fd.append("sku", metadata.sku);
     fd.append("category", metadata.category);
     fd.append("note", metadata.note);
+    fd.append("polygon_count", String(polygonCount));
     fd.append("model_config", JSON.stringify(mergedConfig));
     fd.append("slot_selections", JSON.stringify(slotSelections));
     fd.append("scene_settings", JSON.stringify(sceneSettings));
@@ -140,6 +155,5 @@ export async function persistUploadedModel(input: PersistModelInput): Promise<Pe
 }
 
 export function isSupportedModelFile(file: File): boolean {
-  const n = file.name.toLowerCase();
-  return n.endsWith(".glb") || n.endsWith(".gltf") || n.endsWith(".stl") || n.endsWith(".3dm");
+  return isSupportedModelFilename(file.name);
 }

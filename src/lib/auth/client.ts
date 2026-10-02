@@ -1,3 +1,5 @@
+import { AuthRequestError } from "@/lib/auth/is-auth-required-error";
+import { parseAuthErrorBody } from "@/lib/auth/parse-auth-error";
 import type { AuthResponse, MessageResponse } from "@/lib/auth/types";
 
 async function authRequest<T>(path: string, init: RequestInit): Promise<T> {
@@ -8,11 +10,16 @@ async function authRequest<T>(path: string, init: RequestInit): Promise<T> {
       ...(init.headers || {}),
     },
   });
-  const data = (await res.json()) as T & { error?: string; detail?: string };
-  if (!res.ok) {
-    throw new Error(data.error ?? data.detail ?? "Request failed");
+  let data: unknown = {};
+  try {
+    data = await res.json();
+  } catch {
+    data = {};
   }
-  return data;
+  if (!res.ok) {
+    throw new AuthRequestError(parseAuthErrorBody(data, "Request failed"), res.status);
+  }
+  return data as T;
 }
 
 export function signUp(body: {
@@ -44,7 +51,10 @@ export function forgotPassword(email: string): Promise<MessageResponse> {
   });
 }
 
-export function resetPassword(body: { token: string; password: string }): Promise<MessageResponse> {
+export function resetPassword(body: {
+  token: string;
+  password: string;
+}): Promise<MessageResponse> {
   return authRequest<MessageResponse>("/api/auth/reset-password", {
     method: "POST",
     body: JSON.stringify(body),

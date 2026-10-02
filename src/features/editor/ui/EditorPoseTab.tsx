@@ -81,7 +81,7 @@ export function EditorPoseTab() {
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
         <div className="space-y-4">
           <div className="space-y-2">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            <p className="font-mono text-[10px] uppercase tracking-[0.24em] text-muted-foreground">
               Default poses
             </p>
             <div className="space-y-1.5">
@@ -97,7 +97,7 @@ export function EditorPoseTab() {
           </div>
 
           <div className="space-y-2">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            <p className="font-mono text-[10px] uppercase tracking-[0.24em] text-muted-foreground">
               Custom poses
             </p>
             {customPoses.length === 0 ? (
@@ -120,7 +120,7 @@ export function EditorPoseTab() {
           </div>
 
           <div className="space-y-2 rounded-lg border border-border/60 bg-muted/20 p-3">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            <p className="font-mono text-[10px] uppercase tracking-[0.24em] text-muted-foreground">
               Save current view
             </p>
             <Input

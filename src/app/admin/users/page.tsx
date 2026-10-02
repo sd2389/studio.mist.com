@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { AdminShell } from "@/features/admin/ui/AdminShell";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { fetchCurrentUser } from "@/lib/auth/server-session";
+import { requirePageUser } from "@/lib/auth/require-page-user";
 import { fetchAdminUsersServer } from "@/lib/admin/server-fetch";
 import { formatStorageGb } from "@/lib/billing/format";
 
@@ -17,8 +17,7 @@ type PageProps = {
 };
 
 export default async function AdminUsersPage({ searchParams }: PageProps) {
-  const user = await fetchCurrentUser();
-  if (!user) redirect("/login?next=/admin/users");
+  const user = await requirePageUser("/admin/users");
   if (user.role !== "admin") redirect("/dashboard");
 
   const { q } = await searchParams;

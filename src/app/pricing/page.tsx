@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { SiteShell } from "@/components/site/SiteShell";
 import { PricingPageClient } from "@/features/billing/ui/PricingPage";
 import { FeatureDisabledPage } from "@/features/feature-flags";
 import { fetchCurrentUser } from "@/lib/auth/server-session";
@@ -6,8 +7,8 @@ import { fetchPricingCatalogServer } from "@/lib/billing/server-fetch";
 import { fetchFeatureFlagsServer, isFeatureEnabled } from "@/lib/feature-flags/server-fetch";
 
 export const metadata: Metadata = {
-  title: "Pricing · DevJewels Studio",
-  description: "Plans, credits, and top-ups for DevJewels Studio.",
+  title: "Pricing · MIST Studio",
+  description: "Plans, credits, and top-ups for MIST Studio.",
 };
 
 const FALLBACK_CATALOG = {
@@ -27,9 +28,8 @@ export default async function PricingPage() {
   }
 
   return (
-    <PricingPageClient
-      catalog={catalog ?? FALLBACK_CATALOG}
-      isAuthenticated={Boolean(user)}
-    />
+    <SiteShell>
+      <PricingPageClient catalog={catalog ?? FALLBACK_CATALOG} isAuthenticated={Boolean(user)} />
+    </SiteShell>
   );
 }

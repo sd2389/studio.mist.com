@@ -68,10 +68,10 @@ export function MoreMaterialsControls({
 
       <div className="rounded-2xl border border-border/60 bg-card/60 p-3">
         <div className="mb-2 flex items-baseline justify-between gap-2">
-          <h4 className="text-[10px] font-medium uppercase tracking-[0.16em] text-foreground/80">
+          <h4 className="font-mono text-[10px] uppercase tracking-[0.24em] text-foreground/80">
             Slot materials
           </h4>
-          <span className="text-[9px] font-medium uppercase tracking-[0.18em] text-muted-foreground/80">
+          <span className="font-mono text-[10px] uppercase tracking-[0.24em] text-muted-foreground/80">
             Source matched
           </span>
         </div>
@@ -97,10 +97,10 @@ export function MoreMaterialsControls({
       {finishApplies ? (
         <div className="rounded-2xl border border-border/60 bg-card/60 p-3">
           <div className="mb-2 flex items-baseline justify-between gap-2">
-            <h4 className="text-[10px] font-medium uppercase tracking-[0.16em] text-foreground/80">
+            <h4 className="font-mono text-[10px] uppercase tracking-[0.24em] text-foreground/80">
               Surface finish
             </h4>
-            <span className="text-[9px] font-medium uppercase tracking-[0.18em] text-muted-foreground/80">
+            <span className="font-mono text-[10px] uppercase tracking-[0.24em] text-muted-foreground/80">
               Applied to metal
             </span>
           </div>

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { AdminShell } from "@/features/admin/ui/AdminShell";
-import { fetchCurrentUser } from "@/lib/auth/server-session";
+import { requirePageUser } from "@/lib/auth/require-page-user";
 import { fetchBillingEventsServer } from "@/lib/admin/server-fetch";
 
 export const metadata: Metadata = {
@@ -9,8 +9,7 @@ export const metadata: Metadata = {
 };
 
 export default async function AdminEventsPage() {
-  const user = await fetchCurrentUser();
-  if (!user) redirect("/login?next=/admin/events");
+  const user = await requirePageUser("/admin/events");
   if (user.role !== "admin") redirect("/dashboard");
 
   const data = await fetchBillingEventsServer();

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { AdminShell } from "@/features/admin/ui/AdminShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { fetchCurrentUser } from "@/lib/auth/server-session";
+import { requirePageUser } from "@/lib/auth/require-page-user";
 import { fetchContactMessagesServer } from "@/lib/admin/server-fetch";
 
 export const metadata: Metadata = {
@@ -10,8 +10,7 @@ export const metadata: Metadata = {
 };
 
 export default async function AdminContactPage() {
-  const user = await fetchCurrentUser();
-  if (!user) redirect("/login?next=/admin/contact");
+  const user = await requirePageUser("/admin/contact");
   if (user.role !== "admin") redirect("/dashboard");
 
   const data = await fetchContactMessagesServer();

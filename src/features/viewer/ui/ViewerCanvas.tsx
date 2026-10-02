@@ -4,7 +4,6 @@ import { Environment, OrbitControls } from "@react-three/drei";
 import { Suspense, useEffect } from "react";
 import * as THREE from "three";
 import { WebGPUCanvas } from "@/lib/gpu/WebGPUCanvas";
-import { ViewerContactShadows } from "@/lib/gpu/ViewerContactShadows";
 import {
   HiresExportBridge,
   OrbitControlsBridge,
@@ -13,38 +12,19 @@ import {
   TransparentCaptureBridge,
   VideoCaptureBridge,
 } from "@/features/render";
+import { SceneSetupStage } from "@/features/scene-setups";
 import { ViewerPostFX } from "./ViewerPostFX";
 import { JewelryModel } from "./JewelryModel";
 import { JewelryGemCompileFallbackBridge } from "./JewelryGemCompileFallbackBridge";
 import { JewelryGemTimeBridge } from "./JewelryGemTimeBridge";
+import { GemScopeBridge } from "./GemScopeBridge";
 import { SceneEnvironmentBridge } from "./SceneEnvironmentBridge";
 import { ScenePoseBridge } from "./ScenePoseBridge";
 import { ViewerToastHost } from "./ViewerToastHost";
-import {
-  backgroundColorForCanvas,
-  groundParamsFromItem,
-  resolveEnvironmentUrl,
-} from "@/lib/catalog/scene-appearance";
 import type { BackgroundItem, EnvironmentItem, GroundItem } from "@/lib/catalog/types";
-import { resolveSourceAssetUrl } from "@/lib/source-catalog";
-import {
-  AMBIENT_BY_LIGHTING,
-  BG_BY_LIGHTING,
-  HDR_FILE_BY_LIGHTING,
-  SPOT_BY_LIGHTING,
-  TONE_EXPOSURE_BY_LIGHTING,
-} from "@/lib/viewer-lighting";
-import {
-  degreesToRadians,
-  envIntensityMultiplier,
-  envRotationDegrees,
-} from "@/lib/viewer-scene";
-import type {
-  PersistedModelConfig,
-  RenderQualityMode,
-  SceneSettingsBuckets,
-} from "@/lib/slot-materials/model-config";
-import { isGemPresetId } from "@/lib/gem-gpu/gem-configs";
+import { resolveCanvasLook } from "../domain/canvas-look";
+import { KEY_LIGHT_POSITION } from "@/lib/viewer-lighting";
+import type { PersistedModelConfig, SceneSettingsBuckets } from "@/lib/slot-materials/model-config";
 import type { LightingPresetId, MaterialPresetId } from "@/stores/material-preset-store";
 import { useViewerQualityStore } from "@/stores/viewer-quality-store";
 
@@ -89,53 +69,16 @@ export function ViewerCanvas({
   }, []);
 
   const dprCap = useViewerQualityStore((s) => s.effective.dprCap);
-  const isGemView = isGemPresetId(preset);
-  const activeEnvironment = isGemView
-    ? gemEnvironment ?? metalEnvironment
-    : metalEnvironment ?? gemEnvironment;
-  const envKind = isGemView ? "gem" : "metal";
-
-  const qualityMode: RenderQualityMode =
-    sceneSettings?.quality_mode === "photometric" ? "photometric" : "standard";
-  const photometric = qualityMode === "photometric";
   const advanced = sceneSettings?.advanced;
-
-  const legacyEnvValue = isGemView
-    ? sceneSettings?.["ENVIRONMENT-GEM"] || sceneSettings?.["ENVIRONMENT-METAL"]
-    : sceneSettings?.["ENVIRONMENT-METAL"] || sceneSettings?.["ENVIRONMENT-GEM"];
-
-  const hdrFile = activeEnvironment
-    ? resolveEnvironmentUrl(activeEnvironment, HDR_FILE_BY_LIGHTING[lighting])
-    : legacyEnvValue
-      ? resolveSourceAssetUrl(legacyEnvValue)
-      : HDR_FILE_BY_LIGHTING[lighting];
-
-  const envRotation = degreesToRadians(
-    envRotationDegrees(advanced, envKind, activeEnvironment?.default_rotation ?? 0),
-  );
-  const envIntensity = envIntensityMultiplier(
-    advanced,
-    envKind,
-    activeEnvironment?.default_intensity ?? 1,
-  );
-
-  const fallbackBg = photometric ? "#E8E4DC" : BG_BY_LIGHTING[lighting];
-  const bg = backgroundColorForCanvas(
+  const look = resolveCanvasLook({
+    lighting,
+    sceneSettings,
+    metalEnvironment,
+    gemEnvironment,
     backgroundItem,
-    sceneSettings?.customBackground,
-    fallbackBg,
-  );
-  const ambient = photometric ? AMBIENT_BY_LIGHTING[lighting] * 0.74 : AMBIENT_BY_LIGHTING[lighting];
-  const spot = photometric ? SPOT_BY_LIGHTING[lighting] * 1.08 : SPOT_BY_LIGHTING[lighting];
-  const exposureBase = photometric
-    ? TONE_EXPOSURE_BY_LIGHTING[lighting] * 0.92
-    : TONE_EXPOSURE_BY_LIGHTING[lighting];
-  const exposure = advanced?.exposure ? exposureBase * advanced.exposure : exposureBase;
-
-  const ground = groundParamsFromItem(groundItem);
-  const legacyGroundNone = sceneSettings?.GROUND?.toLowerCase().includes("none");
-  const contactShadow = !ground.enabled || legacyGroundNone ? 0 : ground.opacity;
-  const contactBlur = ground.blur || (photometric ? 2.1 : 2.5);
+    groundItem,
+  });
+  const { photometric, spot } = look;
 
   return (
     <div className="relative h-full w-full">
@@ -143,12 +86,12 @@ export function ViewerCanvas({
         className="h-full w-full touch-none"
         shadows={{ type: THREE.PCFShadowMap }}
         dpr={[1, dprCap]}
-        camera={{ position: [0, 0.35, 2.2], fov: 45, near: 0.01, far: 200 }}
+        camera={{ position: [0.62, 0.88, 2.25], fov: 42, near: 0.01, far: 200 }}
       >
-        {bg ? <color attach="background" args={[bg]} /> : null}
-        <ambientLight intensity={ambient} />
+        {look.background ? <color attach="background" args={[look.background]} /> : null}
+        <ambientLight intensity={look.ambient} />
         <spotLight
-          position={[4, 6, 4]}
+          position={KEY_LIGHT_POSITION}
           angle={0.35}
           penumbra={0.9}
           intensity={spot}
@@ -166,22 +109,15 @@ export function ViewerCanvas({
         ) : null}
         <Suspense fallback={null}>
           <JewelryModel
-            key={preset}
+            key={modelUrl}
             url={modelUrl}
             preset={preset}
             modelConfig={modelConfig}
             modelTransform={sceneSettings?.modelTransform}
           />
-          <Environment files={hdrFile} background={false} />
-          <SceneEnvironmentBridge rotationRadians={envRotation} intensity={envIntensity} />
-          <ViewerContactShadows
-            position={[0, -0.55, 0]}
-            color="#0a0a0a"
-            opacity={contactShadow}
-            scale={12}
-            blur={contactBlur}
-            far={4.5}
-          />
+          <Environment files={look.metal.file} background={false} />
+          <SceneEnvironmentBridge metal={look.metal} gem={look.gem} />
+          <SceneSetupStage setup={look.stage} background={look.floorBackground} />
           <OrbitControls
             makeDefault
             enableDamping
@@ -197,13 +133,14 @@ export function ViewerCanvas({
             savedPoses={sceneSettings?.poses}
           />
           <ViewerPostFX advanced={advanced} />
-          <RenderFidelityBridge exposure={exposure} advanced={advanced} />
+          <RenderFidelityBridge exposure={look.exposure} advanced={advanced} />
           <ScreenshotBridge />
           <TransparentCaptureBridge />
           <HiresExportBridge />
           <VideoCaptureBridge />
           <JewelryGemTimeBridge />
           <JewelryGemCompileFallbackBridge />
+          <GemScopeBridge photometric={photometric} />
           <OrbitControlsBridge />
         </Suspense>
       </WebGPUCanvas>

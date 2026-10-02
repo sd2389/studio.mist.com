@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { AUTH_PATHS, PROTECTED_PATH_PREFIXES, SESSION_COOKIE } from "@/lib/auth/constants";
+import { safeAuthNext } from "@/lib/auth/safe-auth-next";
 
 function isProtectedPath(pathname: string): boolean {
   return PROTECTED_PATH_PREFIXES.some(
@@ -22,7 +23,8 @@ export function middleware(request: NextRequest) {
   }
 
   if (isAuthPath(pathname) && hasSession && pathname !== "/contact") {
-    return NextResponse.redirect(new URL("/dashboard", request.url));
+    const next = safeAuthNext(request.nextUrl.searchParams.get("next"));
+    return NextResponse.redirect(new URL(next, request.url));
   }
 
   return NextResponse.next();
@@ -31,7 +33,6 @@ export function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     "/dashboard/:path*",
-    "/upload-model/:path*",
     "/model/:path*",
     "/login",
     "/signup",

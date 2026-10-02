@@ -11,7 +11,7 @@ export type ColorManagementSnapshot = {
 };
 
 /**
- * Viewer tone mapping runs in the TSL RenderPipeline (ACES via renderOutput).
+ * Viewer tone mapping runs in the TSL RenderPipeline (PBR Neutral via renderOutput).
  * Keep the renderer itself untoned so exports match the live viewport.
  */
 export function applyViewerColorManagement(renderer: ViewerRenderer, exposure = 1): void {

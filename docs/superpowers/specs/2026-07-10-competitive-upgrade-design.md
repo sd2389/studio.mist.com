@@ -10,7 +10,7 @@
 
 ## 1. Overview
 
-Upgrade DevJewels Studio so the **interactive jewelry viewer clearly beats Gemora** on gem fire/sparkle, while the studio chrome stays **minimal and Gemora-simple**. Ship the full competitive slice in a hard order — not a big bang — so diamonds never ship looking like glass and the UI never re-accumulates dense sidebar clutter.
+Upgrade MIST Studio so the **interactive jewelry viewer clearly beats Gemora** on gem fire/sparkle, while the studio chrome stays **minimal and Gemora-simple**. Ship the full competitive slice in a hard order — not a big bang — so diamonds never ship looking like glass and the UI never re-accumulates dense sidebar clutter.
 
 **Locked decisions**
 
@@ -203,7 +203,7 @@ Keep existing tokens (`components/ui/*`). No new dashboards or card-grid marketi
 - **Unit:** `createGemMaterial` returns material tagged with `GEM_GPU_USER_KEY` and correct preset id for every `GEM_PRESET_IDS` sample (at least diamond, moissanite, ruby, sapphire, emerald, pearl).
 - **Unit:** `ensureFacetedGemNormals` produces non-indexed (or per-face) normals on a smoothed box/sphere fixture.
 - **Visual / golden:** Extend or add viewer golden-image cases for diamond + metal band under fixed camera/light (see existing golden-image plan). Threshold may need recalibration after intentional look change — update goldens deliberately, do not weaken CI blindly.
-- **Manual:** Side-by-side Gemora vs DevJewels orbit on round brilliant; checklist: facet flash, fire on tilt, no milky glass ball.
+- **Manual:** Side-by-side Gemora vs MIST orbit on round brilliant; checklist: facet flash, fire on tilt, no milky glass ball.
 
 ### 7.2 Phase 2 (UI)
 

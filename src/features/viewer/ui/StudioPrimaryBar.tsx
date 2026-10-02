@@ -1,6 +1,6 @@
 "use client";
 
-import { Diamond, Ellipsis, Share, Sun } from "lucide-react";
+import { Diamond, Ellipsis, Share, SlidersHorizontal, Sun } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export type StudioPrimaryPanel =
@@ -9,6 +9,7 @@ export type StudioPrimaryPanel =
   | "light"
   | "export"
   | "more"
+  | "edit"
   | null;
 
 function RingsIcon({
@@ -41,11 +42,16 @@ const CONTROLS = [
   { id: "more", label: "More", icon: Ellipsis },
 ] as const;
 
+/** Saved scenes add an Edit tab: details, specs, full catalogues, placement, batch exports. */
+const EDIT_CONTROL = { id: "edit", label: "Edit", icon: SlidersHorizontal } as const;
+
 type StudioPrimaryBarProps = {
   active: StudioPrimaryPanel;
   onChange: (panel: StudioPrimaryPanel) => void;
   /** When true, tapping the active tab collapses the catalog (phone sheet). */
   collapsible?: boolean;
+  /** Show the Edit tab (saved scenes the user can edit). */
+  withEdit?: boolean;
   layout?: "icons" | "tabs";
   className?: string;
 };
@@ -54,19 +60,22 @@ export function StudioPrimaryBar({
   active,
   onChange,
   collapsible = false,
+  withEdit = false,
   layout = "icons",
   className,
 }: StudioPrimaryBarProps) {
+  const controls = withEdit ? [...CONTROLS, EDIT_CONTROL] : CONTROLS;
   return (
     <div
       className={cn(
-        "grid h-auto shrink-0 grid-cols-5 bg-[#F4F2EE]",
+        "grid h-auto shrink-0 bg-background",
+        withEdit ? "grid-cols-6" : "grid-cols-5",
         className,
       )}
       role="tablist"
       aria-label="Studio primary controls"
     >
-      {CONTROLS.map((control) => {
+      {controls.map((control) => {
         const isActive = active === control.id;
         const Icon = control.icon;
         return (
@@ -82,11 +91,11 @@ export function StudioPrimaryBar({
           >
             <span
               className={cn(
-                "flex w-full flex-col items-center gap-1 rounded-md px-1 py-1.5 text-[8px] font-medium uppercase tracking-[0.11em] transition-colors",
+                "flex w-full flex-col items-center gap-1 rounded-md px-1 py-1.5 font-mono text-[10px] uppercase tracking-[0.24em] transition-colors",
                 layout === "tabs" && "gap-0 py-2 text-[10px] tracking-[0.08em]",
                 isActive
-                  ? "bg-black text-white"
-                  : "text-black/40 hover:bg-black/[0.04] hover:text-black/70",
+                  ? "bg-foreground text-background"
+                  : "text-foreground/40 hover:bg-foreground/[0.04] hover:text-foreground/70",
               )}
             >
               {layout === "icons" ? (

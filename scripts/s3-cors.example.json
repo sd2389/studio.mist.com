@@ -1,6 +1,6 @@
 [
   {
-    "AllowedOrigins": ["https://studio.devjewels.com", "http://localhost:3000"],
+    "AllowedOrigins": ["https://studio.mist.com", "http://localhost:3000"],
     "AllowedMethods": ["GET", "PUT", "HEAD"],
     "AllowedHeaders": ["*"],
     "ExposeHeaders": ["ETag"],

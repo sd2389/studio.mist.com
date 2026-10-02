@@ -37,8 +37,9 @@ export function ContactForm() {
 
   return (
     <AuthShell
+      kicker="Contact"
       title="Contact us"
-      description="Questions about DevJewels Studio? We're here to help."
+      description="Questions about MIST Studio? We're here to help."
       footer={
         <Link href="/login" className="font-medium text-primary hover:underline">
           Back to sign in

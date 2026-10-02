@@ -49,7 +49,7 @@ export function applyQualityToPostFX(
   q: EffectiveQuality,
 ): ViewerPostFXConfig {
   if (q.tier === "high") return config;
-  if (!q.postfxEnabled) return { ...config, aoEnabled: false };
+  if (!q.postfxEnabled) return { ...config, enabled: false, aoEnabled: false };
   return {
     ...config,
     ao: { ...config.ao, quality: q.aoQuality, halfRes: q.aoHalfRes },

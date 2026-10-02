@@ -1,0 +1,86 @@
+/* Range input: thin ink track filled to the value, a pearl thumb. */
+.range {
+  --track: rgba(33, 33, 33, 0.12);
+  --ink: #212121;
+}
+
+.range::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--ink) 0 var(--fill), var(--track) var(--fill) 100%);
+}
+
+.range::-moz-range-track {
+  height: 3px;
+  border-radius: 999px;
+  background: var(--track);
+}
+
+.range::-moz-range-progress {
+  height: 3px;
+  border-radius: 999px;
+  background: var(--ink);
+}
+
+.range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  margin-top: -9.5px;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: 1px solid rgba(33, 33, 33, 0.18);
+  background: radial-gradient(circle at 35% 30%, #ffffff 0%, #eef2f7 70%, #dfe6ee 100%);
+  box-shadow: 0 6px 14px -6px rgba(33, 33, 33, 0.45);
+  transition: transform 0.15s ease;
+}
+
+.range::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: 1px solid rgba(33, 33, 33, 0.18);
+  background: radial-gradient(circle at 35% 30%, #ffffff 0%, #eef2f7 70%, #dfe6ee 100%);
+  box-shadow: 0 6px 14px -6px rgba(33, 33, 33, 0.45);
+}
+
+.range:active::-webkit-slider-thumb {
+  transform: scale(1.08);
+}
+
+.range:focus-visible {
+  outline: none;
+}
+
+.range:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 4px rgba(35, 99, 107, 0.25), 0 6px 14px -6px rgba(33, 33, 33, 0.45);
+}
+
+/*
+ * Preview backdrop: the canvas background as it comes out of the post pipeline's tone
+ * mapping (#eaeff5 renders as #e3e8ef), so the stage has no seam around the render.
+ */
+.stage {
+  background: #e3e8ef;
+}
+
+.shimmer {
+  background: linear-gradient(100deg, transparent 20%, rgba(255, 255, 255, 0.7) 50%, transparent 80%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shimmer {
+    animation: none;
+  }
+}

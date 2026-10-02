@@ -70,7 +70,7 @@ def _send_smtp(
 
 
 def send_password_reset_email(*, to: str, reset_url: str) -> None:
-    subject = "Reset your DevJewels Studio password"
+    subject = "Reset your MIST Studio password"
     body_text = (
         f"Use the link below to reset your password. It expires in 24 hours.\n\n"
         f"{reset_url}\n\n"

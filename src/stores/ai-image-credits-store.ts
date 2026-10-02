@@ -42,6 +42,6 @@ export const useAiImageCreditsStore = create<State>()(
           hydrated: true,
         }),
     }),
-    { name: "devjewels-ai-image-credits" },
+    { name: "mist-studio-ai-image-credits" },
   ),
 );

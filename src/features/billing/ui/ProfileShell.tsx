@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,6 +14,7 @@ import { Progress } from "@/components/ui/progress";
 import { formatCredits, formatStorageGb, storagePercent } from "@/lib/billing/format";
 import { openBillingPortal, startSubscriptionCheckout } from "@/lib/billing/client";
 import type { UserBillingSnapshot } from "@/lib/billing/types";
+import { BuyCreditsCard } from "./BuyCreditsCard";
 import { logOut } from "@/lib/auth/client";
 import type { AuthUser } from "@/lib/auth/types";
 
@@ -163,9 +164,12 @@ export function ProfileShell({ initialUser, initialBilling }: ProfileShellProps)
                     Manage billing
                   </Button>
                 ) : null}
-                <Button variant="outline" asChild>
-                  <Link href="/pricing">View all plans</Link>
-                </Button>
+                <Link
+                  href="/pricing"
+                  className={buttonVariants({ variant: "outline" })}
+                >
+                  View all plans
+                </Link>
               </div>
             </CardContent>
           </Card>
@@ -223,6 +227,8 @@ export function ProfileShell({ initialUser, initialBilling }: ProfileShellProps)
             </CardContent>
           </Card>
 
+          <BuyCreditsCard />
+
           <Card>
             <CardHeader>
               <CardTitle className="text-lg">Plan features</CardTitle>
@@ -230,6 +236,7 @@ export function ProfileShell({ initialUser, initialBilling }: ProfileShellProps)
             <CardContent>
               <ul className="grid gap-2 text-sm text-muted-foreground sm:grid-cols-2">
                 <li>Max variants per model: {features.max_variants_per_model}</li>
+                <li>Max polygons per model: {features.max_polygons.toLocaleString()}</li>
                 <li>Max image resolution: {features.max_image_resolution}px</li>
                 <li>Watermark exports: {features.watermark_exports ? "Yes" : "No"}</li>
                 <li>Batch export: {features.batch_export_enabled ? "Yes" : "Upgrade required"}</li>

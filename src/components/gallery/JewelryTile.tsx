@@ -1,82 +1,61 @@
 "use client";
 
-import { Center, Environment, OrbitControls } from "@react-three/drei";
-import { WebGPUCanvas } from "@/lib/gpu/WebGPUCanvas";
+import { ArrowUpRight, SlidersHorizontal } from "lucide-react";
 import Link from "next/link";
-import { Suspense, useEffect, useMemo } from "react";
-import * as THREE from "three";
-import { Card, CardContent } from "@/components/ui/card";
-import { createGemMaterial } from "@/lib/gem-gpu/gem-physical-material";
-import { createPresetMaterial } from "@/lib/material-presets";
-import {
-  getJewelryById,
-  getRole,
-  type JewelryId,
-} from "@/lib/jewelry/assembly";
+import { useEffect, useMemo, useRef } from "react";
+import { applyGalleryMaterials } from "@/components/gallery/gallery-materials";
+import { useFilmTheme } from "@/components/scroll-film/film-theme";
+import { StudioCanvas } from "@/features/viewer";
+import { useNearViewport } from "@/lib/use-near-viewport";
+import { LIGHTING_PRESETS, siteLighting } from "@/lib/viewer-lighting";
+import { designerHref, getJewelryById, type JewelryId } from "@/lib/jewelry/assembly";
 
 type Props = { id: JewelryId; label: string; description: string };
 
 export function JewelryTile({ id, label, description }: Props) {
   const piece = getJewelryById(id);
   const root = useMemo(() => (piece ? piece.build() : null), [piece]);
-  const metal = useMemo(() => createPresetMaterial("gold-18k-yellow"), []);
-  const gem = useMemo(() => createGemMaterial("diamond"), []);
 
   useEffect(() => {
-    if (!root) return;
-    root.traverse((o) => {
-      if (!(o instanceof THREE.Mesh)) return;
-      const role = getRole(o);
-      if (role === "metal") o.material = metal;
-      else if (role === "gem" || role === "accent-gem") o.material = gem;
-    });
-  }, [root, metal, gem]);
+    if (root) applyGalleryMaterials(root);
+  }, [root]);
+  const frameRef = useRef<HTMLDivElement>(null);
+  const live = useNearViewport(frameRef);
+  const lighting = siteLighting(useFilmTheme());
 
   if (!piece || !root) return null;
 
   return (
-    <Link
-      href={`/gallery/${id}`}
-      className="group block focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      aria-label={`Open ${label} in studio`}
-    >
-      <Card className="overflow-hidden rounded-[1.75rem] border border-black/[0.06] bg-[#eaeff5] p-0 text-black ring-0 transition duration-300 group-hover:bg-white">
-        <div className="relative aspect-square overflow-hidden bg-[radial-gradient(circle_at_50%_42%,#ffffff_0%,#dfe7f0_50%,#cad6e3_100%)]">
-          <span className="absolute left-4 top-4 z-10 border border-white/20 bg-black/30 px-2.5 py-1 text-[8px] uppercase tracking-[0.14em] text-white/60 backdrop-blur">
-            Live 3D
-          </span>
-          <WebGPUCanvas
-            className="h-full w-full"
-            camera={{ position: [1.6, 0.9, 1.6], fov: 38, near: 0.01, far: 50 }}
-            dpr={[1, 2]}
-          >
-            <ambientLight intensity={0.4} />
-            <Suspense fallback={null}>
-              <Environment
-                files="/hdr/photo_studio_01_1k.hdr"
-                background={false}
-              />
-              <Center>
-                <primitive object={root} />
-              </Center>
-              <OrbitControls
-                enableZoom={false}
-                enablePan={false}
-                autoRotate
-                autoRotateSpeed={1.1}
-              />
-            </Suspense>
-          </WebGPUCanvas>
-        </div>
-        <CardContent className="space-y-2 p-5">
-          <p className="text-2xl font-light tracking-[-0.05em] text-black">
+    <article className="group relative overflow-hidden rounded-[24px] border border-hairline bg-surface transition-colors duration-300 hover:border-holo/50">
+      <div ref={frameRef} className="relative aspect-square overflow-hidden" style={{ backgroundColor: LIGHTING_PRESETS[lighting].gemBackground }}>
+        <span className="absolute left-4 top-4 z-10 font-mono text-[10px] uppercase tracking-[0.24em] text-faint">Live 3D · CAD</span>
+        {live ? (
+          <StudioCanvas tile lighting={lighting} autoRotate camera={{ position: [1.6, 0.9, 1.6], fov: 38 }}>
+            <primitive object={root} />
+          </StudioCanvas>
+        ) : null}
+      </div>
+      <div className="space-y-2 p-5">
+        <h2 className="font-display text-[26px] font-light tracking-[-0.04em] text-foreground">
+          {/* Stretched link: the whole card opens the studio view. */}
+          <Link href={`/gallery/${id}`} className="after:absolute after:inset-0 focus:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring">
             {label}
-          </p>
-          <p className="line-clamp-2 text-xs leading-5 text-black/45">
-            {description}
-          </p>
-        </CardContent>
-      </Card>
-    </Link>
+          </Link>
+        </h2>
+        <p className="line-clamp-2 text-[13px] leading-5 text-dim">{description}</p>
+        <div className="flex items-center justify-between gap-3 pt-2">
+          <span className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.24em] text-faint">
+            Open in studio <ArrowUpRight className="size-3.5" aria-hidden />
+          </span>
+          <Link
+            href={designerHref(id)}
+            className="relative z-10 inline-flex items-center gap-2 rounded-full border border-hairline-strong px-4 py-2 text-[12px] text-foreground transition-colors hover:border-foreground hover:bg-foreground hover:text-background"
+          >
+            <SlidersHorizontal className="size-3.5" aria-hidden />
+            Customize
+          </Link>
+        </div>
+      </div>
+    </article>
   );
 }

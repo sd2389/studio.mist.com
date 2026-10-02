@@ -110,6 +110,7 @@ export function EditorSceneTab({ initialPresets }: EditorSceneTabProps) {
           <div className="grid grid-cols-3 gap-2">
             {filteredItems.map((item) => (
               <CatalogSwatchTile
+                image
                 key={item.slug}
                 item={item}
                 selected={selectedSlug === item.slug}

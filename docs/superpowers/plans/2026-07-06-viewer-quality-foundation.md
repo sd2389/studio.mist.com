@@ -15,7 +15,7 @@
 - TypeScript strict; zero `any`; no `@ts-ignore` (repo standard, `docs/CODE-STANDARDS.md`).
 - Feature layout rules from `docs/ARCHITECTURE.md`: pure logic in `src/lib`, UI in `src/features/*/ui`, no domain logic in route handlers.
 - Import via `@/` alias, feature barrels for cross-feature imports.
-- All commands run from repo root: `/home/smitdesai/Coding/studio.devjewels.com/jewelry-renderer`.
+- All commands run from repo root: `/home/smitdesai/Coding/studio.mist.com/jewelry-renderer`.
 - Existing type `PostFXQuality = "performance" | "low" | "medium" | "high" | "ultra"` from `src/lib/viewer-postfx-config.ts` — reuse, don't redefine.
 
 ---

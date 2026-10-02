@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ViewerCanvas } from "@/features/viewer/ui/ViewerCanvas";
-import { convertUploadToGlb } from "@/lib/convert/to-glb";
+import { convertUploadToGlb, inspectModelFromFile } from "@/lib/convert/to-glb";
 import type { LightingPresetId, MaterialPresetId } from "@/stores/material-preset-store";
 import { jobEndpoints, isValidPayload } from "@/lib/golden/job-mode";
 import { getPublicApiUrl } from "@/lib/api-url";
@@ -41,7 +41,8 @@ export function RenderHarness() {
   const exportMode = params.get("export") === "1";
   const isGlb = modelPath.endsWith(".glb") || modelPath.endsWith(".gltf");
 
-  const [modelUrl, setModelUrl] = useState<string | null>(null);
+  const [loadedModelUrl, setModelUrl] = useState<string | null>(null);
+  const modelUrl = !isJobMode && isGlb ? modelPath : loadedModelUrl;
   const [jobLighting, setJobLighting] = useState<LightingPresetId>("studio");
   const [jobPreset, setJobPreset] = useState<MaterialPresetId>("gold-18k-yellow");
   const [jobPayloadDims, setJobPayloadDims] = useState<{ width: number; height: number } | null>(null);
@@ -97,7 +98,7 @@ export function RenderHarness() {
       }
       window.__JOB_STATE__ = "error:" + message;
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [isJobMode, jobId, jobToken]);
 
   // Golden / export mode: only runs when NOT in job mode
@@ -109,39 +110,48 @@ export function RenderHarness() {
     // If the model is already a GLB/GLTF static asset, pass it directly — no conversion needed.
     // This avoids the blob URL extension problem (JewelryModel rejects blob: URLs).
     if (isGlb) {
-      setModelUrl(modelPath);
       return;
     }
 
-    // Non-GLB path: fetch + convert. Only export mode can consume the result —
-    // view mode cannot mount a converted blob URL (see below).
+    let cancelled = false;
+    let convertedUrl: string | undefined;
+    // Exercise the same CAD conversion used by the upload flow.
     (async () => {
       const res = await fetch(modelPath);
       if (!res.ok) throw new Error(`fetch ${modelPath}: ${res.status}`);
       const blob = await res.blob();
       const file = new File([blob], modelPath.split("/").pop() ?? "model.3dm");
-      const converted = await convertUploadToGlb(file);
+      const inspected = await inspectModelFromFile(file);
+      const slots: Record<string, number> = {};
+      inspected.loaded.root.traverse((object) => {
+        if (!("isMesh" in object)) return;
+        const slot = String(object.userData.devjewelsSlot ?? "unassigned");
+        slots[slot] = (slots[slot] ?? 0) + 1;
+      });
+      console.info("[CAD inspection]", JSON.stringify(slots));
+      const converted = await convertUploadToGlb(file, { generateThumbnail: false, preloaded: inspected.loaded });
+      if (cancelled) return;
       // convertUploadToGlb returns ConvertToGlbResult where .glb is already a Blob
       const glbBlob = converted.glb;
 
+      convertedUrl = URL.createObjectURL(glbBlob);
       if (exportMode) {
         const a = document.createElement("a");
-        a.href = URL.createObjectURL(glbBlob);
-        a.download = "PDR-2413.glb";
+        a.href = convertedUrl;
+        a.download = converted.glbFilename;
         a.click();
         window.__HARNESS_STATE__ = "exported";
         return;
       }
 
-      // View mode with a converted model: JewelryModel rejects blob: URLs
-      // (they lack a file extension), so mounting the canvas would render an
-      // error card while the frame counter still flagged "ready". Fail
-      // explicitly instead and leave the canvas unmounted (modelUrl stays null).
-      window.__HARNESS_STATE__ =
-        "error:non-glb model cannot be viewed (blob URLs lack extensions); use a .glb model or export=1";
+      setModelUrl(convertedUrl);
     })().catch((e: unknown) => {
-      window.__HARNESS_STATE__ = `error:${e instanceof Error ? e.message : String(e)}`;
+      if (!cancelled) window.__HARNESS_STATE__ = `error:${e instanceof Error ? e.message : String(e)}`;
     });
+    return () => {
+      cancelled = true;
+      if (convertedUrl) URL.revokeObjectURL(convertedUrl);
+    };
   }, [isJobMode, modelPath, isGlb, exportMode]);
 
   // Ready signal + job render: fires after canvas is mounted and warm

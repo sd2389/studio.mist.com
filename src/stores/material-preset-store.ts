@@ -86,7 +86,8 @@ export const useMaterialPresetStore = create<StudioState>((set) => ({
     })),
   replaceSlotSelections: (slotSelections) => set({ slotSelections }),
   resetSlotPresets: () => set({ slotSelections: {} }),
-  autoRotate: true,
+  // Off by default so the piece holds the pose the user framed; rotation is one toggle away.
+  autoRotate: false,
   setAutoRotate: (autoRotate) => set({ autoRotate }),
   lighting: "studio",
   setLighting: (lighting) => set({ lighting }),

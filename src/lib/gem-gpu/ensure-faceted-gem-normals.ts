@@ -2,10 +2,31 @@ import * as THREE from "three";
 
 export const FACETED_GEM_NORMALS_KEY = "gemFacetedNormals" as const;
 
+/** True when every triangle of a non-indexed geometry already carries one shared normal. */
+function hasFlatNormals(geometry: THREE.BufferGeometry): boolean {
+  if (geometry.index) return false;
+  const normal = geometry.getAttribute("normal");
+  if (!normal) return false;
+  const n = normal.array as ArrayLike<number>;
+  for (let tri = 0; tri + 8 < n.length; tri += 9) {
+    for (let k = 3; k < 9; k += 3) {
+      if (
+        Math.abs(n[tri]! - n[tri + k]!) > 1e-4 ||
+        Math.abs(n[tri + 1]! - n[tri + k + 1]!) > 1e-4 ||
+        Math.abs(n[tri + 2]! - n[tri + k + 2]!) > 1e-4
+      ) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 /**
  * CAD gem meshes often arrive with smoothed vertex normals. Jewelry fire needs
- * per-face normals. Procedural cuts in cut-geometries.ts already flat-shade —
- * skip those via the userData flag after first prep.
+ * per-face normals. Geometry that is already non-indexed with flat normals (the
+ * procedural and CAD cut libraries) is only flagged, never copied — copying shared
+ * cache geometry on every re-render would leak a new copy each time.
  */
 export function ensureFacetedGemNormals(
   geometry: THREE.BufferGeometry,
@@ -13,16 +34,15 @@ export function ensureFacetedGemNormals(
   if (geometry.userData[FACETED_GEM_NORMALS_KEY] === true) {
     return geometry;
   }
+  if (hasFlatNormals(geometry)) {
+    geometry.userData[FACETED_GEM_NORMALS_KEY] = true;
+    return geometry;
+  }
 
-  const source = geometry.index ? geometry : geometry;
-  const faceted = source.index ? source.toNonIndexed() : source.clone();
+  const faceted = geometry.index ? geometry.toNonIndexed() : geometry.clone();
   faceted.computeVertexNormals();
   faceted.computeBoundingSphere();
   faceted.userData[FACETED_GEM_NORMALS_KEY] = true;
-
-  if (faceted !== geometry) {
-    // Caller owns disposal of the previous geometry when replacing on a mesh.
-  }
   return faceted;
 }
 

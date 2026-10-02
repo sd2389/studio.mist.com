@@ -88,7 +88,7 @@ export function EditorEnvironmentTab({ envType, initialEnvironments }: EditorEnv
 
         {envType === "metal_env" ? (
           <div className="space-y-3 rounded-lg border border-border/60 bg-muted/20 p-3">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            <p className="font-mono text-[10px] uppercase tracking-[0.24em] text-muted-foreground">
               Configuration
             </p>
             <EditorSliderField
@@ -131,6 +131,7 @@ export function EditorEnvironmentTab({ envType, initialEnvironments }: EditorEnv
               const tileItem = preview ? { ...item, swatch_url: preview } : item;
               return (
                 <CatalogSwatchTile
+                image
                   key={item.slug}
                   item={tileItem}
                   selected={selectedSlug === item.slug}

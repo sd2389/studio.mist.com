@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { cloneJewelryMaterial } from "@/lib/gem-gpu/clone-jewelry-material";
 import { createPresetMaterial } from "@/lib/material-presets";
 import {
   applySplitGemBandPreset,
@@ -6,6 +7,7 @@ import {
 } from "@/lib/gem-gpu/apply-split-diamond";
 import { createGemMaterial, isGemGpuMaterial } from "@/lib/gem-gpu/gem-physical-material";
 import { ensureFacetedGemNormalsOnMesh } from "@/lib/gem-gpu/ensure-faceted-gem-normals";
+import { isGemTraceMaterial, prepareGemTraceMesh } from "@/lib/gem-gpu/gem-trace-material";
 import { isGemPresetId } from "@/lib/gem-gpu/gem-configs";
 import {
   createGemMaterialFromParams,
@@ -55,7 +57,7 @@ export function snapshotOriginalMaterials(root: THREE.Object3D): void {
     if (!(obj instanceof THREE.Mesh)) return;
     if (obj.userData[ORIGINAL_KEY]) return;
     const m = obj.material;
-    obj.userData[ORIGINAL_KEY] = Array.isArray(m) ? m.map((x) => x.clone()) : m.clone();
+    obj.userData[ORIGINAL_KEY] = Array.isArray(m) ? m.map(cloneJewelryMaterial) : cloneJewelryMaterial(m);
   });
 }
 
@@ -66,8 +68,8 @@ function restoreOriginal(mesh: THREE.Mesh): void {
   if (Array.isArray(current)) current.forEach((m) => m.dispose());
   else current.dispose();
   mesh.material = Array.isArray(saved)
-    ? saved.map((x) => x.clone())
-    : saved.clone();
+    ? saved.map(cloneJewelryMaterial)
+    : cloneJewelryMaterial(saved);
 }
 
 export function applyMaterialPreset(
@@ -242,12 +244,14 @@ function assignMaterial(mesh: THREE.Mesh, template: THREE.Material): void {
   if (Array.isArray(mesh.material)) {
     const len = mesh.material.length;
     mesh.material.forEach((m) => m.dispose());
-    mesh.material = Array.from({ length: len }, () => template.clone());
+    mesh.material = Array.from({ length: len }, (_, i) => i === 0 ? template : cloneJewelryMaterial(template));
   } else {
     mesh.material.dispose();
-    mesh.material = template.clone();
+    mesh.material = template;
   }
-  if (isGemGpuMaterial(template)) {
+  if (isGemTraceMaterial(template)) {
+    prepareGemTraceMesh(mesh);
+  } else if (isGemGpuMaterial(template)) {
     ensureFacetedGemNormalsOnMesh(mesh);
   }
 }

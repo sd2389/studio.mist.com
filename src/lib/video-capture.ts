@@ -1,4 +1,4 @@
-import * as THREE from "three";
+import type * as THREE from "three";
 import {
   BufferTarget,
   EncodedPacket,
@@ -6,20 +6,26 @@ import {
   Mp4OutputFormat,
   Output,
 } from "mediabunny";
-import { createViewerRenderer, type ViewerRenderer } from "@/lib/gpu/viewer-renderer";
-import { applyViewerColorManagement } from "@/lib/render-color-management";
+import type { ViewerRenderer } from "@/lib/gpu/viewer-renderer";
 import {
-  DEFAULT_VIEWER_POSTFX,
-  type ViewerPostFXConfig,
-} from "@/lib/viewer-postfx-config";
+  orbitPosition,
+  orbitStartFromView,
+  turntableAngle,
+  type Vec3,
+} from "@/lib/camera-orbit";
+import { loadBackdropImage, WHITE_BACKDROP, type ExportBackdrop } from "@/lib/export-backdrop";
 import {
-  createViewerPostFXComposer,
-  renderWithPostFX,
-} from "@/lib/viewer-postfx-pipeline";
+  createOffscreenRenderSession,
+  encodeCanvas,
+  type ExportCanvas,
+  type OffscreenRenderSession,
+} from "@/lib/offscreen-render";
+import { defaultVideoBitrate, resolveH264EncoderConfig } from "@/lib/video-codec";
+import type { ViewerPostFXConfig } from "@/lib/viewer-postfx-config";
 
 export type CameraPose = {
-  cameraPosition: [number, number, number];
-  target: [number, number, number];
+  cameraPosition: Vec3;
+  target: Vec3;
 };
 
 export type RecordTurntableOpts = {
@@ -33,6 +39,10 @@ export type RecordTurntableOpts = {
   bitrate?: number;
   exposure?: number;
   postfxConfig?: ViewerPostFXConfig;
+  /** Orbit pivot — pass the OrbitControls target. Defaults to the origin. */
+  target?: Vec3;
+  /** Painted behind transparent regions (CSS gradient / image backgrounds). */
+  backdrop?: ExportBackdrop | null;
   onProgress?: (p: number) => void;
   signal?: AbortSignal;
 };
@@ -41,311 +51,232 @@ export type RecordMultiAngleOpts = RecordTurntableOpts & {
   poses: CameraPose[];
 };
 
+export type VideoCaptureResult = {
+  blob: Blob;
+  kind: "mp4" | "png-zip";
+  codec: string | null;
+  /** Why the MP4 path was not used — shown to the user, never swallowed. */
+  notice: string | null;
+};
+
 export const ZIP_FALLBACK_MIME = "application/zip+png-frames";
 
+const MAX_ENCODE_QUEUE = 8;
+
 export function isWebCodecsSupported(): boolean {
-  if (typeof window === "undefined") return false;
-  const w = window as unknown as { VideoEncoder?: unknown };
-  return typeof w.VideoEncoder !== "undefined";
+  return typeof window !== "undefined" && typeof window.VideoEncoder !== "undefined";
 }
 
-type VideoEncoderStatic = {
-  isConfigSupported(cfg: Record<string, unknown>): Promise<{ supported?: boolean }>;
+function abortError(): DOMException {
+  return new DOMException("Aborted", "AbortError");
+}
+
+export function isAbortError(error: unknown): boolean {
+  return (error as { name?: string } | null)?.name === "AbortError";
+}
+
+function nextTick(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+export type Mp4FrameEncoder = {
+  readonly codec: string;
+  /** Encodes the canvas as frame `index`; resolves once the encoder has room for more. */
+  addFrame(source: ExportCanvas, index: number): Promise<void>;
+  finish(): Promise<Blob>;
+  cancel(): Promise<void>;
 };
 
-type VideoEncoderCtor = (new (init: {
-  output: (chunk: EncodedVideoChunk, meta?: EncodedVideoChunkMetadata) => void;
-  error: (e: unknown) => void;
-}) => VideoEncoderInst) &
-  VideoEncoderStatic;
+export type Mp4EncoderSetup =
+  | { ok: true; encoder: Mp4FrameEncoder }
+  | { ok: false; reason: string };
 
-type VideoEncoderInst = {
-  configure(cfg: Record<string, unknown>): void;
-  encode(frame: unknown, opts?: { keyFrame?: boolean }): void;
-  flush(): Promise<void>;
-  close(): void;
-  state: string;
-};
-
-type VideoFrameCtor = new (
-  source: HTMLCanvasElement | OffscreenCanvas | ImageBitmap,
-  init?: { timestamp?: number; duration?: number },
-) => { close(): void };
-
-async function loadFflate() {
-  return (await import("fflate")) as unknown as {
-    zipSync: (data: Record<string, Uint8Array>, opts?: { level?: number }) => Uint8Array;
-  };
-}
-
-function snapshotCamera(camera: THREE.PerspectiveCamera) {
-  return {
-    position: camera.position.clone(),
-    quaternion: camera.quaternion.clone(),
-    aspect: camera.aspect,
-    fov: camera.fov,
-    near: camera.near,
-    far: camera.far,
-  };
-}
-
-function restoreCamera(camera: THREE.PerspectiveCamera, s: ReturnType<typeof snapshotCamera>) {
-  camera.position.copy(s.position);
-  camera.quaternion.copy(s.quaternion);
-  camera.aspect = s.aspect;
-  camera.fov = s.fov;
-  camera.near = s.near;
-  camera.far = s.far;
-  camera.updateProjectionMatrix();
-}
-
-async function nextTick() {
-  await new Promise<void>((r) => setTimeout(r, 0));
-}
-
-async function encodeMp4(
-  opts: RecordTurntableOpts,
-  renderFrame: (i: number) => HTMLCanvasElement | OffscreenCanvas,
-): Promise<Blob | null> {
-  if (!isWebCodecsSupported()) return null;
-
-  const w = window as unknown as { VideoEncoder: VideoEncoderCtor; VideoFrame: VideoFrameCtor };
-  const codec = "avc1.640028";
-  const bitrate = opts.bitrate ?? Math.round(opts.width * opts.height * opts.fps * 0.12);
-  const encoderConfig = {
-    codec,
-    width: opts.width,
-    height: opts.height,
-    bitrate,
-    framerate: opts.fps,
-    bitrateMode: "variable" as const,
-    latencyMode: "quality" as const,
-  };
-
-  const supportCheck = await w.VideoEncoder.isConfigSupported(encoderConfig);
-  if (!supportCheck?.supported) return null;
+/** H.264 MP4 encoder with the level chosen for the resolution (see `video-codec.ts`). */
+export async function createMp4FrameEncoder(spec: {
+  width: number;
+  height: number;
+  fps: number;
+  bitrate?: number;
+}): Promise<Mp4EncoderSetup> {
+  if (!isWebCodecsSupported()) {
+    return { ok: false, reason: "This browser has no WebCodecs video encoder (use Chrome, Edge or Safari 17+)." };
+  }
+  const bitrate = spec.bitrate ?? defaultVideoBitrate(spec.width, spec.height, spec.fps);
+  const resolved = await resolveH264EncoderConfig({ ...spec, bitrate }, (config) =>
+    VideoEncoder.isConfigSupported(config),
+  );
+  if (!resolved.ok) return resolved;
 
   const source = new EncodedVideoPacketSource("avc");
   const output = new Output({
     format: new Mp4OutputFormat({ fastStart: "in-memory" }),
     target: new BufferTarget(),
   });
-  output.addVideoTrack(source, { frameRate: opts.fps });
+  output.addVideoTrack(source, { frameRate: spec.fps });
   await output.start();
 
   const pending: Promise<void>[] = [];
-  let encoderErr: unknown = null;
-
-  const encoder = new w.VideoEncoder({
+  let failure: unknown = null;
+  const encoder = new VideoEncoder({
     output: (chunk, meta) => {
-      const packet = EncodedPacket.fromEncodedChunk(chunk);
-      pending.push(source.add(packet, meta));
+      pending.push(source.add(EncodedPacket.fromEncodedChunk(chunk), meta));
     },
-    error: (e) => {
-      encoderErr = e;
+    error: (error) => {
+      failure = error;
     },
   });
+  encoder.configure(resolved.config);
 
-  encoder.configure(encoderConfig);
+  const frameDuration = Math.round(1_000_000 / spec.fps);
+  const keyFrameInterval = Math.max(1, Math.round(spec.fps));
 
-  const microsecPerFrame = Math.round(1_000_000 / opts.fps);
+  const frameEncoder: Mp4FrameEncoder = {
+    codec: resolved.codec,
+    async addFrame(canvas, index) {
+      if (failure) throw failure;
+      const frame = new VideoFrame(canvas, { timestamp: index * frameDuration, duration: frameDuration });
+      try {
+        encoder.encode(frame, { keyFrame: index % keyFrameInterval === 0 });
+      } finally {
+        frame.close();
+      }
+      while (encoder.encodeQueueSize > MAX_ENCODE_QUEUE && !failure) {
+        await new Promise((resolve) => setTimeout(resolve, 2));
+      }
+    },
+    async finish() {
+      await encoder.flush();
+      encoder.close();
+      if (failure) throw failure;
+      await Promise.all(pending);
+      await output.finalize();
+      const buffer = output.target.buffer;
+      if (!buffer) throw new Error("MP4 muxer finalized with an empty buffer");
+      return new Blob([buffer], { type: "video/mp4" });
+    },
+    async cancel() {
+      if (encoder.state !== "closed") encoder.close();
+      await output.cancel().catch(() => undefined);
+    },
+  };
+  return { ok: true, encoder: frameEncoder };
+}
 
+type FrameLoop = {
+  frameCount: number;
+  signal?: AbortSignal;
+  onProgress?: (p: number) => void;
+};
+
+async function encodeMp4Frames(
+  encoder: Mp4FrameEncoder,
+  loop: FrameLoop,
+  frameAt: (index: number) => ExportCanvas,
+): Promise<Blob> {
   try {
-    for (let i = 0; i < opts.frameCount; i++) {
-      if (opts.signal?.aborted) throw new DOMException("Aborted", "AbortError");
-      const canvas = renderFrame(i);
-      const vf = new w.VideoFrame(canvas, {
-        timestamp: i * microsecPerFrame,
-        duration: microsecPerFrame,
-      });
-      encoder.encode(vf as unknown as Parameters<VideoEncoderInst["encode"]>[0], {
-        keyFrame: i % Math.max(1, opts.fps) === 0,
-      });
-      vf.close();
-      opts.onProgress?.((i + 1) / opts.frameCount);
-      if (encoderErr) throw encoderErr;
+    for (let i = 0; i < loop.frameCount; i++) {
+      if (loop.signal?.aborted) throw abortError();
+      await encoder.addFrame(frameAt(i), i);
+      loop.onProgress?.((i + 1) / loop.frameCount);
       if (i % 4 === 3) await nextTick();
     }
-
-    await encoder.flush();
-    encoder.close();
-    if (encoderErr) throw encoderErr;
-
-    await Promise.all(pending);
-    await output.finalize();
-
-    const buffer = output.target.buffer;
-    if (!buffer) throw new Error("Mediabunny finalized with empty buffer");
-    return new Blob([buffer], { type: "video/mp4" });
-  } catch (e) {
-    if (encoder.state !== "closed") encoder.close();
-    await output.cancel().catch(() => undefined);
-    throw e;
+    return await encoder.finish();
+  } catch (error) {
+    await encoder.cancel();
+    throw error;
   }
 }
 
-async function encodeZip(
-  opts: RecordTurntableOpts,
-  renderFrame: (i: number) => HTMLCanvasElement | OffscreenCanvas,
-): Promise<Blob> {
-  const fflate = await loadFflate();
+async function encodePngZip(loop: FrameLoop, frameAt: (index: number) => Promise<Blob>): Promise<Blob> {
+  const { zipSync } = await import("fflate");
   const files: Record<string, Uint8Array> = {};
-  const pad = String(opts.frameCount).length;
-  for (let i = 0; i < opts.frameCount; i++) {
-    if (opts.signal?.aborted) throw new DOMException("Aborted", "AbortError");
-    const c = renderFrame(i) as HTMLCanvasElement;
-    const blob: Blob = await new Promise((resolve, reject) => {
-      c.toBlob((b) => (b ? resolve(b) : reject(new Error("toBlob failed"))), "image/png");
-    });
-    const buf = new Uint8Array(await blob.arrayBuffer());
-    files[`frame_${String(i).padStart(pad, "0")}.png`] = buf;
-    opts.onProgress?.((i + 1) / opts.frameCount);
+  const pad = Math.max(3, String(loop.frameCount).length);
+  for (let i = 0; i < loop.frameCount; i++) {
+    if (loop.signal?.aborted) throw abortError();
+    const blob = await frameAt(i);
+    files[`frame_${String(i + 1).padStart(pad, "0")}.png`] = new Uint8Array(await blob.arrayBuffer());
+    loop.onProgress?.((i + 1) / loop.frameCount);
     if (i % 2 === 1) await nextTick();
   }
-  const zipped = fflate.zipSync(files, { level: 6 });
-  const ab = new ArrayBuffer(zipped.byteLength);
-  new Uint8Array(ab).set(zipped);
-  return new Blob([ab], { type: ZIP_FALLBACK_MIME });
+  // PNGs are already deflated; storing keeps the fallback fast.
+  const zipped = zipSync(files, { level: 0 });
+  return new Blob([zipped.slice().buffer as ArrayBuffer], { type: ZIP_FALLBACK_MIME });
 }
 
-function applyPoseToCamera(camera: THREE.PerspectiveCamera, pose: CameraPose): void {
+function placeCamera(session: OffscreenRenderSession, pose: CameraPose): void {
+  const camera = session.camera;
   camera.position.set(...pose.cameraPosition);
+  camera.up.set(0, 1, 0);
   camera.lookAt(...pose.target);
   camera.updateMatrixWorld(true);
 }
 
-export async function recordMultiAngle(opts: RecordMultiAngleOpts): Promise<Blob> {
-  const poses = opts.poses.filter(Boolean);
-  if (poses.length === 0) throw new Error("At least one pose is required");
+/** Opaque frame: the scene's own background, or the render flattened over the backdrop. */
+function opaqueFrame(
+  session: OffscreenRenderSession,
+  timeSec: number,
+  backdrop: ExportBackdrop,
+  backdropImage: CanvasImageSource | null,
+): ExportCanvas {
+  if (session.hasOpaqueBackground) return session.render({ timeSec });
+  return session.capture({ timeSec, backdrop, backdropImage, cutout: false }).flat!;
+}
 
-  const {
-    gl,
-    scene,
-    camera,
-    width,
-    height,
-    frameCount,
-    exposure = gl.toneMappingExposure || 1,
-    postfxConfig = DEFAULT_VIEWER_POSTFX,
-  } = opts;
-  if (frameCount < 1) throw new Error("frameCount must be >= 1");
+async function recordCameraPath(
+  opts: RecordTurntableOpts,
+  poseAt: (index: number) => CameraPose,
+): Promise<VideoCaptureResult> {
+  if (opts.frameCount < 1) throw new Error("frameCount must be >= 1");
   if (opts.fps < 1) throw new Error("fps must be >= 1");
-
-  const camSnap = snapshotCamera(camera);
-  const framesPerPose = Math.max(1, Math.floor(frameCount / poses.length));
-
-  const canvas = document.createElement("canvas");
-  const renderer = await createViewerRenderer({
-    canvas,
-    antialias: true,
-    alpha: true,
-  });
-  renderer.setSize(width, height, false);
-  applyViewerColorManagement(renderer, exposure);
-
-  camera.aspect = width / height;
-  camera.updateProjectionMatrix();
-
-  const { composer, dispose } = createViewerPostFXComposer(
-    renderer,
-    scene,
-    camera,
-    width,
-    height,
-    postfxConfig,
-    exposure,
-  );
-
-  function renderFrameAt(i: number): HTMLCanvasElement {
-    const poseIndex = Math.min(Math.floor(i / framesPerPose), poses.length - 1);
-    applyPoseToCamera(camera, poses[poseIndex]!);
-    renderWithPostFX(composer);
-    return canvas;
-  }
-
+  const backdrop = opts.backdrop ?? WHITE_BACKDROP;
+  const session = await createOffscreenRenderSession(opts);
   try {
-    let blob: Blob | null = null;
-    if (isWebCodecsSupported()) {
+    const backdropImage = await loadBackdropImage(backdrop);
+    const frameAt = (index: number) => {
+      placeCamera(session, poseAt(index));
+      return opaqueFrame(session, index / opts.fps, backdrop, backdropImage);
+    };
+    const setup = await createMp4FrameEncoder(opts);
+    let notice = setup.ok ? null : setup.reason;
+    if (setup.ok) {
       try {
-        blob = await encodeMp4(opts, renderFrameAt);
-      } catch (e) {
-        console.warn("[video-capture] MP4 encode failed, falling back to ZIP:", e);
-        blob = null;
+        const blob = await encodeMp4Frames(setup.encoder, opts, frameAt);
+        return { blob, kind: "mp4", codec: setup.encoder.codec, notice: null };
+      } catch (error) {
+        if (isAbortError(error)) throw error;
+        notice = `MP4 encoding failed (${error instanceof Error ? error.message : String(error)}).`;
       }
     }
-    if (!blob) blob = await encodeZip(opts, renderFrameAt);
-    return blob;
+    const blob = await encodePngZip(opts, (index) => encodeCanvas(frameAt(index), "png"));
+    return {
+      blob,
+      kind: "png-zip",
+      codec: null,
+      notice: `${notice} Saved ${opts.frameCount} PNG frames as a ZIP instead.`,
+    };
   } finally {
-    dispose();
-    restoreCamera(camera, camSnap);
-    renderer.dispose();
+    session.dispose();
   }
 }
 
-export async function recordTurntable(opts: RecordTurntableOpts): Promise<Blob> {
-  const {
-    gl,
-    scene,
-    camera,
-    width,
-    height,
-    frameCount,
-    exposure = gl.toneMappingExposure || 1,
-    postfxConfig = DEFAULT_VIEWER_POSTFX,
-  } = opts;
-  if (frameCount < 1) throw new Error("frameCount must be >= 1");
-  if (opts.fps < 1) throw new Error("fps must be >= 1");
+/** Cycles saved poses, holding each for an equal share of the frames. */
+export function recordMultiAngle(opts: RecordMultiAngleOpts): Promise<VideoCaptureResult> {
+  const poses = opts.poses.filter(Boolean);
+  if (poses.length === 0) throw new Error("At least one pose is required");
+  const framesPerPose = Math.max(1, Math.floor(opts.frameCount / poses.length));
+  return recordCameraPath(opts, (index) => poses[Math.min(Math.floor(index / framesPerPose), poses.length - 1)]!);
+}
 
-  const camSnap = snapshotCamera(camera);
-  const radius = Math.max(camera.position.length(), 1e-4);
-  const startY = camera.position.y;
-
-  const canvas = document.createElement("canvas");
-  const renderer = await createViewerRenderer({
-    canvas,
-    antialias: true,
-    alpha: true,
-  });
-  renderer.setSize(width, height, false);
-  applyViewerColorManagement(renderer, exposure);
-
-  camera.aspect = width / height;
-  camera.updateProjectionMatrix();
-
-  const { composer, dispose } = createViewerPostFXComposer(
-    renderer,
-    scene,
-    camera,
-    width,
-    height,
-    postfxConfig,
-    exposure,
-  );
-
-  function renderFrameAt(i: number): HTMLCanvasElement {
-    const angle = (i / frameCount) * Math.PI * 2;
-    camera.position.set(Math.cos(angle) * radius, startY, Math.sin(angle) * radius);
-    camera.lookAt(0, 0, 0);
-    camera.updateMatrixWorld(true);
-    renderWithPostFX(composer);
-    return canvas;
-  }
-
-  try {
-    let blob: Blob | null = null;
-    if (isWebCodecsSupported()) {
-      try {
-        blob = await encodeMp4(opts, renderFrameAt);
-      } catch (e) {
-        console.warn("[video-capture] MP4 encode failed, falling back to ZIP:", e);
-        blob = null;
-      }
-    }
-    if (!blob) blob = await encodeZip(opts, renderFrameAt);
-    return blob;
-  } finally {
-    dispose();
-    restoreCamera(camera, camSnap);
-    renderer.dispose();
-  }
+/**
+ * 360° orbit that starts from the current view: same azimuth, same height and the same
+ * horizontal radius around the orbit target, so frame 0 matches what is on screen.
+ */
+export function recordTurntable(opts: RecordTurntableOpts): Promise<VideoCaptureResult> {
+  const target: Vec3 = opts.target ?? [0, 0, 0];
+  const { x, y, z } = opts.camera.position;
+  const start = orbitStartFromView([x, y, z], target);
+  return recordCameraPath(opts, (index) => ({
+    cameraPosition: orbitPosition(start, turntableAngle(index, opts.frameCount)),
+    target,
+  }));
 }

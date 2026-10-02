@@ -221,6 +221,6 @@ export function createPresetMaterial(
     clearcoatRoughness: spec.clearcoatRoughness ?? 0.05,
     roughnessMap: maps.roughnessMap,
     normalMap: maps.normalMap,
-    normalScale: maps.normalMap ? new THREE.Vector2(maps.normalScale, maps.normalScale) : undefined,
+    ...(maps.normalMap ? { normalScale: new THREE.Vector2(maps.normalScale, maps.normalScale) } : {}),
   });
 }

@@ -4,21 +4,18 @@ import { AlertTriangle, Download, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
+import {
+  CampaignPackLauncher,
+  DEFAULT_STILL_EXPORT,
+  exportStill,
+  StillExportSettings,
+  stillExportLabel,
+  type StillExportOptions,
+} from "@/features/render";
 import { ModelMultiSelect, VariantMultiSelect } from "@/features/variants";
 import {
-  ASPECT_RATIO,
-  computeImageSize,
-  downloadBlob,
-  extForImageFormat,
-  formatBytes,
   IMAGE_RESOLUTIONS,
-  type AspectId,
-  type ImageFormat,
-  type ImageResolutionId,
 } from "@/lib/export-presets";
-import { renderAtResolution } from "@/lib/offscreen-render";
 import {
   batchFilenamePrefix,
   buildBatchExportJobs,
@@ -32,8 +29,6 @@ import { fetchBillingAccount } from "@/lib/billing/client";
 import type { PlanFeatures } from "@/lib/billing/types";
 import { cn } from "@/lib/utils";
 import { getHiresRefs } from "@/stores/hires-export-store";
-import { getRenderFidelity } from "@/stores/render-fidelity-store";
-import * as THREE from "three";
 
 type ExportMode = "single" | "multiple";
 
@@ -63,10 +58,7 @@ export function EditorImageTab({
   setBatchModelUrl,
 }: EditorImageTabProps) {
   const [mode, setMode] = useState<ExportMode>("single");
-  const [resolution, setResolution] = useState<ImageResolutionId>("4k");
-  const [aspect, setAspect] = useState<AspectId>("16:9");
-  const [format, setFormat] = useState<ImageFormat>("png");
-  const [transparent, setTransparent] = useState(false);
+  const [options, setOptions] = useState<StillExportOptions>(DEFAULT_STILL_EXPORT);
   const [selectedVariantIds, setSelectedVariantIds] = useState<string[]>([]);
   const [selectedSceneIds, setSelectedSceneIds] = useState<number[]>([]);
   const [busy, setBusy] = useState(false);
@@ -82,9 +74,6 @@ export function EditorImageTab({
 
   const allows8k = (planFeatures?.max_image_resolution ?? 4096) >= 8192;
   const batchExportEnabled = planFeatures?.batch_export_enabled !== false;
-
-  const { width, height } = useMemo(() => computeImageSize(resolution, aspect), [resolution, aspect]);
-  const estimateBytes = useMemo(() => width * height * (format === "jpeg" ? 2 : 4), [width, height, format]);
 
   const estimatedJobCount = useMemo(
     () =>
@@ -109,26 +98,6 @@ export function EditorImageTab({
     [modelConfig, modelUrl, onModelConfigChange, sceneId, setBatchModelUrl, variantsState, viewerId],
   );
 
-  async function renderCurrentView(filenameSuffix: string): Promise<void> {
-    const refs = getHiresRefs();
-    if (!refs) throw new Error("Open a model first — the 3D scene must be loaded.");
-
-    const { exposure, postfxConfig } = getRenderFidelity();
-    const blob = await renderAtResolution({
-      gl: refs.gl,
-      scene: refs.scene,
-      camera: refs.camera,
-      width,
-      height,
-      transparent,
-      exposure,
-      postfxConfig,
-      format,
-    });
-    const ext = extForImageFormat(format);
-    downloadBlob(blob, `${filenameSuffix}.${ext}`);
-  }
-
   async function handleExport() {
     setError(null);
     setStatus(null);
@@ -141,9 +110,7 @@ export function EditorImageTab({
     setBusy(true);
     try {
       if (mode === "single") {
-        await renderCurrentView(
-          `${viewerId}-${IMAGE_RESOLUTIONS[resolution].label}-${aspect.replace(":", "x")}`,
-        );
+        await exportStill(options, `${viewerId}-${stillExportLabel(options)}`);
         setStatus("Image downloaded");
         return;
       }
@@ -174,7 +141,7 @@ export function EditorImageTab({
       await runBatchExportJobs(jobs, batchContext, async (job) => {
         const label = batchFilenamePrefix(job);
         try {
-          await renderCurrentView(`${label}-${IMAGE_RESOLUTIONS[resolution].label}`);
+          await exportStill(options, `${label}-${IMAGE_RESOLUTIONS[options.resolution].label}`);
           tileResults.push({ ok: true, label });
         } catch (e) {
           tileResults.push({
@@ -217,8 +184,9 @@ export function EditorImageTab({
       </div>
 
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
+        <CampaignPackLauncher modelId={viewerId} sceneId={sceneId} modelConfig={modelConfig} />
         <div className="space-y-2">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          <p className="font-mono text-[10px] uppercase tracking-[0.24em] text-muted-foreground">
             Mode
           </p>
           <div className="grid grid-cols-2 gap-2">
@@ -262,114 +230,9 @@ export function EditorImageTab({
           </>
         ) : null}
 
-        <div className="space-y-2">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            Resolution
-          </p>
-          <div className="grid grid-cols-2 gap-2">
-            {(Object.keys(IMAGE_RESOLUTIONS) as ImageResolutionId[]).map((id) => {
-              const locked = id === "8k" && !allows8k;
-              const size = computeImageSize(id, aspect);
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  disabled={locked}
-                  onClick={() => !locked && setResolution(id)}
-                  className={cn(
-                    "rounded-lg border px-3 py-2 text-left transition-colors",
-                    locked && "cursor-not-allowed opacity-50",
-                    resolution === id
-                      ? "border-primary bg-primary/10 text-foreground"
-                      : "border-border bg-background hover:bg-muted",
-                  )}
-                >
-                  <p className="text-sm font-medium">
-                    {IMAGE_RESOLUTIONS[id].label}
-                    {locked ? " · Pro" : ""}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground">
-                    {size.width}×{size.height}
-                  </p>
-                </button>
-              );
-            })}
-          </div>
-          {!allows8k ? (
-            <p className="text-xs text-muted-foreground">
-              8K exports require Grow or Studio.{" "}
-              <Link href="/pricing" className="text-primary hover:underline">
-                Upgrade
-              </Link>
-            </p>
-          ) : null}
-        </div>
+        <StillExportSettings value={options} onChange={setOptions} allows8k={allows8k} />
 
-        <div className="space-y-2">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            Aspect ratio
-          </p>
-          <div className="grid grid-cols-3 gap-2">
-            {(Object.keys(ASPECT_RATIO) as AspectId[]).map((id) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setAspect(id)}
-                className={cn(
-                  "rounded-lg border px-3 py-2 text-center text-sm font-medium transition-colors",
-                  aspect === id
-                    ? "border-primary bg-primary/10 text-foreground"
-                    : "border-border bg-background hover:bg-muted",
-                )}
-              >
-                {id}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            Format
-          </p>
-          <div className="grid grid-cols-2 gap-2">
-            {(["png", "jpeg"] as ImageFormat[]).map((value) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setFormat(value)}
-                className={cn(
-                  "rounded-lg border px-3 py-2 text-center text-sm font-medium uppercase transition-colors",
-                  format === value
-                    ? "border-primary bg-primary/10 text-foreground"
-                    : "border-border bg-background hover:bg-muted",
-                )}
-              >
-                {value}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2">
-          <Label htmlFor="image-transparent" className="cursor-pointer text-xs">
-            Transparent background
-          </Label>
-          <Switch
-            id="image-transparent"
-            checked={transparent}
-            onCheckedChange={setTransparent}
-          />
-        </div>
-
-        <div className="flex items-center justify-between rounded-lg bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
-          <span>
-            Output: <span className="text-foreground">{width}×{height}</span>
-          </span>
-          <span>Est. {formatBytes(estimateBytes)}</span>
-        </div>
-
-        {resolution === "8k" ? (
+        {options.resolution === "8k" ? (
           <div
             className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-400"
             role="note"

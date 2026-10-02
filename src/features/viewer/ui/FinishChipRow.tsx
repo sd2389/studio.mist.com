@@ -17,8 +17,8 @@ export function FinishChipRow({ className }: FinishChipRowProps) {
   const applies = preset !== "original" && !isGemPresetId(preset);
 
   return (
-    <div className={cn("shrink-0 border-t border-black/10 px-4 py-3", className)}>
-      <p className="mb-2 text-[10px] font-medium uppercase tracking-[0.16em] text-black/45">
+    <div className={cn("shrink-0 border-t border-foreground/10 px-4 py-3", className)}>
+      <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.24em] text-foreground/45">
         Finish
       </p>
       <div className="flex flex-wrap gap-1.5">
@@ -33,8 +33,8 @@ export function FinishChipRow({ className }: FinishChipRowProps) {
               className={cn(
                 "rounded-full border px-2.5 py-1 text-[10px] font-medium tracking-tight transition-colors",
                 active
-                  ? "border-black bg-black text-white"
-                  : "border-black/15 bg-transparent text-black/65 hover:border-black/30 hover:text-black",
+                  ? "border-foreground bg-foreground text-background"
+                  : "border-foreground/15 bg-transparent text-foreground/65 hover:border-foreground/30 hover:text-foreground",
                 !applies && "cursor-not-allowed opacity-35",
               )}
               aria-pressed={active}

@@ -29,6 +29,26 @@ Feature-driven layout: **one feature owns its UI, domain logic, and API adapters
 - `backend/app/core/*` — shared backend infrastructure
 - `backend/app/routers/*` — thin HTTP adapters
 
+## Shared building blocks
+
+Reuse these instead of rebuilding them per page:
+
+| Need | Use |
+|------|-----|
+| A metal or gem picker tile | `MaterialSwatch` (`src/components/ui/material-swatch.tsx`); icons in `swatch-icons.tsx` |
+| A material's swatch colour or fineness stamp | `presetSwatchHex`, `metalBadge` (`src/lib/material-colors.ts`) |
+| A studio page (sidebar, phone sheet, header, export dialogs) | `StudioLayout` (`@/features/viewer`) |
+| A lit 3D view of jewelry or a stone (full view or catalogue tile) | `StudioCanvas` (`@/features/viewer`) |
+| Everything a lighting mode sets | `LIGHTING_PRESETS` (`src/lib/viewer-lighting.ts`) |
+| Still export settings and rendering | `StillExportSettings`, `exportStill` (`@/features/render`) |
+| Turntable recording options | `turntableCaptureOptions`, `videoSizeLabel` (`@/features/render`) |
+| An option pill | `Chip` (`src/components/ui/chip.tsx`) |
+| A price for a design | `quoteDesign` (`src/lib/pricing/quote.ts`) |
+| An embed link, iframe snippet or copy button | `useEmbedCode`, `useCopyFeedback`, `EmbedKeyNotice` (`src/components/embed/embed-code.tsx`) |
+| A marketing page in the house look (header, footer, film grain, viewfinder corners) | `SiteShell`, with `PageIntro`, `Stat`, `Kicker`, `Reveal` and the class recipes in `site-styles.ts` (`src/components/site/`) |
+| Light or dark look, site-wide | Tokens in `globals.css` (`--mist-*`; `.dark` on `<html>`, set before paint by `FILM_THEME_SCRIPT`), `ThemeToggle` (`src/components/site/`), `useFilmTheme` / `setFilmTheme` (`src/components/scroll-film/film-theme.ts`); 3D previews pick their set with `siteLighting` (`src/lib/viewer-lighting.ts`) |
+| A scroll-driven film page (chapters, eased scroll, kinetic type, preloader) | `src/components/scroll-film/` — `useStoryDriver`, `story`, `Chapter`, `Line`, `Readout`, `FilmChrome`, `useFilmTheme`, `scroll-film.css`; used by the home page (`src/components/home/`) |
+
 ## Decisions
 
 Record non-obvious structure changes in `docs/adr/` (see template).

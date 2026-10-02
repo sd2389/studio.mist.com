@@ -15,7 +15,6 @@ import type { PersistedModelConfig } from "@/lib/slot-materials/model-config";
 import {
   useMaterialPresetStore,
   type FinishId,
-  type MaterialPresetId,
 } from "@/stores/material-preset-store";
 
 function isGenericGemToken(token: string): boolean {

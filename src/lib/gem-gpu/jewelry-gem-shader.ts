@@ -46,15 +46,6 @@ type JewelrySafeUniforms = {
   uTime: JewelryUniform;
 };
 
-type PhysicalNodeSlots = THREE.MeshPhysicalMaterial & {
-  emissiveNode: ReturnType<typeof createJewelryEmissiveNode> | ReturnType<typeof createJewelrySafeEmissiveNode>;
-  specularIntensityNode: ReturnType<typeof createJewelrySpecularNode> | ReturnType<typeof createJewelrySafeSpecularNode>;
-};
-
-function asNodeSlots(material: THREE.MeshPhysicalMaterial): PhysicalNodeSlots {
-  return material as PhysicalNodeSlots;
-}
-
 function jewelryViewTerms() {
   const n = normalize(normalView);
   const v = normalize(positionViewDirection);
@@ -62,15 +53,20 @@ function jewelryViewTerms() {
   return { n, v, ndv };
 }
 
-function createJewelryEmissiveNode(u: JewelryUniforms) {
+/**
+ * Facet flash as a *reflection* term.
+ *
+ * This used to be added to `emissiveNode`. On a transmissive gem that injects light
+ * the surface never received, which flattens every facet toward white — the "milky
+ * glass ball" failure. Driving `specularIntensity` instead makes bright facets bright
+ * by reflecting more environment, so dark facets stay dark and the stone keeps the
+ * light/dark contrast that reads as brilliance.
+ */
+function createJewelrySpecularNode(u: JewelryUniforms, baseSpecular: number) {
   return Fn(() => {
     const { n, v, ndv } = jewelryViewTerms();
-    const facet = pow(ndv.oneMinus(), float(2));
-    const fire = facet.mul(u.uFireStrength);
-    const fireRgb = vec3(
-      fire.mul(float(1).add(u.uDispersionAmp.mul(2))),
-      fire,
-      fire.mul(float(1).sub(u.uDispersionAmp)),
+    const internalLobe = mix(float(0.35), float(0.12), u.uQualityReduce).mul(
+      pow(ndv.oneMinus(), float(3)),
     );
 
     const sparkleTaps = mix(float(4), float(1), u.uQualityReduce);
@@ -84,29 +80,23 @@ function createJewelryEmissiveNode(u: JewelryUniforms) {
         sparkle.addAssign(pow(max(dot(jitterN, v), float(0)), float(64)));
       });
     });
-
     const sparkleOut = sparkle.div(max(sparkleTaps, float(1))).mul(u.uSparkleStrength);
-    return fireRgb.mul(0.25).add(vec3(sparkleOut).mul(0.4));
+
+    return float(baseSpecular).add(internalLobe).add(sparkleOut.mul(0.6));
   })();
 }
 
-function createJewelrySpecularNode(u: JewelryUniforms, baseSpecular: number) {
+/** Chromatic fire, tinting what the facet reflects rather than adding light. */
+function createJewelryFireColorNode(u: JewelryUniforms) {
   return Fn(() => {
     const { ndv } = jewelryViewTerms();
-    const internalLobe = mix(float(0.35), float(0.12), u.uQualityReduce).mul(
-      pow(ndv.oneMinus(), float(3)),
+    const facet = pow(ndv.oneMinus(), float(2)).mul(u.uFireStrength);
+    const tint = vec3(
+      float(1).add(u.uDispersionAmp.mul(2)),
+      float(1),
+      float(1).sub(u.uDispersionAmp),
     );
-    return float(baseSpecular).add(internalLobe);
-  })();
-}
-
-function createJewelrySafeEmissiveNode(u: JewelrySafeUniforms) {
-  return Fn(() => {
-    const { ndv } = jewelryViewTerms();
-    const facet = pow(ndv.oneMinus(), float(2));
-    const fire = facet.mul(u.uFireStrength);
-    const fireRgb = vec3(fire.mul(1.2), fire, fire.mul(0.85));
-    return fireRgb.mul(0.2);
+    return mix(vec3(1, 1, 1), tint, facet);
   })();
 }
 
@@ -118,14 +108,27 @@ function createJewelrySafeSpecularNode(baseSpecular: number) {
   })();
 }
 
+function createJewelrySafeFireColorNode(u: JewelrySafeUniforms) {
+  return Fn(() => {
+    const { ndv } = jewelryViewTerms();
+    const facet = pow(ndv.oneMinus(), float(2)).mul(u.uFireStrength);
+    return mix(vec3(1, 1, 1), vec3(1.2, 1, 0.85), facet);
+  })();
+}
+
+type SpecularNode = ReturnType<typeof createJewelrySpecularNode>;
+type FireColorNode = ReturnType<typeof createJewelryFireColorNode>;
+
 function attachJewelryNodes(
   material: THREE.MeshPhysicalMaterial,
-  emissiveNode: ReturnType<typeof createJewelryEmissiveNode> | ReturnType<typeof createJewelrySafeEmissiveNode>,
-  specularNode: ReturnType<typeof createJewelrySpecularNode> | ReturnType<typeof createJewelrySafeSpecularNode>,
+  specularNode: SpecularNode | ReturnType<typeof createJewelrySafeSpecularNode>,
+  fireColorNode: FireColorNode | ReturnType<typeof createJewelrySafeFireColorNode>,
 ): void {
-  const slots = asNodeSlots(material);
-  slots.emissiveNode = emissiveNode;
-  slots.specularIntensityNode = specularNode;
+  material.specularIntensityNode = specularNode;
+  material.specularColorNode = fireColorNode;
+  // Node slots on a non-node material all hash alike in the renderer's cache key; give each
+  // material its own identity so it keeps its own uniforms instead of the first compile's.
+  material.customProgramCacheKey = () => `jewelry-gem-${specularNode.id}-${fireColorNode.id}`;
   material.needsUpdate = true;
 }
 
@@ -154,8 +157,8 @@ export function applyJewelryGemShader(
 
   attachJewelryNodes(
     material,
-    createJewelryEmissiveNode(uniforms),
     createJewelrySpecularNode(uniforms, material.specularIntensity),
+    createJewelryFireColorNode(uniforms),
   );
 }
 
@@ -173,8 +176,8 @@ function applyJewelryGemSafeShader(material: THREE.MeshPhysicalMaterial): void {
 
   attachJewelryNodes(
     material,
-    createJewelrySafeEmissiveNode(uniforms),
     createJewelrySafeSpecularNode(material.specularIntensity),
+    createJewelrySafeFireColorNode(uniforms),
   );
 }
 

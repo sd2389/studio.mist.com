@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { fetchUserAssets } from "@/lib/library/fetch-library";
 import type { LibraryPage, UserAssetItem } from "@/lib/library/types";
 
@@ -20,11 +20,13 @@ export function useUserLibraryAssets({
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const [previousInitial, setPreviousInitial] = useState(initialPage);
+  if (previousInitial !== initialPage) {
+    setPreviousInitial(initialPage);
     setItems(initialPage?.items ?? []);
     setTotal(initialPage?.total ?? 0);
     setError(null);
-  }, [initialPage]);
+  }
 
   const hasMore = items.length < total;
 

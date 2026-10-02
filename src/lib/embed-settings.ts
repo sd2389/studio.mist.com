@@ -93,6 +93,6 @@ export function buildEmbedIframeSnippet(
 ): string {
   const width = opts.width ?? 800;
   const height = opts.height ?? 640;
-  const title = opts.title ?? "DevJewels 3D";
+  const title = opts.title ?? "MIST 3D";
   return `<iframe\n  src="${embedUrl}"\n  width="${width}"\n  height="${height}"\n  style="border:0;border-radius:12px;max-width:100%"\n  loading="lazy"\n  title="${title}"\n  allowfullscreen\n></iframe>`;
 }

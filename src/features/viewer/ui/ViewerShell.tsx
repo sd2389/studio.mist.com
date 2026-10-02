@@ -3,19 +3,27 @@
 import { useGLTF } from "@react-three/drei";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { modelExtFromUrl, viewerIdFromModelKey } from "@/lib/model-key";
-import { AiVisualsModal } from "@/components/modals/AiVisualsModal";
-import { ExportModal } from "@/components/modals/ExportModal";
-import { HiResExportModal } from "@/components/modals/HiResExportModal";
-import { Video360Modal } from "@/components/modals/Video360Modal";
 import { ViewerCanvas } from "./ViewerCanvas";
 import { EmbedChrome } from "./EmbedChrome";
 import { EmbedShopperMaterials } from "./EmbedShopperMaterials";
 import { StudioPrimaryBar } from "./StudioPrimaryBar";
 import { StudioSidebar } from "./StudioSidebar";
+import { useStudioModals } from "./useStudioModals";
+import { ViewportBackground } from "./ViewportBackground";
+import { SceneEditPanel } from "@/features/editor/ui/SceneEditPanel";
+import {
+  buildSceneCatalogIndex,
+  lookupBackground,
+  lookupEnvironment,
+  lookupGround,
+} from "@/features/editor/hooks/useSceneCatalogIndex";
+import type { EditCatalogs } from "@/lib/catalog/edit-catalogs";
+import { LIGHTING_PRESETS } from "@/lib/viewer-lighting";
 import { StudioTopBar } from "./StudioTopBar";
 import { ZoomControls } from "./ZoomControls";
 import { useStudioPrimaryPanel } from "./useStudioPrimaryPanel";
 import { shouldPersistViewerScene } from "@/features/viewer/domain/viewer-scene-persist";
+import { resolveSceneSettings } from "../domain/resolve-scene-settings";
 import { cn } from "@/lib/utils";
 import type { EmbedSettings } from "@/lib/embed-settings";
 import { resolveModelUrl } from "@/lib/model-url";
@@ -36,12 +44,23 @@ import {
   type MaterialPresetId,
 } from "@/stores/material-preset-store";
 
+/** A scene's model config, rebuilt from its slot selections for scenes saved before configs had slots. */
+function resolveModelConfig(scene: SceneDetail) {
+  return scene.model_config?.slots?.length
+    ? scene.model_config
+    : buildModelConfigFromSlots(Object.keys(scene.slot_selections ?? {}));
+}
+
 type ViewerShellProps = {
   modelId: string;
   variant: "studio" | "embed";
   initialScene?: SceneDetail | null;
   embedSettings?: EmbedSettings;
   displayName?: string;
+  /** Catalogues the scene's look and the Edit tab draw from. */
+  catalogs?: EditCatalogs | null;
+  /** Show the Edit tab: a saved scene with someone signed in (the API enforces ownership). */
+  editable?: boolean;
 };
 
 export function ViewerShell({
@@ -50,8 +69,13 @@ export function ViewerShell({
   initialScene = null,
   embedSettings,
   displayName,
+  catalogs = null,
+  editable = false,
 }: ViewerShellProps) {
-  const modelUrl = resolveModelUrl(modelId);
+  const sceneModelUrl = initialScene?.model_url ?? resolveModelUrl(modelId);
+  // Batch exports swap the model in the view while they render each variant.
+  const [batchModelUrl, setBatchModelUrl] = useState<string | null>(null);
+  const modelUrl = batchModelUrl ?? sceneModelUrl;
   const preset = useMaterialPresetStore((s) => s.preset);
   const setPreset = useMaterialPresetStore((s) => s.setPreset);
   const autoRotate = useMaterialPresetStore((s) => s.autoRotate);
@@ -67,21 +91,17 @@ export function ViewerShell({
   );
 
   const [modelConfig, setModelConfig] = useState(() =>
-    buildModelConfigFromSlots([]),
+    initialScene ? resolveModelConfig(initialScene) : buildModelConfigFromSlots([]),
   );
   const [sceneSku, setSceneSku] = useState<string | null>(
     initialScene?.sku ?? null,
   );
   const [catalog, setCatalog] = useState<SourceCatalogPayload | null>(null);
-  const [sceneLoaded, setSceneLoaded] = useState(false);
+  const [sceneLoaded, setSceneLoaded] = useState(Boolean(initialScene));
   const applyingPersistedState = useRef(false);
   const persistTimer = useRef<number | null>(null);
   const { panel, setPanel } = useStudioPrimaryPanel("metal");
 
-  const [aiOpen, setAiOpen] = useState(false);
-  const [exportOpen, setExportOpen] = useState(false);
-  const [hiResOpen, setHiResOpen] = useState(false);
-  const [video360Open, setVideo360Open] = useState(false);
 
   useEffect(() => {
     const ext = modelExtFromUrl(modelUrl);
@@ -110,9 +130,7 @@ export function ViewerShell({
     if (initialScene) {
       applyingPersistedState.current = true;
       const scene = initialScene;
-      const resolvedModelConfig = scene.model_config?.slots?.length
-        ? scene.model_config
-        : buildModelConfigFromSlots(Object.keys(scene.slot_selections ?? {}));
+      const resolvedModelConfig = resolveModelConfig(scene);
       const safeSelections = sanitizeSlotSelections(
         (scene.slot_selections ?? {}) as Record<string, MaterialPresetId>,
         resolvedModelConfig,
@@ -123,9 +141,6 @@ export function ViewerShell({
       setLighting(incomingLighting);
       replaceSlotSelections(safeSelections);
       replaceSceneSettings(scene.scene_settings ?? getDefaultSceneSettings());
-      setModelConfig(resolvedModelConfig);
-      setSceneSku(scene.sku ?? null);
-      setSceneLoaded(true);
       window.setTimeout(() => {
         applyingPersistedState.current = false;
       }, 0);
@@ -137,9 +152,7 @@ export function ViewerShell({
     void getSceneByViewerId(modelId)
       .then((scene) => {
         if (cancelled) return;
-        const resolvedModelConfig = scene.model_config?.slots?.length
-          ? scene.model_config
-          : buildModelConfigFromSlots(Object.keys(scene.slot_selections ?? {}));
+        const resolvedModelConfig = resolveModelConfig(scene);
         const safeSelections = sanitizeSlotSelections(
           (scene.slot_selections ?? {}) as Record<string, MaterialPresetId>,
           resolvedModelConfig,
@@ -191,29 +204,13 @@ export function ViewerShell({
     [lighting, modelConfig, preset, sceneSettings, slotSelections],
   );
 
-  const resolvedSceneSettings = useMemo(() => {
-    if (!catalog?.scenes) return sceneSettings;
-    const indexById = new Map(
-      catalog.scenes.map((item) => [item._id, item.value ?? ""]),
-    );
-    const resolveValue = (value: string | null) => {
-      if (!value) return null;
-      if (value.includes("/") || value.includes(".")) return value;
-      const mapped = indexById.get(value);
-      return mapped || value;
-    };
-    return {
-      "ENVIRONMENT-METAL": resolveValue(sceneSettings["ENVIRONMENT-METAL"]),
-      "ENVIRONMENT-GEM": resolveValue(sceneSettings["ENVIRONMENT-GEM"]),
-      GROUND: resolveValue(sceneSettings.GROUND),
-      BACKGROUND: resolveValue(sceneSettings.BACKGROUND),
-      VJSON: resolveValue(sceneSettings.VJSON),
-      quality_mode: sceneSettings.quality_mode ?? "standard",
-    };
-  }, [catalog, sceneSettings]);
+  const resolvedSceneSettings = useMemo(
+    () => resolveSceneSettings(sceneSettings, catalog?.scenes),
+    [catalog, sceneSettings],
+  );
 
   useEffect(() => {
-    if (!shouldPersistViewerScene(variant)) return;
+    if (!shouldPersistViewerScene(variant) || modelId === "mist-solitaire" || modelId === "clearcoat") return;
     if (!sceneLoaded || applyingPersistedState.current) return;
     if (persistTimer.current !== null)
       window.clearTimeout(persistTimer.current);
@@ -224,16 +221,52 @@ export function ViewerShell({
     }, 350);
   }, [modelId, persistPayload, sceneLoaded, variant]);
 
+  const { openers, modals } = useStudioModals(modelId, sceneSku);
+
+  // Catalogue environments, background and ground the scene was saved with (Edit tab).
+  const sceneCatalog = useMemo(
+    () =>
+      buildSceneCatalogIndex({
+        environments: {
+          items: [...(catalogs?.metalEnvironments?.items ?? []), ...(catalogs?.gemEnvironments?.items ?? [])],
+          total: 0,
+          limit: 0,
+          offset: 0,
+        },
+        backgrounds: catalogs?.backgrounds,
+        grounds: catalogs?.grounds,
+        presets: catalogs?.scenePresets,
+      }),
+    [catalogs],
+  );
+  const catalogLook = {
+    metalEnvironment: lookupEnvironment(sceneCatalog, sceneSettings["ENVIRONMENT-METAL"]),
+    gemEnvironment: lookupEnvironment(sceneCatalog, sceneSettings["ENVIRONMENT-GEM"]),
+    backgroundItem: lookupBackground(sceneCatalog, sceneSettings.BACKGROUND),
+    groundItem: lookupGround(sceneCatalog, sceneSettings.GROUND),
+  };
+  const editPanel =
+    editable && initialScene?.id && catalogs ? (
+      <SceneEditPanel
+        scene={initialScene}
+        viewerId={modelId}
+        modelUrl={sceneModelUrl}
+        modelConfig={modelConfig}
+        onModelConfigChange={setModelConfig}
+        catalogs={catalogs}
+        onBatchModelUrlChange={setBatchModelUrl}
+      />
+    ) : undefined;
+
   const sidebarProps = {
     modelId,
     sku: sceneSku,
+    displayName: displayName ?? initialScene?.name ?? null,
     modelConfig,
     panel,
     onPanelChange: setPanel,
-    onOpenAi: () => setAiOpen(true),
-    onOpenExport: () => setExportOpen(true),
-    onOpenHiResExport: () => setHiResOpen(true),
-    onOpenVideo360: () => setVideo360Open(true),
+    ...openers,
+    editPanel,
   };
 
   if (variant === "embed") {
@@ -242,7 +275,7 @@ export function ViewerShell({
     const showZoomControls = embedSettings?.showZoomControls ?? true;
 
     return (
-      <div className="studio-stage flex h-[100dvh] w-full flex-col overflow-hidden bg-[#F4F2EE]">
+      <div className="studio-stage flex h-[100dvh] w-full flex-col overflow-hidden bg-background">
         {showChrome ? (
           <EmbedChrome
             modelId={modelId}
@@ -251,13 +284,20 @@ export function ViewerShell({
                 ? `/viewer/${encodeURIComponent(viewerIdFromModelKey(initialScene.model_key))}`
                 : undefined
             }
-            displayName={displayName}
+            displayName={displayName ?? initialScene?.name ?? undefined}
             brandingText={embedSettings?.brandingText}
             showTitle={embedSettings?.showTitle ?? true}
             showStudioLink={embedSettings?.showStudioLink ?? false}
           />
         ) : null}
         <div className="relative min-h-0 flex-1">
+          {catalogLook.backgroundItem ? (
+            <ViewportBackground
+              backgroundItem={catalogLook.backgroundItem}
+              customBackground={resolvedSceneSettings.customBackground}
+              fallbackColor={LIGHTING_PRESETS[lighting].background}
+            />
+          ) : null}
           <ViewerCanvas
             modelUrl={modelUrl}
             preset={preset}
@@ -265,6 +305,7 @@ export function ViewerShell({
             lighting={lighting}
             modelConfig={modelConfig}
             sceneSettings={resolvedSceneSettings}
+            {...catalogLook}
           />
           {showZoomControls ? <ZoomControls variant="embed" touchLayout /> : null}
         </div>
@@ -275,26 +316,34 @@ export function ViewerShell({
 
   return (
     <>
-      <div className="studio-stage flex h-[100dvh] flex-col overflow-hidden bg-[#F4F2EE] text-[#212121] md:flex-row">
+      <div className="studio-stage flex h-[100dvh] flex-col overflow-hidden bg-background text-foreground md:flex-row">
         <aside
           className={cn(
-            "flex min-h-0 flex-col border-black/10 bg-[#F4F2EE]",
+            "flex min-h-0 flex-col border-foreground/10 bg-background",
             "order-2 max-h-[50vh] border-t",
-            "md:order-1 md:h-full md:max-h-none md:w-[280px] md:shrink-0 md:border-r md:border-t-0",
+            "md:order-1 md:h-full md:max-h-none md:shrink-0 md:border-r md:border-t-0",
+            panel === "edit" ? "md:w-[380px]" : "md:w-[280px]",
             panel === null && "hidden md:flex",
           )}
         >
           <div className="flex shrink-0 justify-center pb-1 pt-2 md:hidden">
-            <div className="h-1 w-10 rounded-full bg-black/15" aria-hidden />
+            <div className="h-1 w-10 rounded-full bg-foreground/15" aria-hidden />
           </div>
           <StudioSidebar chrome="responsive" className="min-h-0 flex-1" {...sidebarProps} />
         </aside>
 
         <div className="order-1 flex min-h-0 min-w-0 flex-1 flex-col md:order-2">
           <div className="h-[52px] shrink-0">
-            <StudioTopBar modelId={modelId} sku={sceneSku} />
+            <StudioTopBar modelId={modelId} sku={sceneSku} displayName={displayName ?? initialScene?.name} />
           </div>
           <div className="relative min-h-0 flex-1 bg-studio-canvas">
+            {catalogLook.backgroundItem ? (
+              <ViewportBackground
+                backgroundItem={catalogLook.backgroundItem}
+                customBackground={resolvedSceneSettings.customBackground}
+                fallbackColor={LIGHTING_PRESETS[lighting].background}
+              />
+            ) : null}
             <ViewerCanvas
               modelUrl={modelUrl}
               preset={preset}
@@ -302,6 +351,7 @@ export function ViewerShell({
               lighting={lighting}
               modelConfig={modelConfig}
               sceneSettings={resolvedSceneSettings}
+              {...catalogLook}
             />
             <ZoomControls />
           </div>
@@ -311,31 +361,12 @@ export function ViewerShell({
           active={panel}
           onChange={setPanel}
           collapsible
-          className="order-3 border-t border-black/10 md:hidden"
+          withEdit={Boolean(editPanel)}
+          className="order-3 border-t border-foreground/10 md:hidden"
         />
       </div>
 
-      <AiVisualsModal
-        open={aiOpen}
-        onOpenChange={setAiOpen}
-        modelId={modelId}
-      />
-      <ExportModal
-        open={exportOpen}
-        onOpenChange={setExportOpen}
-        modelId={modelId}
-        sku={sceneSku}
-      />
-      <HiResExportModal
-        open={hiResOpen}
-        onOpenChange={setHiResOpen}
-        modelId={modelId}
-      />
-      <Video360Modal
-        open={video360Open}
-        onOpenChange={setVideo360Open}
-        modelId={modelId}
-      />
+      {modals}
     </>
   );
 }

@@ -1,157 +1,152 @@
 import * as THREE from "three";
+import {
+  groupTrianglesByIsland,
+  labelIslands,
+  type IslandLabels,
+  type IslandTriangles,
+} from "@/lib/convert/segmentation/islands";
+import { measureIsland, type IslandMetrics } from "@/lib/convert/segmentation/island-metrics";
+import {
+  assignIslandSlots,
+  type IslandSlot,
+  type JewelryRole,
+} from "@/lib/convert/segmentation/island-slots";
+import { weldToleranceFor } from "@/lib/convert/segmentation/weld";
 
 /**
- * Split a STL-loaded BufferGeometry into its disconnected triangle islands
- * (connected-component decomposition). Each island becomes a separate
- * BufferGeometry — typically: the band is one island, each stone is another.
+ * Metal vs gem segmentation for merged or unlabelled meshes (STL, OBJ, PLY, 3MF, STEP…).
  *
- * Caveats:
- *   - Works only when the gem meshes are physically detached from the band
- *     in the CAD (most professional jewelry CAD does this; some artists
- *     boolean-union everything in which case islands == 1).
- *   - Assumes the geometry has been through `mergeVertices` first — adjacent
- *     triangles must share corner verts for adjacency detection to work.
+ * The mesh is welded by position, split into connected islands (the band is one island, each
+ * detached stone another) and every island is classified by shape: stones are closed, convex
+ * solids covered by a few large planar facets; metal is smooth, non-convex or rod-like.
+ *
+ * Caveat: stones boolean-unioned into the metal form one island and cannot be separated.
  */
+
+export { isGemShaped, measureIsland, type IslandMetrics } from "@/lib/convert/segmentation/island-metrics";
+export { assignIslandSlots, type IslandSlot, type JewelryRole } from "@/lib/convert/segmentation/island-slots";
+
 /**
- * Hard ceiling on triangle count before segmentation is skipped. STL files
- * from CAD can hit 300k+ triangles; the adjacency map + BFS bloat memory
- * past the browser comfort zone above ~250k. Beyond this we return the
- * original geometry as a single island and let the user upload .3dm instead.
+ * Hard ceiling on triangle count before segmentation is skipped. Welding and island labelling
+ * are linear typed-array passes, so heavy pavé exports still segment; past this, memory rules.
  */
-const MAX_TRI_FOR_SEGMENTATION = 220_000;
+export const MAX_TRI_FOR_SEGMENTATION = 2_000_000;
 
-export function splitIslands(geometry: THREE.BufferGeometry): THREE.BufferGeometry[] {
-  const indexAttr = geometry.index;
-  const positionAttr = geometry.attributes.position;
-  if (!positionAttr) return [geometry.clone()];
+export type GeometryIslands = {
+  labels: IslandLabels;
+  groups: IslandTriangles;
+  metrics: IslandMetrics[];
+};
 
-  const triCount = indexAttr ? indexAttr.count / 3 : positionAttr.count / 3;
-  if (triCount > MAX_TRI_FOR_SEGMENTATION) {
-    return [geometry.clone()];
+/** Contiguous xyz positions, whatever the attribute layout. */
+export function readPositions(geometry: THREE.BufferGeometry): Float32Array {
+  const attribute = geometry.getAttribute("position");
+  if (attribute instanceof THREE.BufferAttribute && attribute.itemSize === 3 &&
+      attribute.array instanceof Float32Array && !attribute.normalized) {
+    return attribute.array;
   }
-
-  const indices = indexAttr ? Array.from(indexAttr.array) : seqIndices(positionAttr.count);
-
-  // adjacency: vertex idx → list of triangle ids
-  const vertToTris = new Map<number, number[]>();
-  for (let t = 0; t < triCount; t++) {
-    for (let k = 0; k < 3; k++) {
-      const v = indices[t * 3 + k];
-      let bucket = vertToTris.get(v);
-      if (!bucket) {
-        bucket = [];
-        vertToTris.set(v, bucket);
-      }
-      bucket.push(t);
-    }
+  const out = new Float32Array(attribute.count * 3);
+  for (let i = 0; i < attribute.count; i++) {
+    out[i * 3] = attribute.getX(i);
+    out[i * 3 + 1] = attribute.getY(i);
+    out[i * 3 + 2] = attribute.getZ(i);
   }
-
-  // BFS connected components on triangles
-  const triIsland = new Int32Array(triCount).fill(-1);
-  const islands: number[][] = [];
-  for (let start = 0; start < triCount; start++) {
-    if (triIsland[start] !== -1) continue;
-    const id = islands.length;
-    const bag: number[] = [];
-    islands.push(bag);
-    const queue = [start];
-    triIsland[start] = id;
-    while (queue.length > 0) {
-      const t = queue.pop()!;
-      bag.push(t);
-      for (let k = 0; k < 3; k++) {
-        const v = indices[t * 3 + k];
-        const neighbors = vertToTris.get(v);
-        if (!neighbors) continue;
-        for (const nt of neighbors) {
-          if (triIsland[nt] === -1) {
-            triIsland[nt] = id;
-            queue.push(nt);
-          }
-        }
-      }
-    }
-  }
-
-  if (islands.length <= 1) return [geometry.clone()];
-
-  // Build a BufferGeometry per island
-  return islands.map((tris) => buildSubGeometry(geometry, indices, tris));
+  return out;
 }
 
-function seqIndices(count: number): number[] {
-  const arr = new Array<number>(count);
-  for (let i = 0; i < count; i++) arr[i] = i;
-  return arr;
+export function triangleCountOf(geometry: THREE.BufferGeometry): number {
+  const count = geometry.index ? geometry.index.count : (geometry.getAttribute("position")?.count ?? 0);
+  return Math.floor(count / 3);
 }
 
-function buildSubGeometry(
+export function geometryExtent(geometry: THREE.BufferGeometry): number {
+  geometry.computeBoundingBox();
+  const size = geometry.boundingBox?.getSize(new THREE.Vector3()) ?? new THREE.Vector3();
+  return Math.max(size.x, size.y, size.z);
+}
+
+export function islandTriangleIds(groups: IslandTriangles, island: number): Uint32Array {
+  return groups.triangles.subarray(groups.offsets[island], groups.offsets[island + 1]);
+}
+
+/** Weld, split into islands and measure each one. Null when the mesh is too heavy to segment. */
+export function measureGeometryIslands(
+  geometry: THREE.BufferGeometry,
+  tolerance = weldToleranceFor(geometryExtent(geometry)),
+): GeometryIslands | null {
+  if (!geometry.getAttribute("position")) return null;
+  if (triangleCountOf(geometry) > MAX_TRI_FOR_SEGMENTATION) return null;
+  const positions = readPositions(geometry);
+  const index = geometry.index ? geometry.index.array : null;
+  const labels = labelIslands(positions, index, positions.length / 3, tolerance);
+  const groups = groupTrianglesByIsland(labels);
+  const metrics: IslandMetrics[] = [];
+  for (let island = 0; island < labels.islandCount; island++) {
+    metrics.push(measureIsland(labels.weld.positions, labels.corners, islandTriangleIds(groups, island)));
+  }
+  return { labels, groups, metrics };
+}
+
+function copyCorner(
   source: THREE.BufferGeometry,
-  indices: number[],
-  tris: number[],
-): THREE.BufferGeometry {
-  const out = new THREE.BufferGeometry();
-  const positionAttr = source.attributes.position;
-  const normalAttr = source.attributes.normal;
-  const uvAttr = source.attributes.uv;
-
-  const subVerts = tris.length * 3;
-  const positions = new Float32Array(subVerts * 3);
-  const normals = normalAttr ? new Float32Array(subVerts * 3) : null;
-  const uvs = uvAttr ? new Float32Array(subVerts * 2) : null;
-
-  let cursor = 0;
-  for (const t of tris) {
-    for (let k = 0; k < 3; k++) {
-      const v = indices[t * 3 + k];
-      positions[cursor * 3 + 0] = positionAttr.getX(v);
-      positions[cursor * 3 + 1] = positionAttr.getY(v);
-      positions[cursor * 3 + 2] = positionAttr.getZ(v);
-      if (normals && normalAttr) {
-        normals[cursor * 3 + 0] = normalAttr.getX(v);
-        normals[cursor * 3 + 1] = normalAttr.getY(v);
-        normals[cursor * 3 + 2] = normalAttr.getZ(v);
-      }
-      if (uvs && uvAttr) {
-        uvs[cursor * 2 + 0] = uvAttr.getX(v);
-        uvs[cursor * 2 + 1] = uvAttr.getY(v);
-      }
-      cursor += 1;
+  vertex: number,
+  cursor: number,
+  targets: Map<string, Float32Array>,
+): void {
+  for (const [name, target] of targets) {
+    const attribute = source.getAttribute(name);
+    for (let k = 0; k < attribute.itemSize; k++) {
+      target[cursor * attribute.itemSize + k] = attribute.getComponent(vertex, k);
     }
   }
+}
 
-  out.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-  if (normals) out.setAttribute("normal", new THREE.BufferAttribute(normals, 3));
-  if (uvs) out.setAttribute("uv", new THREE.BufferAttribute(uvs, 2));
+function buildIslandGeometry(source: THREE.BufferGeometry, triangleIds: ArrayLike<number>): THREE.BufferGeometry {
+  const names = ["position", "normal", "uv"].filter((name) => source.getAttribute(name));
+  const targets = new Map(names.map((name) =>
+    [name, new Float32Array(triangleIds.length * 3 * source.getAttribute(name).itemSize)]));
+  let cursor = 0;
+  for (let i = 0; i < triangleIds.length; i++) {
+    for (let k = 0; k < 3; k++) {
+      const corner = triangleIds[i] * 3 + k;
+      copyCorner(source, source.index ? source.index.getX(corner) : corner, cursor++, targets);
+    }
+  }
+  const out = new THREE.BufferGeometry();
+  for (const [name, array] of targets) {
+    out.setAttribute(name, new THREE.BufferAttribute(array, source.getAttribute(name).itemSize));
+  }
   out.computeBoundingBox();
   out.computeBoundingSphere();
   return out;
 }
 
-/**
- * Heuristic classification of islands as "metal" (band) vs "gem" (stone):
- *   - The single largest-volume island is the band (the main structural mesh).
- *   - Smaller islands clustered above the band's geometric centre are gems.
- *   - Islands whose AABB volume < 30% of the largest are candidate gems.
- *
- * Returns an array same length as `islands` with role strings.
- */
-export function classifyIslands(islands: THREE.BufferGeometry[]): ("metal" | "gem")[] {
-  if (islands.length === 1) return ["metal"];
-  const volumes = islands.map(islandVolume);
-  const maxVol = Math.max(...volumes);
-  const threshold = maxVol * 0.3;
-
-  return islands.map((g, i) => {
-    if (volumes[i] >= threshold) return "metal";
-    return "gem";
-  });
+/** Split a geometry into its disconnected islands (non-indexed, source attributes kept). */
+export function splitIslands(geometry: THREE.BufferGeometry): THREE.BufferGeometry[] {
+  const measured = measureGeometryIslands(geometry);
+  if (!measured || measured.labels.islandCount <= 1) return [geometry.clone()];
+  const islands: THREE.BufferGeometry[] = [];
+  for (let island = 0; island < measured.labels.islandCount; island++) {
+    islands.push(buildIslandGeometry(geometry, islandTriangleIds(measured.groups, island)));
+  }
+  return islands;
 }
 
-function islandVolume(g: THREE.BufferGeometry): number {
-  if (!g.boundingBox) g.computeBoundingBox();
-  const box = g.boundingBox!;
-  const size = new THREE.Vector3();
-  box.getSize(size);
-  return Math.max(size.x * size.y * size.z, 1e-9);
+/** Metrics for a geometry that is already a single island. */
+function measureWholeGeometry(geometry: THREE.BufferGeometry): IslandMetrics {
+  const positions = readPositions(geometry);
+  const index = geometry.index ? geometry.index.array : null;
+  const labels = labelIslands(positions, index, positions.length / 3, weldToleranceFor(geometryExtent(geometry)));
+  const all = new Uint32Array(labels.triangleCount).map((_, i) => i);
+  return measureIsland(labels.weld.positions, labels.corners, all);
+}
+
+/** Slot + role for already-split islands (see `assignIslandSlots`). */
+export function classifyIslandSlots(islands: THREE.BufferGeometry[]): IslandSlot[] {
+  return assignIslandSlots(islands.map(measureWholeGeometry));
+}
+
+/** Role of each island: metal, gem (main or lone stone) or accent-gem (repeated smaller cut). */
+export function classifyIslands(islands: THREE.BufferGeometry[]): JewelryRole[] {
+  return classifyIslandSlots(islands).map((slot) => slot.role);
 }

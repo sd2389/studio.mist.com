@@ -11,7 +11,7 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     ports:
-      - "5433:5432"
+      - "${STUDIO_POSTGRES_PORT:-5433}:5432"
     environment:
       POSTGRES_USER: studio
       POSTGRES_PASSWORD: studio
@@ -42,8 +42,8 @@ services:
       AI_BACKGROUND_MODE: stub
       PUBLIC_API_BASE: ${PUBLIC_API_BASE:-${NEXT_PUBLIC_API_URL:-http://localhost:8765}}
       APP_PUBLIC_URL: ${APP_PUBLIC_URL:-http://localhost:3000}
-      EMAIL_FROM: studio@devjewels.com
-      CONTACT_NOTIFY_EMAIL: support@devjewels.com
+      EMAIL_FROM: studio@mist.com
+      CONTACT_NOTIFY_EMAIL: support@mist.com
       ADMIN_EMAILS: sd2389@njit.edu
       # AWS_BUCKET: ${AWS_BUCKET-}
       # AWS_REGION: ${AWS_REGION:-auto}
@@ -67,8 +67,8 @@ services:
       args:
         # Baked into the JS bundle. Browser uses this to hit the API directly.
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8765}
-        # NEXT_PUBLIC_CDN_ORIGIN: https://cdn.studio.devjewels.com
-        # NEXT_PUBLIC_SOURCE_ASSET_ORIGIN: https://assets.studio.devjewels.com
+        # NEXT_PUBLIC_CDN_ORIGIN: https://cdn.studio.mist.com
+        # NEXT_PUBLIC_SOURCE_ASSET_ORIGIN: https://assets.studio.mist.com
     restart: unless-stopped
     depends_on:
       backend:

@@ -7,6 +7,7 @@ import {
   enableJewelryGemSafeMode,
   JEWELRY_GEM_SHADER_KEY,
 } from "@/lib/gem-gpu/jewelry-gem-shader";
+import { disableGemTrace, isGemTraceMaterial } from "@/lib/gem-gpu/gem-trace-material";
 import { asViewerRenderer } from "@/lib/gpu/viewer-renderer";
 import { useViewerToastStore } from "@/stores/viewer-toast-store";
 
@@ -19,6 +20,11 @@ function applySafeModeToJewelryGems(scene: THREE.Scene): number {
     const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
     for (const m of mats) {
       if (!(m instanceof THREE.MeshPhysicalMaterial)) continue;
+      if (isGemTraceMaterial(m)) {
+        disableGemTrace(m);
+        count += 1;
+        continue;
+      }
       if (!m.userData?.[JEWELRY_GEM_SHADER_KEY]) continue;
       if (m.userData.jewelryGemSafeMode === true) continue;
       enableJewelryGemSafeMode(m);
@@ -36,22 +42,30 @@ export function JewelryGemCompileFallbackBridge() {
   const gl = asViewerRenderer(useThree((s) => s.gl));
   const scene = useThree((s) => s.scene);
   const camera = useThree((s) => s.camera);
+  const sized = useThree((s) => s.size.width > 0 && s.size.height > 0);
   const toastedRef = useRef(false);
 
   useEffect(() => {
+    if (!sized) return;
     let cancelled = false;
-    void gl.compileAsync(scene, camera).catch((error: unknown) => {
+    // Compiling before the canvas has its real size (and a first frame) races the renderer's
+    // multisample buffers at the 300×150 default, which intermittently leaves them stale.
+    const frame = requestAnimationFrame(() => {
       if (cancelled) return;
-      console.error("[jewelry-gem] WebGPU compile failed", error);
-      if (applySafeModeToJewelryGems(scene) === 0) return;
-      if (toastedRef.current) return;
-      toastedRef.current = true;
-      useViewerToastStore.getState().showToast(SAFE_MODE_TOAST);
+      void gl.compileAsync(scene, camera).catch((error: unknown) => {
+        if (cancelled) return;
+        console.error("[jewelry-gem] WebGPU compile failed", error);
+        if (applySafeModeToJewelryGems(scene) === 0) return;
+        if (toastedRef.current) return;
+        toastedRef.current = true;
+        useViewerToastStore.getState().showToast(SAFE_MODE_TOAST);
+      });
     });
     return () => {
       cancelled = true;
+      cancelAnimationFrame(frame);
     };
-  }, [gl, scene, camera]);
+  }, [gl, scene, camera, sized]);
 
   return null;
 }

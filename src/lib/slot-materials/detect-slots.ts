@@ -10,16 +10,18 @@ export function normalizeSlotToken(token: string): SlotId | null {
 
   if (/^heads?$/i.test(value) || /^head$/i.test(value) || /^prongs?$/i.test(value)) return "Heads";
 
-  if (/^(metal|band|shank|setting|bezel)$/i.test(value)) return "Metal 1";
-  if (/^(gem|stone|diamond)$/i.test(value)) return "Gem 1";
+  // Plurals too: "Gems" / "Stones" are the default stone layers in RhinoGold and MatrixGold.
+  if (/^(metals?|bands?|shanks?|settings?|bezels?)$/i.test(value)) return "Metal 1";
+  if (/^(gems?|stones?|diamonds?)$/i.test(value)) return "Gem 1";
 
-  const metal = value.match(/^metal\s*0*([1-9]\d*)$/i);
+  // `_` too: GLTFLoader stores "Metal 2" as "Metal_2" when a saved GLB is loaded back.
+  const metal = value.match(/^metal[\s_]*0*([1-9]\d*)$/i);
   if (metal) return `Metal ${Number(metal[1])}` as const;
 
-  const gem = value.match(/^(gem|stone)\s*0*([1-9]\d*)$/i);
+  const gem = value.match(/^(gem|stone)[\s_]*0*([1-9]\d*)$/i);
   if (gem) return `Gem ${Number(gem[2])}` as const;
 
-  const accent = value.match(/^accent\s*0*([1-9]\d*)$/i);
+  const accent = value.match(/^accent[\s_]*0*([1-9]\d*)$/i);
   if (accent) return `Accent ${Number(accent[1])}` as const;
 
   return null;
@@ -49,23 +51,41 @@ function getCandidates(mesh: THREE.Mesh): string[] {
   return names;
 }
 
+/**
+ * Tokens are recorded from names at upload time ("metal 2"); a stored GLB comes back through
+ * GLTFLoader with sanitised names ("Metal_2"). Comparing both sanitised keeps them matching.
+ */
+function nameMatchKey(name: string): string {
+  return THREE.PropertyBinding.sanitizeNodeName(name.trim()).toLowerCase();
+}
+
 function detectSlotsFromTokens(root: THREE.Object3D, slotTokens: PersistedSlotTokens): SlotMap {
   const normalizedSlots = Object.entries(slotTokens)
     .map(([slot, tokens]) => ({
       slot: normalizeSlotToken(slot) ?? (slot as SlotId),
-      tokens: tokens.map((token) => token.toLowerCase()).filter(Boolean),
+      tokens: tokens.map(nameMatchKey).filter(Boolean),
     }))
     .filter((entry) => entry.tokens.length > 0);
 
   const slotMap: SlotMap = new Map();
   root.traverse((obj) => {
     if (!(obj instanceof THREE.Mesh)) return;
-    const candidates = getCandidates(obj).map((candidate) => candidate.toLowerCase());
-    const matched = normalizedSlots.find(({ tokens }) =>
-      candidates.some((candidate) =>
-        tokens.some((token) => candidate.includes(token)),
-      ),
-    );
+    const candidates = getCandidates(obj).map(nameMatchKey);
+    // A generic "gem" alias must not steal "Gem 03" from its specific slot.
+    let matched: (typeof normalizedSlots)[number] | undefined;
+    let bestScore = 0;
+    for (const entry of normalizedSlots) {
+      for (const candidate of candidates) {
+        for (const token of entry.tokens) {
+          const score = candidate === token ? 10_000 + token.length
+            : candidate.includes(token) ? token.length : 0;
+          if (score > bestScore) {
+            bestScore = score;
+            matched = entry;
+          }
+        }
+      }
+    }
     const slot = matched?.slot ?? "default";
     const existing = slotMap.get(slot);
     if (existing) {

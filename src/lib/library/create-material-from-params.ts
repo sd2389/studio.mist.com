@@ -2,6 +2,13 @@ import * as THREE from "three";
 import { getFinishMaps } from "@/lib/finish-textures";
 import { GEM_GPU_USER_KEY } from "@/lib/gem-gpu/gem-physical-material";
 import { applyJewelryGemShader } from "@/lib/gem-gpu/jewelry-gem-shader";
+import {
+  applyGemTrace,
+  GEM_TRACE_BOUNCES,
+  gemTraceParamsFromConfig,
+  isGemTraceCandidate,
+} from "@/lib/gem-gpu/gem-trace-material";
+import type { GemConfig } from "@/lib/gem-gpu/gem-configs";
 import type { FinishId } from "@/stores/material-preset-store";
 import type { UserMaterialItem } from "@/lib/library/types";
 
@@ -32,7 +39,7 @@ export function createMetalMaterialFromParams(
     clearcoatRoughness,
     roughnessMap: maps.roughnessMap,
     normalMap: maps.normalMap,
-    normalScale: maps.normalMap ? new THREE.Vector2(maps.normalScale, maps.normalScale) : undefined,
+    ...(maps.normalMap ? { normalScale: new THREE.Vector2(maps.normalScale, maps.normalScale) } : {}),
   });
 }
 
@@ -61,7 +68,6 @@ export function createGemMaterialFromParams(
       typeof params.attenuationDistance === "number" ? params.attenuationDistance : 0.45,
     specularIntensity: 1,
     specularColor: new THREE.Color(0xffffff),
-    reflectivity: 0.6,
     clearcoat: typeof params.clearcoat === "number" ? params.clearcoat : 0.6,
     clearcoatRoughness: typeof params.clearcoat === "number" ? 0.02 : 0,
     iridescence: typeof params.iridescence === "number" ? params.iridescence : 0,
@@ -69,6 +75,23 @@ export function createGemMaterialFromParams(
   });
 
   m.userData[GEM_GPU_USER_KEY] = true;
+  const traceConfig: GemConfig = {
+    ior: m.ior,
+    dispersionBase: m.dispersion,
+    dispersionAmplitude: 0,
+    roughness: m.roughness,
+    thickness: m.thickness,
+    envMapIntensity: m.envMapIntensity,
+    baseColor,
+    attenuationColor,
+    attenuationDistance: m.attenuationDistance,
+    transmission,
+  };
+  if (isGemTraceCandidate(traceConfig)) {
+    const bounces = qualityReduce ? GEM_TRACE_BOUNCES.performance : GEM_TRACE_BOUNCES.standard;
+    applyGemTrace(m, gemTraceParamsFromConfig(traceConfig, bounces));
+    return m;
+  }
   applyJewelryGemShader(m, {
     sparkleStrength: typeof params.sparkleStrength === "number" ? params.sparkleStrength : 1,
     fireStrength: 1,

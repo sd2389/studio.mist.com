@@ -30,6 +30,7 @@ class Scene(Base):
     slot_selections: Mapped[dict] = mapped_column(JSON, default=dict)
     scene_settings: Mapped[dict] = mapped_column(JSON, default=dict)
     variants: Mapped[dict] = mapped_column(JSON, default=dict)
+    product_specs: Mapped[dict] = mapped_column(JSON, default=dict)
     thumbnail_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True)
     project_id: Mapped[int | None] = mapped_column(

@@ -12,7 +12,7 @@ import { ZOOM_PRESETS, zoomBy, zoomToFactor } from "@/stores/orbit-controls-stor
 import { cn } from "@/lib/utils";
 
 const quietBtn =
-  "size-8 rounded-full border border-black/10 bg-[#F4F2EE] text-black/65 shadow-none hover:bg-white hover:text-black";
+  "size-8 rounded-full border border-foreground/10 bg-surface text-foreground/65 shadow-none hover:bg-surface hover:text-foreground";
 
 type ZoomControlsProps = {
   className?: string;
@@ -64,14 +64,14 @@ export function ZoomControls({
           <DropdownMenuTrigger
             className={cn(
               buttonVariants({ variant: "ghost", size: "sm" }),
-              "h-8 rounded-full border border-black/10 bg-[#F4F2EE] px-2.5 text-[10px] font-medium uppercase tracking-[0.1em] text-black/65 shadow-none hover:bg-white hover:text-black",
+              "h-8 rounded-full border border-foreground/10 bg-surface px-2.5 font-mono text-[10px] uppercase tracking-[0.24em] text-foreground/65 shadow-none hover:bg-surface hover:text-foreground",
               touchLayout && "hidden md:inline-flex",
             )}
             aria-label="Zoom presets"
           >
             Zoom
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="border-black/10 bg-white text-black">
+          <DropdownMenuContent align="end" className="border-foreground/10 bg-surface text-foreground">
             {ZOOM_PRESETS.map((p) => (
               <DropdownMenuItem key={p.id} onClick={() => zoomToFactor(p.factor)}>
                 {p.label}
@@ -129,13 +129,13 @@ export function ZoomControls({
         <DropdownMenuTrigger
           className={cn(
             buttonVariants({ variant: "ghost", size: "sm" }),
-            "ml-0.5 h-8 rounded-full border border-black/10 bg-[#F4F2EE] px-2.5 text-[10px] font-medium uppercase tracking-[0.1em] text-black/65 shadow-none hover:bg-white hover:text-black",
+            "ml-0.5 h-8 rounded-full border border-foreground/10 bg-surface px-2.5 font-mono text-[10px] uppercase tracking-[0.24em] text-foreground/65 shadow-none hover:bg-surface hover:text-foreground",
           )}
           aria-label="Zoom presets"
         >
           Zoom
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="border-black/10 bg-white text-black">
+        <DropdownMenuContent align="end" className="border-foreground/10 bg-surface text-foreground">
           {ZOOM_PRESETS.map((p) => (
             <DropdownMenuItem key={p.id} onClick={() => zoomToFactor(p.factor)}>
               {p.label}

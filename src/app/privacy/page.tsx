@@ -3,14 +3,14 @@ import Link from "next/link";
 import { LegalPageShell } from "@/components/legal/LegalPageShell";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy · DevJewels Studio",
+  title: "Privacy Policy · MIST Studio",
 };
 
 export default function PrivacyPage() {
   return (
     <LegalPageShell title="Privacy Policy" updated="June 6, 2026">
       <p>
-        DevJewels Studio (&quot;we&quot;, &quot;us&quot;) respects your privacy. This policy
+        MIST Studio (&quot;we&quot;, &quot;us&quot;) respects your privacy. This policy
         describes what data we collect and how we use it.
       </p>
       <h2>Data we collect</h2>

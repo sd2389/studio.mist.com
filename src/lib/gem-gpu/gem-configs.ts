@@ -1,3 +1,5 @@
+import { buildFancyDiamondConfigs } from "./fancy-diamonds";
+
 export type GemConfig = {
   ior: number;
   dispersionBase: number;
@@ -23,7 +25,7 @@ export type GemConfig = {
  * Dispersion `base` is bumped above the natural value for diamond/moissanite to give visible
  * spectral fire on screen (Three.js dispersion is an approximation; small natural values barely show).
  */
-export const GEM_CONFIGS = {
+const BASE_GEM_CONFIGS = {
   diamond: {
     ior: 2.417,
     dispersionBase: 0.08,
@@ -894,6 +896,9 @@ export const GEM_CONFIGS = {
     transmission: 0.0,
   },
 } satisfies Record<string, GemConfig>;
+
+/** Every preset gem, including the generated GIA fancy-colour diamonds (see `fancy-diamonds.ts`). */
+export const GEM_CONFIGS = { ...BASE_GEM_CONFIGS, ...buildFancyDiamondConfigs(BASE_GEM_CONFIGS.diamond) };
 
 /** All catalog gem slugs with renderer-ready optical params (≥ 65 entries). */
 export type GemPresetId = keyof typeof GEM_CONFIGS;

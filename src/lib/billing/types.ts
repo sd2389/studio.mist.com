@@ -1,6 +1,8 @@
 export type QuotaBalances = {
   model_credits: number;
   ai_image_credits: number;
+  /** Server render jobs (backend/app/features/render_jobs); sent by the API in every snapshot. */
+  render_credits: number;
   custom_material_credits: number;
   custom_asset_credits: number;
   storage_bytes_used: number;
@@ -10,6 +12,7 @@ export type QuotaBalances = {
 export type PlanFeatures = {
   max_variants_per_model: number;
   max_image_resolution: number;
+  max_polygons: number;
   watermark_exports: boolean;
   embed_enabled: boolean;
   batch_export_enabled: boolean;

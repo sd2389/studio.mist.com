@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { createViewerRenderer } from "@/lib/gpu/viewer-renderer";
 import { fitModelToUnit } from "./stamp-slots";
+import { cloneOwnedModel } from "./clone-owned-model";
 
 const THUMB_SIZE = 512;
 
@@ -21,7 +22,7 @@ export async function generateModelThumbnail(root: THREE.Object3D): Promise<Blob
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0xf4f1ea);
 
-  const model = root.clone(true);
+  const model = cloneOwnedModel(root);
   fitModelToUnit(model, 1.4);
   scene.add(model);
 
@@ -53,7 +54,8 @@ export async function generateModelThumbnail(root: THREE.Object3D): Promise<Blob
   });
   renderer.setSize(THUMB_SIZE, THUMB_SIZE, false);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  // Match the studio's PBR Neutral tone mapping so thumbnails read like the viewer.
+  renderer.toneMapping = THREE.NeutralToneMapping;
   renderer.toneMappingExposure = 1.05;
 
   try {

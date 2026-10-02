@@ -1,198 +1,209 @@
-# Mist Studio
+# MIST Studio
 
-Browser-based jewelry rendering studio. CAD upload → photoreal renders → 360 video → embed.
+MIST Studio is a jewelry studio that runs in the browser. Upload a CAD file and it opens as a lit 3D scene, with its metals and stones split into slots you can dress. From there you can export stills, turntable video and Campaign Packs, or embed the 3D viewer on a product page so shoppers can switch metals and stones. A parametric ring designer outputs STL, OBJ and GLB files. Rendering happens in the browser on WebGPU (WebGL 2 fallback), and gemstones are ray-traced through their facets. A FastAPI service stores accounts, scenes, files and billing in PostgreSQL.
+
+## Features
+
+- **Import:** 10 formats (Rhino 3DM, STEP, IGES, OBJ, FBX, STL, PLY, 3MF, GLB, glTF). Files are converted in the browser, units are normalised to millimetres, and metal and stone layers are detected and named.
+- **Stones:** 22 cuts, 74 gem materials and 45 fancy-diamond colours (9 hues × 5 grades), ray-traced with refraction and dispersion at 3, 6 or 9 bounces. A built-in ASET scope shows light return.
+- **Materials:** 21 metals (yellow, white, rose and coloured golds from 9K to 24K, platinum, silver, titanium, rhodium black) in 5 finishes. Each slot takes its own material.
+- **Scenes:** 8 studio sets and 5 lighting setups, with bloom, star glints, macro depth of field, ambient occlusion and contact shadows.
+- **Outputs:** stills at HD, 2K, 4K or 8K (16:9, 1:1, 4:3) as PNG, JPEG or transparent cutouts, and looping H.264 MP4 turntables up to 8K. The Campaign Pack renders stills of every metal from every angle, turntables, a 360° spin with its own viewer, and ASET scopes into one ZIP. AI backgrounds and on-model shots are in beta.
+- **Embed:** one iframe puts the live viewer on a store page. Shoppers rotate, zoom and switch between 7 metals and 8 stones.
+- **Ring designer** (`/design`): 9 parametric styles (solitaire, halo, pavé, three-stone, eternity, bezel, band, studs, pendant) with live specs, weight per alloy, a quote from your own metal and labour rates, and STL (per half size), OBJ and GLB downloads.
+- **Workspace:** Free, Grow and Studio plans (3 free pieces, 5 GB to 500 GB of storage, 100k to 2M polygons per model), plus credit packs.
 
 ## Stack
-- Next.js 16 (App Router) + React 19, Three.js r184 (R3F + drei + postprocessing)
-- Zustand + Tailwind v4 + shadcn
-- FastAPI + SQLAlchemy + **PostgreSQL 16** (Alembic migrations)
-- Mediabunny for MP4 muxing
-- S3 for model + render storage
-- **Dockerized** — one command starts everything
 
-## Project docs
-See [`docs/`](docs/) — architecture, ownership, quality gates, and [DECISIONS.md](docs/DECISIONS.md).
+| Area | Technology |
+|---|---|
+| Web app | Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS v4, shadcn/ui on Base UI, Zustand |
+| 3D | Three.js r184 with React Three Fiber and drei; `WebGPURenderer` with a TSL post-processing pipeline and a TSL gem ray tracer |
+| CAD import | rhino3dm (3DM), occt-import-js (STEP, IGES; fetched from jsDelivr when first needed), three.js loaders for mesh formats |
+| Media | Mediabunny (MP4 muxing), fflate (ZIP) |
+| API | FastAPI, SQLAlchemy 2, Alembic, PostgreSQL 16, Python 3.12 |
+| Storage | Local disk, Cloudflare R2 or Amazon S3 |
+| Optional services | Stripe (billing), SMTP (email), Sentry (error reporting) |
+| Tests | Vitest, pytest, Playwright render goldens |
 
----
+Viewing needs a browser with WebGPU or WebGL 2.
 
-## Run — full Docker (recommended)
+## Quick start (Docker)
 
-Prereq: Docker + Docker Compose v2.
+Requires Docker with Compose v2.
 
 ```bash
 docker compose up -d
 ```
 
-That's it. 3 containers come up in order:
-1. `postgres` — Postgres 16, persistent volume `studio_pg`, exposed on `localhost:5433`
-2. `backend` — FastAPI on `localhost:8765`, runs `alembic upgrade head` on every boot
-3. `web` — Next.js production build on `localhost:3000`
+Compose builds the images and starts three services, each waiting for the previous one to report healthy:
 
-Open http://localhost:3000.
+| Service | Host port | Notes |
+|---|---|---|
+| `postgres` | 5433 (change with `STUDIO_POSTGRES_PORT`) | Postgres 16; data in the `studio_pg` volume |
+| `backend` | 8765 | FastAPI; runs `alembic upgrade head` on every start; uploads in the `studio_uploads` volume |
+| `web` | 3000 | Next.js production build |
 
-Total memory: ~200 MB across all 3 containers (vs ~1–2 GB for `npm run dev` on the host).
+Open http://localhost:3000. The bundled MIST Solitaire at `/viewer/mist-solitaire` works without an account; you need one to save your own uploads. Interactive API docs are at http://localhost:8765/docs (turned off when `APP_ENV=production`).
 
-### Common commands
+Optional seed data:
+
 ```bash
-docker compose ps                 # status
-docker compose logs -f backend    # tail logs
-docker compose logs -f web
-docker compose restart backend    # restart one service
-docker compose down               # stop (data persists)
-docker compose down -v            # stop + nuke volumes (fresh DB)
+docker compose exec backend python -m scripts.seed_catalog     # metals, gems, environments, backdrops, scene presets (idempotent)
+docker compose exec backend python -m scripts.fetch_cc0_hdris  # download CC0 HDRIs from Poly Haven
+docker compose exec backend python -m scripts.seed_demo_embed  # demo piece, then open /embed/DEMO-EMBED-RING
 ```
 
-### Update code → rebuild
+Everyday commands:
+
 ```bash
-docker compose up -d --build              # rebuild any changed service
-docker compose build backend && docker compose up -d backend   # rebuild only backend
+docker compose logs -f backend   # follow logs (also: web, postgres)
+docker compose up -d --build     # rebuild after code changes
+docker compose down              # stop; data is kept
+docker compose down -v           # stop and delete volumes (fresh database)
 ```
 
----
+Compose reads variables such as `STUDIO_POSTGRES_PORT`, `NEXT_PUBLIC_API_URL`, `APP_PUBLIC_URL` and `CORS_ORIGINS` from a root `.env`. The backend container receives only the variables listed in `docker-compose.yml`. Add others (storage keys, Stripe, SMTP, `RENDER_WORKER_TOKEN`) in a `docker-compose.override.yml`, which Compose merges automatically and git ignores. `docker-compose.override.example.yml` is the template. Without third-party keys, AI features run in stub mode, emails go to the backend log, and paid checkout is unavailable.
 
-## Run — hybrid (fast edit loop)
+## Local development
 
-For active coding, run only Postgres + backend in Docker and Next dev on the host (instant HMR):
+**Hybrid:** run the database and API in Docker and Next.js on the host, with hot reload:
 
 ```bash
-docker compose up postgres backend -d
+docker compose up -d postgres backend
+npm ci
 NEXT_PUBLIC_API_URL=http://localhost:8765 npm run dev
 ```
 
-The host dev server hot-reloads on save; backend + DB stay isolated.
+The dev server's port is set by the `dev` script in `package.json`. If the browser reports CORS errors, set `APP_PUBLIC_URL` to the dev server's origin in `.env` and run `docker compose up -d backend` again. The backend always allows that origin, and it also uses it to build private file links.
 
----
+**Without Docker:** you need Node.js 22, Python 3.12 and PostgreSQL 16.
 
-## Run — bare metal (no Docker)
+1. Start PostgreSQL. The backend's default `DATABASE_URL` points at the Compose database on `localhost:5433`; for any other server, set `DATABASE_URL` in `backend/.env`.
+2. Install, migrate and start the API:
 
-Possible but more work. See `docs/ARCHITECTURE.md` for the hybrid dev layout.
+   ```bash
+   cd backend
+   python3.12 -m venv .venv
+   .venv/bin/pip install -r requirements-dev.txt
+   .venv/bin/alembic upgrade head
+   .venv/bin/uvicorn app.main:app --port 8765 --reload
+   ```
 
----
+   No `backend/.env` is needed: storage falls back to `backend/uploads/` and AI runs in stub mode. `backend/.env.example` is set up for R2, so if you copy it, either fill in the `R2_*` keys or set `STORAGE_BACKEND=local`.
+3. Start the web app from the repo root: `npm ci`, then `NEXT_PUBLIC_API_URL=http://localhost:8765 npm run dev`. You can also put the variable in `.env.local` (template: `.env.example`). If the browser reports CORS errors, set `APP_PUBLIC_URL` in `backend/.env` to the dev server's origin.
 
-## Database
+**Schema changes:** Alembic owns the schema (`backend/alembic/versions/`). From `backend/`, run `.venv/bin/alembic revision --autogenerate -m "describe change"`, review the generated file, then `.venv/bin/alembic upgrade head`. Run autogenerate on the host, not with `docker compose exec`: the container has no bind mount, so the new file would stay inside it. Under Compose, rebuild the backend (`docker compose up -d --build backend`) so the container gets the new migration.
 
-Postgres-only. Schema lives in `backend/alembic/versions/`.
+## Environment variables
 
-### Change schema
-```bash
-docker compose exec backend alembic revision --autogenerate -m "describe change"
-docker compose restart backend     # boot reapplies migrations
-```
+Templates: [`.env.example`](.env.example) (web, Compose) and [`backend/.env.example`](backend/.env.example) (API). Never commit real values.
 
-Edit the generated file under `backend/alembic/versions/` before committing.
-
-### Reset DB (dev only)
-```bash
-docker compose down -v && docker compose up -d
-```
-
-### Production
-Set `DATABASE_URL=postgresql+psycopg2://user:pass@host:5432/dbname` and run `alembic upgrade head` on deploy. Compose-managed Postgres is dev-only — use managed Postgres (Neon, Supabase, RDS) in prod.
-
-### Production storage + CDN
-1. Create an S3 or Cloudflare R2 bucket; enable CORS for `PUT` from your app origin.
-2. Set `AWS_BUCKET`, credentials, and (for R2) `AWS_S3_ENDPOINT` + `AWS_S3_FORCE_PATH_STYLE=true` on **backend** and **web** (presign route).
-3. Point a CDN at the bucket; set `PUBLIC_CDN_ORIGIN` (backend) and `NEXT_PUBLIC_CDN_ORIGIN` (web build).
-4. Optional: serve catalog HDRIs from a dedicated static origin via `NEXT_PUBLIC_SOURCE_ASSET_ORIGIN`.
-5. Sync CC0 HDRIs after deploy: `docker compose exec backend python -m scripts.fetch_cc0_hdris`.
-6. Uploads set `Cache-Control` per key prefix (`models/` immutable 1y, `thumbnails/` 1d, `catalog/` 7d).
-
----
-
-## Server renders (render-job service)
-
-Full-fidelity server-side renders are produced by a Node worker that drives a
-headless Playwright browser through the same Three.js pipeline used in the live
-viewer.  The browser renders 60 warm-up frames then captures the scene at the
-requested resolution via `renderAtResolution`.
-
-### Credits model
-
-Each successful render consumes exactly **1 render credit** from the job owner's
-`UserBilling.render_credits_balance`.  Credits are debited only on success — a
-failed or retried job never touches the balance.  Plans ship with a default
-allotment; top-up packs are a Phase 3 item.
-
-**Caveat (v1 accepted):** The completion path commits the credit debit and the
-job-state update in a single DB transaction, but the PNG is written to storage
-*before* that commit.  A crash between the storage write and the commit would
-leave the credit consumed but the job still marked "running" — the operator
-would need to manually reset or re-run.  A single-worker deployment makes this
-window very small and was accepted for v1.
-
-### Running the worker locally
-
-Prerequisites: `docker compose up -d postgres backend` (with `RENDER_WORKER_TOKEN`
-set in the backend — see `docker-compose.override.yml` below) and
-`npm run dev` running on the host.
-
-```bash
-# 1. Add RENDER_WORKER_TOKEN to the backend (docker-compose.override.yml):
-#    services:
-#      backend:
-#        environment:
-#          RENDER_WORKER_TOKEN: smoketoken
-
-# 2. Seed a smoke job (creates or reuses smoke@Mist.test with 5 render credits):
-docker compose exec backend python -m scripts.seed_smoke_job
-
-# 3. Run the worker (one job then exit):
-RENDER_WORKER_TOKEN=smoketoken RENDER_API_URL=http://localhost:8765 \
-  npm run worker:render -- --once
-
-# 4. Verify: check job status + balance in the container:
-docker compose exec backend python -c "
-from app.database import SessionLocal
-from sqlalchemy import select, text
-with SessionLocal() as db:
-    rows = db.execute(text('SELECT id,status,result_key,attempts FROM render_jobs ORDER BY id DESC LIMIT 3')).fetchall()
-    for r in rows: print(r)
-"
-```
-
-To test the failure path (bogus model URL → 3 retries → failed, no credit charge):
-
-```bash
-docker compose exec backend python -m scripts.seed_smoke_job --bogus
-# Then run worker --once three times; last run shows status=failed, credits unchanged.
-```
-
-### Worker env vars
-
-| Var | Default | Purpose |
+| Variable | Used by | Purpose |
 |---|---|---|
-| `RENDER_WORKER_TOKEN` | — | **Required** — shared secret; must match backend `RENDER_WORKER_TOKEN` |
-| `RENDER_API_URL` | `http://localhost:8765` | Backend base URL |
-| `HARNESS_BASE_URL` | `http://localhost:3000` | Next.js app URL (set via `BASE_URL` in `browser.mjs`) |
+| `NEXT_PUBLIC_API_URL` | web, build time | FastAPI URL the browser calls |
+| `API_URL` | web, server | FastAPI URL for Next.js route handlers; Compose points it at the internal `backend` service |
+| `NEXT_PUBLIC_CDN_ORIGIN` | web, build time | Load models, thumbnails and renders from a CDN |
+| `NEXT_PUBLIC_SOURCE_ASSET_ORIGIN` | web, build time | Separate origin for catalogue HDRIs and backgrounds |
+| `NEXT_PUBLIC_ENABLE_RENDER_HARNESS` | web, build time | `1` serves `/render-harness` in a production build (dev servers always serve it) |
+| `NEXT_PUBLIC_SENTRY_*`, `SENTRY_*` | web, backend | Optional Sentry reporting and source-map upload |
+| `STUDIO_POSTGRES_PORT` | Compose | Host port for Postgres |
+| `DATABASE_URL` | backend | Postgres connection; must be set when `APP_ENV=production` |
+| `APP_ENV` | backend | `production` turns off `/docs`, requires `DATABASE_URL` and gates `/health/deps` |
+| `APP_PUBLIC_URL` | backend | Browser-facing web origin for private file links, email links and Stripe redirects; always allowed by CORS |
+| `CORS_ORIGINS`, `CORS_ORIGIN_REGEX` | backend | Extra browser origins allowed to call the API |
+| `PUBLIC_API_BASE`, `PUBLIC_CDN_ORIGIN` | backend | Absolute bases for file URLs in API responses |
+| `STORAGE_BACKEND` | backend | `local`, `r2` or `s3`; unset or `auto` picks R2 when its keys are set, then S3 when `AWS_BUCKET` is set, else `backend/uploads/` |
+| `R2_*` | backend | Cloudflare R2 account, keys, private and public buckets, endpoint and public base URL |
+| `AWS_*` | backend | Amazon S3 or another S3-compatible store |
+| `MAX_UPLOAD_BYTES`, `RATE_LIMIT_*` | backend | Upload size cap; hourly limits on uploads and AI backgrounds |
+| `AI_BACKGROUND_MODE` | backend | AI backgrounds: `off`, `stub` (no GPU) or `sdxl` (GPU host, optional packages) |
+| `AI_ON_MODEL_PROVIDER`, `REPLICATE_API_TOKEN` | backend | On-model shots: `stub`, `sdxl` or `replicate` |
+| `EMAIL_FROM`, `CONTACT_NOTIFY_EMAIL`, `SMTP_*` | backend | Password-reset and contact-form email; without `SMTP_HOST`, emails go to the log |
+| `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_*` | backend | Plan subscriptions and top-up packs |
+| `ADMIN_EMAILS` | backend | Comma-separated email addresses that get admin access |
+| `HEALTH_DEPS_TOKEN` | backend | `X-Health-Token` value for `GET /health/deps` in production |
+| `RENDER_WORKER_TOKEN` | backend, worker | Shared secret for the render worker; the job-claim endpoint returns 503 until it is set |
+| `RENDER_API_URL` | worker | Backend URL |
+| `HARNESS_BASE_URL` | worker, goldens | Web app URL that serves `/render-harness` |
 
-**Security caveat (v1 accepted):** Per-job page tokens (`worker_token`) appear in
-access logs as query-string parameters on the `/payload`, `/complete`, and `/fail`
-endpoints.  Tokens are single-use UUID hex values (128 bits) and expire with the
-job, so log exposure is low risk.  A header-based token scheme is the Phase 2
-hardening path.
+## Deploying
 
-### GPU / serverless deploy
+- **Database:** use a managed PostgreSQL, set `DATABASE_URL`, and run `alembic upgrade head` on deploy (the backend image does this on start). The Compose database is for development.
+- **Storage:** set `STORAGE_BACKEND` plus the `R2_*` or `AWS_*` variables on the backend. Uploads are presigned and registered through FastAPI, so the web app holds no storage keys. For R2, `python -m scripts.setup_r2` (from `backend/`) creates the private and public buckets and sets CORS on the private one from `CORS_ORIGINS` and `APP_PUBLIC_URL`. For S3, start from `scripts/s3-cors.example.json`.
+- **Files:** private models and renders load through the signed-in `/api/files/...` route, while published SKU models keep public URLs. Stored objects get `Cache-Control` by key prefix (`backend/app/core/cache_policy.py`). With a CDN, set `PUBLIC_CDN_ORIGIN` (backend) and `NEXT_PUBLIC_CDN_ORIGIN` (web build).
+- **Origins:** set `APP_PUBLIC_URL`, `NEXT_PUBLIC_API_URL`, `PUBLIC_API_BASE` and `CORS_ORIGINS` to the public origins and keep `API_URL` internal. `NEXT_PUBLIC_*` values are compiled into the bundle, so rebuild the web image after changing them.
+- **Catalogue:** after deploying, run `python -m scripts.seed_catalog` and `python -m scripts.fetch_cc0_hdris` from `backend/`.
 
-Cloud GPU and serverless deployment (Runpod, Modal, Vast.ai) land in **Phase 3**.
-The worker is a plain Node process — it only needs `playwright` and a Chromium
-install.  Point `RENDER_API_URL` at the production backend and set
-`HARNESS_BASE_URL` to the production app URL.
+## Server renders (optional)
 
----
+The backend can queue full-resolution renders (`POST /render-jobs`). A Node worker (`npm run worker:render`) claims each job, opens `/render-harness` in headless Chromium, renders 60 warm-up frames through the viewer's Three.js pipeline, and uploads the PNG. A successful render costs the owner 1 render credit. Failed attempts are never charged and are re-queued until a job has had 3 attempts.
 
-## Env vars
+To run it locally, keep the dev server running (`npm run dev`) and install Chromium once with `npx playwright install chromium`:
 
-| Var | Where | Default | Purpose |
-|---|---|---|---|
-| `DATABASE_URL` | backend | `postgresql+psycopg2://studio:studio@postgres:5432/studio` | Postgres connection |
-| `NEXT_PUBLIC_API_URL` | web (build-time) | `http://localhost:8765` | Browser → FastAPI |
-| `API_URL` | web (runtime) | `http://backend:8765` | Server-side proxy → FastAPI over internal Docker network |
-| `AWS_BUCKET` / `AWS_REGION` | backend + web | — | S3 or R2 for GLB, thumbnails, renders |
-| `AWS_S3_ENDPOINT` / `AWS_S3_FORCE_PATH_STYLE` | backend + web | — | Cloudflare R2 (or other S3-compatible) |
-| `PUBLIC_CDN_ORIGIN` | backend | — | CDN base for `model_url` / `thumbnail_url` in API responses |
-| `NEXT_PUBLIC_CDN_ORIGIN` | web (build-time) | — | Browser loads GLB/thumbnails directly from CDN |
-| `NEXT_PUBLIC_SOURCE_ASSET_ORIGIN` | web (build-time) | — | Clean-room HDRIs/catalog assets (optional separate origin) |
-| `AI_BACKGROUND_MODE` | backend | `stub` | `off` / `stub` / `sdxl` (GPU host required) |
-| `PUBLIC_API_BASE` | backend | `http://localhost:8765` | Absolute base for `result_url` in AI BG responses |
-| `CORS_ORIGINS` | backend | `localhost:3000,127.0.0.1:3000` | Comma-separated CORS allowlist |
-| `RENDER_WORKER_TOKEN` | backend | — | Shared secret for render worker auth (`POST /render-jobs/claim`) |
+```bash
+cp docker-compose.override.example.yml docker-compose.override.yml  # gives the backend a RENDER_WORKER_TOKEN
+docker compose up -d postgres backend
+docker compose exec backend python -m scripts.seed_smoke_job        # add --bogus to test the failure path
+RENDER_WORKER_TOKEN=<token from the override file> HARNESS_BASE_URL=<dev server URL> \
+  npm run worker:render -- --once
+```
+
+In production, point `RENDER_API_URL` at the backend and `HARNESS_BASE_URL` at a web build made with `NEXT_PUBLIC_ENABLE_RENDER_HARNESS=1`.
+
+Known v1 limits:
+
+- Jobs have no lease. A job left `running` by a crashed worker or backend has to be reset by hand.
+- Per-job tokens are passed in the query string of `/payload`, `/complete` and `/fail`, so they can show up in access logs.
+
+## Project layout
+
+| Path | Contents |
+|---|---|
+| `src/app/` | Next.js routes: marketing pages, studio (`/viewer`), designer (`/design`), embed (`/embed`), dashboard, admin; `api/` handlers forward to FastAPI |
+| `src/features/` | Feature slices (upload, viewer, editor, scene, render, ring-builder, scene-setups, billing, auth, admin, and more), each owning its UI, domain logic and API calls |
+| `src/components/` | Shared UI: `ui/` design system, `site/` and `scroll-film/` marketing shell and home film, embed and dashboard pieces |
+| `src/lib/` | Shared modules: `convert/` CAD import, `gem-gpu/` gem ray tracer, `gpu/` renderer setup, `jewelry-cad/` and `stones/` ring kernel and cuts, `pricing/` |
+| `src/stores/` | Zustand stores |
+| `backend/app/` | FastAPI: thin `routers/`, `features/` services, `core/` storage, URLs and security, `models/` SQLAlchemy |
+| `backend/alembic/` | Database migrations |
+| `backend/scripts/` | Seed and maintenance commands (catalogue, HDRIs, demo embed, render smoke job, R2 setup) |
+| `backend/tests/` | pytest suite |
+| `public/` | Static assets: bundled models, HDRIs, textures, rhino3dm WASM, test fixtures |
+| `scripts/` | Import-boundary check, golden capture and check, render worker |
+| `tests/goldens/` | Baseline renders for the golden check |
+| `samples/` | Local CAD test files (git-ignored) |
+| `docs/` | Architecture, standards, ownership, quality gates, ADRs |
+
+## Tests and quality gates
+
+```bash
+npm run lint               # ESLint
+npx tsc --noEmit           # type check
+npm run check:boundaries   # fails on imports of the removed @/components/viewer and @/components/upload paths
+npm test                   # Vitest unit tests (src/**/*.test.ts, *.test.tsx)
+npm run build              # production build
+```
+
+Backend, from `backend/` with the virtualenv above:
+
+```bash
+.venv/bin/python -m pytest              # in-memory SQLite; no running Postgres needed
+.venv/bin/python -m compileall app -q   # syntax gate
+```
+
+**Render goldens** (`npm run test:golden`):
+
+- Captures `/render-harness` under the 5 lighting setups in headless Chromium with the SwiftShader software renderer, and compares each frame with `tests/goldens/` (SSIM 0.98 or higher).
+- Needs Playwright's Chromium (`npx playwright install chromium`) and the app running at `HARNESS_BASE_URL` (default `http://localhost:3000`). That can be `npm run dev`, or `NEXT_PUBLIC_ENABLE_RENDER_HARNESS=1 npm run build && npm run start`, which is what CI does.
+- Goldens are pinned to SwiftShader, the Playwright version in `package.json` and the fixture model. Regenerate them only for an approved render change, following [tests/goldens/README.md](tests/goldens/README.md).
+
+After meaningful changes, also run the manual smoke flow in [docs/QUALITY-GATES.md](docs/QUALITY-GATES.md) (upload, dashboard list, viewer, render still).
+
+CI runs lint, type checks, unit tests, render goldens and a dependency audit on every pull request.
+
+## Contributing
+
+- Read [docs/ENGINEERING-PLAYBOOK.md](docs/ENGINEERING-PLAYBOOK.md) before adding a feature. The rules are in [ARCHITECTURE.md](docs/ARCHITECTURE.md), [CODE-STANDARDS.md](docs/CODE-STANDARDS.md) and [OWNERSHIP.md](docs/OWNERSHIP.md).
+- Open pull requests into `main`. They are squash-merged.
+- Run the quality gates above and go through [REVIEW-CHECKLIST.md](docs/REVIEW-CHECKLIST.md). Record structural changes as an ADR in [docs/adr/](docs/adr/). Earlier decisions are in [DECISIONS.md](docs/DECISIONS.md).

@@ -105,7 +105,8 @@ export function AdminUserDetailShell({ userEmail, initial }: AdminUserDetailShel
       const res = await fetch(`/api/admin/users/${detail.id}/impersonate`, { method: "POST" });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Impersonation failed");
-      window.location.href = "/dashboard";
+      // A full page load, so no client state from the admin session carries over.
+      window.location.assign(new URL("/dashboard", window.location.origin));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Impersonation failed");
     } finally {

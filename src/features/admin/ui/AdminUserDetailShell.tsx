@@ -9,7 +9,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatCredits, formatStorageGb } from "@/lib/billing/format";
-import type { AdminUserDetail, CreditKind } from "@/lib/admin/types";
+import type { AdminUserDetail, AdminUserUsage, CreditAdjustmentRow, CreditKind } from "@/lib/admin/types";
+import type { QuotaBalances } from "@/lib/billing/types";
 
 type AdminUserDetailShellProps = {
   userEmail: string;
@@ -141,97 +142,11 @@ export function AdminUserDetailShell({ userEmail, initial }: AdminUserDetailShel
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Usage</CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-3 sm:grid-cols-2">
-              <QuotaLine label="CAD models" value={String(usage.scene_count)} />
-              <QuotaLine label="Embedded (SKU)" value={String(usage.embedded_count)} />
-              <QuotaLine label="Renders" value={String(usage.render_count)} />
-              <QuotaLine label="Storage" value={formatStorageGb(usage.storage_bytes_used)} />
-              <QuotaLine
-                label="Model credits left"
-                value={`${usage.model_credits_remaining} / ${usage.model_credits_allotment}`}
-              />
-              <QuotaLine
-                label="AI credits left"
-                value={`${usage.ai_credits_remaining} / ${usage.ai_credits_allotment}`}
-              />
-              {usage.last_scene_at ? (
-                <QuotaLine
-                  label="Last model activity"
-                  value={new Date(usage.last_scene_at).toLocaleString()}
-                />
-              ) : null}
-              {usage.last_render_at ? (
-                <QuotaLine
-                  label="Last render"
-                  value={new Date(usage.last_render_at).toLocaleString()}
-                />
-              ) : null}
-            </CardContent>
-          </Card>
+          <UsageCard usage={usage} />
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Credits & storage</CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-3 sm:grid-cols-2">
-              <QuotaLine
-                label="Model"
-                value={formatCredits(balances.model_credits, allotments.model_credits)}
-              />
-              <QuotaLine
-                label="AI image"
-                value={formatCredits(balances.ai_image_credits, allotments.ai_image_credits)}
-              />
-              <QuotaLine
-                label="Custom material"
-                value={formatCredits(
-                  balances.custom_material_credits,
-                  allotments.custom_material_credits,
-                )}
-              />
-              <QuotaLine
-                label="Custom asset"
-                value={formatCredits(balances.custom_asset_credits, allotments.custom_asset_credits)}
-              />
-              <QuotaLine
-                label="Storage"
-                value={`${formatStorageGb(balances.storage_bytes_used)} / ${formatStorageGb(balances.storage_bytes_limit)}`}
-              />
-            </CardContent>
-          </Card>
+          <CreditsAndStorageCard balances={balances} allotments={allotments} />
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Recent adjustments</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {detail.recent_adjustments.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No manual adjustments yet.</p>
-              ) : (
-                <ul className="space-y-3">
-                  {detail.recent_adjustments.map((row) => (
-                    <li key={row.id} className="rounded-md border border-border/60 p-3 text-sm">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="font-medium">
-                          {row.kind} {row.delta >= 0 ? "+" : ""}
-                          {row.delta}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          {new Date(row.created_at).toLocaleString()}
-                        </span>
-                      </div>
-                      <p className="mt-1 text-muted-foreground">{row.reason}</p>
-                      <p className="text-xs text-muted-foreground">by {row.admin_email}</p>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </CardContent>
-          </Card>
+          <RecentAdjustmentsCard adjustments={detail.recent_adjustments} />
         </div>
 
         <div className="space-y-4">
@@ -303,6 +218,110 @@ export function AdminUserDetailShell({ userEmail, initial }: AdminUserDetailShel
         </div>
       </div>
     </AdminShell>
+  );
+}
+
+function UsageCard({ usage }: { usage: AdminUserUsage }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Usage</CardTitle>
+      </CardHeader>
+      <CardContent className="grid gap-3 sm:grid-cols-2">
+        <QuotaLine label="CAD models" value={String(usage.scene_count)} />
+        <QuotaLine label="Embedded (SKU)" value={String(usage.embedded_count)} />
+        <QuotaLine label="Renders" value={String(usage.render_count)} />
+        <QuotaLine label="Storage" value={formatStorageGb(usage.storage_bytes_used)} />
+        <QuotaLine
+          label="Model credits left"
+          value={`${usage.model_credits_remaining} / ${usage.model_credits_allotment}`}
+        />
+        <QuotaLine
+          label="AI credits left"
+          value={`${usage.ai_credits_remaining} / ${usage.ai_credits_allotment}`}
+        />
+        {usage.last_scene_at ? (
+          <QuotaLine
+            label="Last model activity"
+            value={new Date(usage.last_scene_at).toLocaleString()}
+          />
+        ) : null}
+        {usage.last_render_at ? (
+          <QuotaLine
+            label="Last render"
+            value={new Date(usage.last_render_at).toLocaleString()}
+          />
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+function CreditsAndStorageCard({ balances, allotments }: { balances: QuotaBalances; allotments: QuotaBalances }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Credits & storage</CardTitle>
+      </CardHeader>
+      <CardContent className="grid gap-3 sm:grid-cols-2">
+        <QuotaLine
+          label="Model"
+          value={formatCredits(balances.model_credits, allotments.model_credits)}
+        />
+        <QuotaLine
+          label="AI image"
+          value={formatCredits(balances.ai_image_credits, allotments.ai_image_credits)}
+        />
+        <QuotaLine
+          label="Custom material"
+          value={formatCredits(
+            balances.custom_material_credits,
+            allotments.custom_material_credits,
+          )}
+        />
+        <QuotaLine
+          label="Custom asset"
+          value={formatCredits(balances.custom_asset_credits, allotments.custom_asset_credits)}
+        />
+        <QuotaLine
+          label="Storage"
+          value={`${formatStorageGb(balances.storage_bytes_used)} / ${formatStorageGb(balances.storage_bytes_limit)}`}
+        />
+      </CardContent>
+    </Card>
+  );
+}
+
+function RecentAdjustmentsCard({ adjustments }: { adjustments: CreditAdjustmentRow[] }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Recent adjustments</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {adjustments.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No manual adjustments yet.</p>
+        ) : (
+          <ul className="space-y-3">
+            {adjustments.map((row) => (
+              <li key={row.id} className="rounded-md border border-border/60 p-3 text-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-medium">
+                    {row.kind} {row.delta >= 0 ? "+" : ""}
+                    {row.delta}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {new Date(row.created_at).toLocaleString()}
+                  </span>
+                </div>
+                <p className="mt-1 text-muted-foreground">{row.reason}</p>
+                <p className="text-xs text-muted-foreground">by {row.admin_email}</p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

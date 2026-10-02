@@ -1,7 +1,6 @@
 import { ViewerShell } from "@/features/viewer";
 import { FeatureDisabledPage } from "@/features/feature-flags";
 import { fetchSceneByEmbedIdServer } from "@/lib/api/server-fetch";
-import { loadLookCatalogsServer } from "@/lib/catalog/edit-catalogs";
 import { parseEmbedUrlParams, resolveEmbedSettings } from "@/lib/embed-settings";
 import { fetchFeatureFlagsServer, isFeatureEnabled } from "@/lib/feature-flags/server-fetch";
 import { viewerIdFromModelKey } from "@/lib/model-key";
@@ -25,13 +24,13 @@ export default async function EmbedPage({ params, searchParams }: EmbedPageProps
     ? viewerIdFromModelKey(initialScene.model_key)
     : id;
   const displayName = initialScene?.name?.trim() || initialScene?.sku?.trim() || viewerId;
-  // The scene's catalogue background and lighting, so shoppers see what the jeweler designed.
-  const catalogs = initialScene ? await loadLookCatalogsServer(initialScene) : null;
   const embedSettings = resolveEmbedSettings(
     initialScene?.scene_settings?.embed,
     parseEmbedUrlParams(query),
   );
 
+  // View only: the scene as last saved in the studio, with the catalogue items and library
+  // materials its look uses (`initialScene.look`), so shoppers see the piece as it was finished.
   return (
     <ViewerShell
       modelId={viewerId}
@@ -39,7 +38,6 @@ export default async function EmbedPage({ params, searchParams }: EmbedPageProps
       initialScene={initialScene}
       embedSettings={embedSettings}
       displayName={displayName}
-      catalogs={catalogs}
     />
   );
 }

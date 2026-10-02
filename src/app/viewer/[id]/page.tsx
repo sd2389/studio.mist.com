@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { fetchSceneByViewerIdServer } from "@/lib/api/server-fetch";
 import { SESSION_COOKIE } from "@/lib/auth/constants";
-import { loadEditCatalogsServer, loadLookCatalogsServer } from "@/lib/catalog/edit-catalogs";
+import { loadEditCatalogsServer } from "@/lib/catalog/edit-catalogs";
 import { ViewerShell } from "@/features/viewer";
 
 type ViewerPageProps = {
@@ -25,7 +25,8 @@ export default async function ViewerPage({ params }: ViewerPageProps) {
   // Saved scenes get the Edit tab when someone is signed in; the API still enforces ownership.
   const signedIn = Boolean((await cookies()).get(SESSION_COOKIE)?.value);
   const editable = Boolean(!bundled && initialScene && signedIn);
-  const catalogs = editable ? await loadEditCatalogsServer() : initialScene ? await loadLookCatalogsServer(initialScene) : null;
+  // The scene brings the catalogue items its own look uses; only the Edit tab browses the catalogue.
+  const catalogs = editable ? await loadEditCatalogsServer() : null;
 
   return (
     <ViewerShell key={id} modelId={id} variant="studio" initialScene={initialScene} catalogs={catalogs} editable={editable} />

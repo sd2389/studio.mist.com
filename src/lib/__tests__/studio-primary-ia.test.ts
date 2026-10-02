@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 function readUi(name: string) {
@@ -42,7 +42,7 @@ describe("studio primary IA", () => {
     expect(shell.includes(">Controls<") || shell.includes('"Controls"')).toBe(false);
   });
 
-  it("embed chrome is 48px and has no shopper dock or primary bar", () => {
+  it("embed is view only: 48px chrome, the studio's stage, no material switcher or primary bar", () => {
     const shell = readUi("ViewerShell.tsx");
     const embed = readUi("EmbedChrome.tsx");
     expect(embed.includes("h-12")).toBe(true);
@@ -52,9 +52,21 @@ describe("studio primary IA", () => {
     const embedReturn = shell.indexOf("return (", embedStart);
     const studioReturn = shell.indexOf("return (", embedReturn + 1);
     const embedBlock = shell.slice(embedReturn, studioReturn);
+    const studioBlock = shell.slice(studioReturn);
     expect(embedBlock.includes("StudioPrimaryBar")).toBe(false);
-    expect(embedBlock.includes("shopper")).toBe(false);
-    expect(embedBlock.includes("MetalPicker") || embedBlock.includes("shopper dock")).toBe(false);
+    expect(/shopper|picker|swatch/i.test(embedBlock)).toBe(false);
+    // Both draw the piece with the same stage, so the embed shows what the studio shows.
+    expect(embedBlock.includes("<ViewerStage {...stage}")).toBe(true);
+    expect(studioBlock.includes("<ViewerStage {...stage}")).toBe(true);
+    expect(existsSync(path.join(process.cwd(), "src/features/viewer/ui/EmbedShopperMaterials.tsx"))).toBe(false);
+  });
+
+  it("embed fullscreen and zoom controls keep 44px phone tap targets", () => {
+    expect(readUi("EmbedChrome.tsx").includes("size-11!")).toBe(true);
+    const zoom = readUi("ZoomControls.tsx");
+    expect(zoom.includes("size-11!")).toBe(true);
+    expect(zoom.includes("hidden md:inline-flex")).toBe(true);
+    expect(readUi("ViewerShell.tsx").includes("touchLayout")).toBe(true);
   });
 
   it("studio shell mounts a single sidebar and a collapsible phone tab bar", () => {

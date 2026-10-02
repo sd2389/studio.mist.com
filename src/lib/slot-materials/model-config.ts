@@ -1,4 +1,4 @@
-import type { MaterialPresetId } from "@/stores/material-preset-store";
+import type { FinishId, MaterialPresetId } from "@/stores/material-preset-store";
 
 export type SceneSettingBucketKey =
   | "ENVIRONMENT-METAL"
@@ -70,6 +70,8 @@ export type SceneSettingsBuckets = Record<SceneSettingBucketKey, string | null> 
   embed?: EmbedSettings;
   /** Studio scene id (see `@/features/scene-setups`); unknown ids fall back to the default. */
   sceneSetup?: string | null;
+  /** Surface finish on the metals; looks saved before it was kept are polished. */
+  finish?: FinishId | null;
 };
 
 export type PersistedModelConfig = {

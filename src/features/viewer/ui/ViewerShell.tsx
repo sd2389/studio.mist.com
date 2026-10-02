@@ -3,32 +3,34 @@
 import { useGLTF } from "@react-three/drei";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { modelExtFromUrl, viewerIdFromModelKey } from "@/lib/model-key";
-import { ViewerCanvas } from "./ViewerCanvas";
 import { EmbedChrome } from "./EmbedChrome";
-import { EmbedShopperMaterials } from "./EmbedShopperMaterials";
 import { StudioPrimaryBar } from "./StudioPrimaryBar";
 import { StudioSidebar } from "./StudioSidebar";
 import { useStudioModals } from "./useStudioModals";
-import { ViewportBackground } from "./ViewportBackground";
+import { ViewerStage } from "./ViewerStage";
 import { SceneEditPanel } from "@/features/editor/ui/SceneEditPanel";
 import {
-  buildSceneCatalogIndex,
   lookupBackground,
   lookupEnvironment,
   lookupGround,
 } from "@/features/editor/hooks/useSceneCatalogIndex";
 import type { EditCatalogs } from "@/lib/catalog/edit-catalogs";
-import { LIGHTING_PRESETS } from "@/lib/viewer-lighting";
 import { StudioTopBar } from "./StudioTopBar";
 import { ZoomControls } from "./ZoomControls";
 import { useStudioPrimaryPanel } from "./useStudioPrimaryPanel";
 import { shouldPersistViewerScene } from "@/features/viewer/domain/viewer-scene-persist";
 import { resolveSceneSettings } from "../domain/resolve-scene-settings";
+import {
+  buildLookCatalogIndex,
+  registerLookMaterials,
+  resolveModelConfig,
+  savedLook,
+} from "../domain/saved-look";
 import { cn } from "@/lib/utils";
 import type { EmbedSettings } from "@/lib/embed-settings";
 import { resolveModelUrl } from "@/lib/model-url";
 import { getSceneByViewerId, updateSceneByViewerId } from "@/features/scene";
-import type { SceneDetail } from "@/lib/api/scenes";
+import type { SceneDetail, SceneLook } from "@/lib/api/scenes";
 import {
   fetchSourceCatalog,
   type SourceCatalogPayload,
@@ -38,17 +40,12 @@ import {
   buildModelConfigFromSlots,
   getDefaultSceneSettings,
 } from "@/lib/slot-materials/model-config";
-import {
-  useMaterialPresetStore,
-  type LightingPresetId,
-  type MaterialPresetId,
-} from "@/stores/material-preset-store";
+import { useMaterialPresetStore } from "@/stores/material-preset-store";
 
-/** A scene's model config, rebuilt from its slot selections for scenes saved before configs had slots. */
-function resolveModelConfig(scene: SceneDetail) {
-  return scene.model_config?.slots?.length
-    ? scene.model_config
-    : buildModelConfigFromSlots(Object.keys(scene.slot_selections ?? {}));
+/** Puts a saved scene's look in the studio store, with its catalogue and library materials. */
+function applySavedLook(scene: SceneDetail) {
+  registerLookMaterials(scene.look);
+  useMaterialPresetStore.setState(savedLook(scene));
 }
 
 type ViewerShellProps = {
@@ -57,7 +54,7 @@ type ViewerShellProps = {
   initialScene?: SceneDetail | null;
   embedSettings?: EmbedSettings;
   displayName?: string;
-  /** Catalogues the scene's look and the Edit tab draw from. */
+  /** Catalogue pages the Edit tab browses; the scene brings the items its own look uses. */
   catalogs?: EditCatalogs | null;
   /** Show the Edit tab: a saved scene with someone signed in (the API enforces ownership). */
   editable?: boolean;
@@ -77,14 +74,10 @@ export function ViewerShell({
   const [batchModelUrl, setBatchModelUrl] = useState<string | null>(null);
   const modelUrl = batchModelUrl ?? sceneModelUrl;
   const preset = useMaterialPresetStore((s) => s.preset);
-  const setPreset = useMaterialPresetStore((s) => s.setPreset);
   const autoRotate = useMaterialPresetStore((s) => s.autoRotate);
   const lighting = useMaterialPresetStore((s) => s.lighting);
-  const setLighting = useMaterialPresetStore((s) => s.setLighting);
+  const finish = useMaterialPresetStore((s) => s.finish);
   const slotSelections = useMaterialPresetStore((s) => s.slotSelections);
-  const replaceSlotSelections = useMaterialPresetStore(
-    (s) => s.replaceSlotSelections,
-  );
   const sceneSettings = useMaterialPresetStore((s) => s.sceneSettings);
   const replaceSceneSettings = useMaterialPresetStore(
     (s) => s.replaceSceneSettings,
@@ -96,6 +89,7 @@ export function ViewerShell({
   const [sceneSku, setSceneSku] = useState<string | null>(
     initialScene?.sku ?? null,
   );
+  const [sceneLook, setSceneLook] = useState<SceneLook | null>(initialScene?.look ?? null);
   const [catalog, setCatalog] = useState<SourceCatalogPayload | null>(null);
   const [sceneLoaded, setSceneLoaded] = useState(Boolean(initialScene));
   const applyingPersistedState = useRef(false);
@@ -129,18 +123,7 @@ export function ViewerShell({
   useEffect(() => {
     if (initialScene) {
       applyingPersistedState.current = true;
-      const scene = initialScene;
-      const resolvedModelConfig = resolveModelConfig(scene);
-      const safeSelections = sanitizeSlotSelections(
-        (scene.slot_selections ?? {}) as Record<string, MaterialPresetId>,
-        resolvedModelConfig,
-      );
-      const incomingPreset = scene.material as MaterialPresetId;
-      const incomingLighting = scene.lighting as LightingPresetId;
-      setPreset(incomingPreset);
-      setLighting(incomingLighting);
-      replaceSlotSelections(safeSelections);
-      replaceSceneSettings(scene.scene_settings ?? getDefaultSceneSettings());
+      applySavedLook(initialScene);
       window.setTimeout(() => {
         applyingPersistedState.current = false;
       }, 0);
@@ -152,19 +135,10 @@ export function ViewerShell({
     void getSceneByViewerId(modelId)
       .then((scene) => {
         if (cancelled) return;
-        const resolvedModelConfig = resolveModelConfig(scene);
-        const safeSelections = sanitizeSlotSelections(
-          (scene.slot_selections ?? {}) as Record<string, MaterialPresetId>,
-          resolvedModelConfig,
-        );
-        const incomingPreset = scene.material as MaterialPresetId;
-        const incomingLighting = scene.lighting as LightingPresetId;
-        setPreset(incomingPreset);
-        setLighting(incomingLighting);
-        replaceSlotSelections(safeSelections);
-        replaceSceneSettings(scene.scene_settings ?? getDefaultSceneSettings());
-        setModelConfig(resolvedModelConfig);
+        applySavedLook(scene);
+        setModelConfig(resolveModelConfig(scene));
         setSceneSku(scene.sku ?? null);
+        setSceneLook(scene.look ?? null);
       })
       .catch(() => {
         if (cancelled) return;
@@ -184,14 +158,7 @@ export function ViewerShell({
         window.clearTimeout(persistTimer.current);
       }
     };
-  }, [
-    initialScene,
-    modelId,
-    replaceSceneSettings,
-    replaceSlotSelections,
-    setLighting,
-    setPreset,
-  ]);
+  }, [initialScene, modelId, replaceSceneSettings]);
 
   const persistPayload = useMemo(
     () => ({
@@ -199,9 +166,10 @@ export function ViewerShell({
       lighting,
       model_config: modelConfig,
       slot_selections: sanitizeSlotSelections(slotSelections, modelConfig),
-      scene_settings: sceneSettings,
+      // The finish is saved with the look, so the embed shows it too.
+      scene_settings: { ...sceneSettings, finish },
     }),
-    [lighting, modelConfig, preset, sceneSettings, slotSelections],
+    [finish, lighting, modelConfig, preset, sceneSettings, slotSelections],
   );
 
   const resolvedSceneSettings = useMemo(
@@ -223,27 +191,21 @@ export function ViewerShell({
 
   const { openers, modals } = useStudioModals(modelId, sceneSku);
 
-  // Catalogue environments, background and ground the scene was saved with (Edit tab).
-  const sceneCatalog = useMemo(
-    () =>
-      buildSceneCatalogIndex({
-        environments: {
-          items: [...(catalogs?.metalEnvironments?.items ?? []), ...(catalogs?.gemEnvironments?.items ?? [])],
-          total: 0,
-          limit: 0,
-          offset: 0,
-        },
-        backgrounds: catalogs?.backgrounds,
-        grounds: catalogs?.grounds,
-        presets: catalogs?.scenePresets,
-      }),
-    [catalogs],
-  );
+  // Catalogue environments, background and ground the look names, from the scene or the Edit tab.
+  const sceneCatalog = useMemo(() => buildLookCatalogIndex(catalogs, sceneLook), [catalogs, sceneLook]);
   const catalogLook = {
     metalEnvironment: lookupEnvironment(sceneCatalog, sceneSettings["ENVIRONMENT-METAL"]),
     gemEnvironment: lookupEnvironment(sceneCatalog, sceneSettings["ENVIRONMENT-GEM"]),
     backgroundItem: lookupBackground(sceneCatalog, sceneSettings.BACKGROUND),
     groundItem: lookupGround(sceneCatalog, sceneSettings.GROUND),
+  };
+  const stage = {
+    modelUrl,
+    preset,
+    lighting,
+    modelConfig,
+    sceneSettings: resolvedSceneSettings,
+    ...catalogLook,
   };
   const editPanel =
     editable && initialScene?.id && catalogs ? (
@@ -290,26 +252,9 @@ export function ViewerShell({
             showStudioLink={embedSettings?.showStudioLink ?? false}
           />
         ) : null}
-        <div className="relative min-h-0 flex-1">
-          {catalogLook.backgroundItem ? (
-            <ViewportBackground
-              backgroundItem={catalogLook.backgroundItem}
-              customBackground={resolvedSceneSettings.customBackground}
-              fallbackColor={LIGHTING_PRESETS[lighting].background}
-            />
-          ) : null}
-          <ViewerCanvas
-            modelUrl={modelUrl}
-            preset={preset}
-            autoRotate={embedAutoRotate}
-            lighting={lighting}
-            modelConfig={modelConfig}
-            sceneSettings={resolvedSceneSettings}
-            {...catalogLook}
-          />
+        <ViewerStage {...stage} autoRotate={embedAutoRotate}>
           {showZoomControls ? <ZoomControls variant="embed" touchLayout /> : null}
-        </div>
-        <EmbedShopperMaterials modelConfig={modelConfig} />
+        </ViewerStage>
       </div>
     );
   }
@@ -336,25 +281,9 @@ export function ViewerShell({
           <div className="h-[52px] shrink-0">
             <StudioTopBar modelId={modelId} sku={sceneSku} displayName={displayName ?? initialScene?.name} />
           </div>
-          <div className="relative min-h-0 flex-1 bg-studio-canvas">
-            {catalogLook.backgroundItem ? (
-              <ViewportBackground
-                backgroundItem={catalogLook.backgroundItem}
-                customBackground={resolvedSceneSettings.customBackground}
-                fallbackColor={LIGHTING_PRESETS[lighting].background}
-              />
-            ) : null}
-            <ViewerCanvas
-              modelUrl={modelUrl}
-              preset={preset}
-              autoRotate={autoRotate}
-              lighting={lighting}
-              modelConfig={modelConfig}
-              sceneSettings={resolvedSceneSettings}
-              {...catalogLook}
-            />
+          <ViewerStage {...stage} autoRotate={autoRotate}>
             <ZoomControls />
-          </div>
+          </ViewerStage>
         </div>
 
         <StudioPrimaryBar

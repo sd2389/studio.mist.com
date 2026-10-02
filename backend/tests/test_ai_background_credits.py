@@ -14,19 +14,39 @@ from app.routers import ai_background as ai_router
 from app.schemas.ai import AiBackgroundBody
 
 
-def _png_data_url() -> str:
+def _png(size: tuple[int, int], color: tuple[int, ...]) -> bytes:
     buf = io.BytesIO()
-    Image.new("RGBA", (8, 8), (200, 160, 40, 255)).save(buf, format="PNG")
-    return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+    Image.new("RGBA", size, color).save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def _png_data_url() -> str:
+    return "data:image/png;base64," + base64.b64encode(_png((8, 8), (200, 160, 40, 255))).decode()
+
+
+# What the mocked real engines return.
+GENERATED_PNG = _png((96, 64), (245, 245, 245, 255))
 
 
 @pytest.fixture()
-def engines(monkeypatch):
+def saved_ai_pngs(monkeypatch) -> list[bytes]:
+    """The PNGs the route stored, in order (nothing touches storage)."""
+    saved: list[bytes] = []
+
+    def save_ai_png(data, user_id):
+        saved.append(data)
+        return f"ai/{user_id}/result.png"
+
+    monkeypatch.setattr(ai_router.ai_svc, "save_ai_png", save_ai_png)
+    return saved
+
+
+@pytest.fixture()
+def engines(monkeypatch, saved_ai_pngs):
     """Pick the route's AI engines; generated PNGs stay out of storage."""
-    monkeypatch.setattr(ai_router.ai_svc, "save_ai_png", lambda data, user_id: f"ai/{user_id}/result.png")
-    monkeypatch.setattr(ai_router.ai_svc, "run_sdxl_inpaint", lambda im, prompt: b"sdxl-png")
+    monkeypatch.setattr(ai_router.ai_svc, "run_sdxl_inpaint", lambda im, prompt: GENERATED_PNG)
     monkeypatch.setattr(
-        ai_router.on_model_svc, "run_on_model_replicate", lambda im, prompt, token, variant: b"replicate-png"
+        ai_router.on_model_svc, "run_on_model_replicate", lambda im, prompt, token, variant: GENERATED_PNG
     )
 
     def configure(background: str = "stub", on_model: str = "stub") -> None:
@@ -120,3 +140,17 @@ def test_real_mode_needs_a_credit(db, sample_user, engines):
         _generate(db, sample_user, sub_mode="shoot")
 
     assert exc.value.status_code == 402
+
+
+def test_free_results_carry_the_watermark_and_paid_ones_do_not(db, sample_user, engines, saved_ai_pngs):
+    engines(background="sdxl")
+    _generate(db, sample_user, sub_mode="shoot")
+    billing = get_or_create_billing(db, sample_user)
+    billing.plan_tier = "grow"
+    db.commit()
+    _generate(db, sample_user, sub_mode="shoot")
+
+    free_png, grow_png = saved_ai_pngs
+    assert grow_png == GENERATED_PNG
+    assert free_png != GENERATED_PNG
+    assert Image.open(io.BytesIO(free_png)).size == (96, 64)

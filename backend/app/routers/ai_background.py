@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.core.deps import get_current_user, require_feature
 from app.database import get_db
+from app.features.billing.plans import get_quotas, normalize_tier
 from app.features.billing.quota_service import (
     assert_ai_image_credit,
     consume_ai_image_credit,
@@ -18,6 +19,7 @@ from app.models.user import User
 from app.schemas.ai import AiBackgroundBody
 from app.services import ai_background as ai_svc
 from app.services import ai_on_model as on_model_svc
+from app.services.export_watermark import stamp_png
 from app.services.ai_presets import resolve_prompt
 
 router = APIRouter(dependencies=[Depends(require_feature("ai_background"))])
@@ -140,6 +142,9 @@ async def ai_background(
     else:
         out_bytes = _run_background_pipeline(im, prompt, engine)
     pipeline_mode = f"{body.sub_mode}:{engine}"
+    # Free plans watermark every export; these images are made here, so the mark is too.
+    if get_quotas(normalize_tier(billing.plan_tier)).watermark_exports:
+        out_bytes = stamp_png(out_bytes)
 
     key = ai_svc.save_ai_png(out_bytes, user.id)
     url = public_file_url(key)

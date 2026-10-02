@@ -9,7 +9,12 @@ import pytest
 from fastapi import HTTPException
 from PIL import Image
 
+from fastapi.testclient import TestClient
+
+from app.core.deps import get_current_user
+from app.database import get_db
 from app.features.billing.quota_service import get_or_create_billing
+from app.main import app
 from app.routers import ai_background as ai_router
 from app.schemas.ai import AiBackgroundBody
 
@@ -154,3 +159,24 @@ def test_free_results_carry_the_watermark_and_paid_ones_do_not(db, sample_user, 
     assert grow_png == GENERATED_PNG
     assert free_png != GENERATED_PNG
     assert Image.open(io.BytesIO(free_png)).size == (96, 64)
+
+
+def test_the_route_serves_the_balance_left(db, sample_user, engines):
+    """Over HTTP, so the response passes FastAPI's validation of the route's return type."""
+
+    def _override_db():
+        yield db
+
+    engines(background="stub")
+    app.dependency_overrides[get_db] = _override_db
+    app.dependency_overrides[get_current_user] = lambda: sample_user
+    app.dependency_overrides[ai_router._ai_limit] = lambda: None
+    try:
+        res = TestClient(app).post(
+            "/ai-background", json={"jewelry_b64": _png_data_url(), "sub_mode": "shoot"}
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert res.status_code == 200, res.text
+    assert res.json()["credits_remaining"] == _ai_balance(db, sample_user)

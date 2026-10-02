@@ -104,7 +104,7 @@ async def ai_background(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     _rate: Annotated[None, Depends(_ai_limit)] = None,
-) -> dict[str, str | None]:
+) -> dict[str, str | int | None]:
     settings = get_settings()
     mode = (settings.ai_background_mode or "stub").lower().strip()
     if mode == "off":

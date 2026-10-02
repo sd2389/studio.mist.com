@@ -203,6 +203,16 @@ def _read_field(obj: object, key: str, default: object = None) -> object:
     return getattr(obj, key, default)
 
 
+def _read_metadata(obj: object) -> dict[str, str]:
+    """An object's metadata as a plain dict. StripeObject is not a dict: dict() on it raises."""
+    metadata = _read_field(obj, "metadata")
+    if isinstance(metadata, dict):
+        return metadata
+    if isinstance(metadata, stripe.StripeObject):
+        return metadata.to_dict()
+    return {}
+
+
 def _subscription_price_id(subscription: object) -> str | None:
     items = _read_field(subscription, "items")
     data = _read_field(items, "data", []) if items is not None else []
@@ -309,9 +319,7 @@ def handle_webhook(db: Session, payload: bytes, signature: str | None) -> dict[s
 
 
 def _handle_checkout_completed(db: Session, session: object) -> None:
-    metadata = _read_field(session, "metadata") or {}
-    if not isinstance(metadata, dict):
-        metadata = dict(metadata) if metadata else {}
+    metadata = _read_metadata(session)
     user_id_raw = metadata.get("user_id")
     if not user_id_raw:
         return

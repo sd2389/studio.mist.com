@@ -1,5 +1,9 @@
 """Money-path tests — Stripe webhook idempotency (Phase 17)."""
 
+import hashlib
+import hmac
+import json
+import time
 from unittest.mock import patch
 
 import pytest
@@ -9,6 +13,15 @@ from sqlalchemy import select
 from app.features.billing.quota_service import get_or_create_billing
 from app.features.billing.stripe_service import _record_event, handle_webhook
 from app.models.billing import BillingEvent
+
+WEBHOOK_SECRET = "whsec_test"
+
+
+def _stripe_signature(payload: str, secret: str) -> str:
+    """A Stripe-Signature header for the payload, signed the way Stripe signs webhooks."""
+    timestamp = int(time.time())
+    digest = hmac.new(secret.encode(), f"{timestamp}.{payload}".encode(), hashlib.sha256).hexdigest()
+    return f"t={timestamp},v1={digest}"
 
 
 def test_record_event_is_idempotent(db):
@@ -57,6 +70,41 @@ def test_duplicate_webhook_does_not_double_apply_topup(db, sample_user):
     assert result2 == {"status": "already_processed"}
     assert after_first == start + 50
     assert billing.ai_image_credits_balance == after_first
+
+
+def test_signed_topup_webhook_reads_metadata_from_stripe_objects(db, sample_user):
+    """The real construct_event hands over StripeObjects, not dicts, down to the metadata."""
+    billing = get_or_create_billing(db, sample_user)
+    start = billing.ai_image_credits_balance
+    payload = json.dumps(
+        {
+            "id": "evt_signed_topup",
+            "object": "event",
+            "type": "checkout.session.completed",
+            "data": {
+                "object": {
+                    "id": "cs_signed_topup",
+                    "object": "checkout.session",
+                    "mode": "payment",
+                    "metadata": {
+                        "user_id": str(sample_user.id),
+                        "pack_id": "ai_50",
+                        "topup_kind": "ai",
+                        "topup_credits": "50",
+                    },
+                }
+            },
+        }
+    )
+
+    with patch("app.features.billing.stripe_service.get_settings") as mock_settings:
+        mock_settings.return_value.stripe_webhook_secret = WEBHOOK_SECRET
+        with patch("app.features.billing.stripe_service.billing_email.send_payment_receipt_email"):
+            result = handle_webhook(db, payload.encode(), _stripe_signature(payload, WEBHOOK_SECRET))
+    db.refresh(billing)
+
+    assert result == {"status": "ok"}
+    assert billing.ai_image_credits_balance == start + 50
 
 
 def test_webhook_rejects_invalid_signature(db):

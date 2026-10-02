@@ -10,6 +10,7 @@ from app.core import storage
 from app.core import storage_keys as keys
 from app.core.model_keys import normalized_model_key
 from app.core.public_urls import public_file_url
+from app.features.billing.quota_service import assert_variant_limit
 from app.features.publish import service as publish_service
 from app.models import Render, Scene
 from app.schemas.scene import RenderItem, SceneDetail, SceneListItem, ScenePatch
@@ -120,6 +121,25 @@ def apply_patch(scene: Scene, body: ScenePatch) -> None:
     scene.updated_at = datetime.utcnow()
 
 
+def count_variants(variants: object) -> int:
+    """Saved variants in a scene's `variants` JSON: `{"activeVariantId": …, "items": [...]}`."""
+    items = variants.get("items") if isinstance(variants, dict) else None
+    return len(items) if isinstance(items, list) else 0
+
+
+def assert_variants_fit_plan(db: Session, scene: Scene, body: ScenePatch) -> None:
+    """Refuse a patch that adds variants past the owner's plan cap (402).
+
+    A scene already over the cap, e.g. after a downgrade, keeps its variants and can still
+    rename, update or remove them; it just cannot grow.
+    """
+    if body.variants is None:
+        return
+    count = count_variants(body.variants)
+    if count > count_variants(scene.variants):
+        assert_variant_limit(db, scene.user, count)
+
+
 def require_owned_scene(scene: Scene | None, user_id: int) -> Scene:
     if scene is None:
         raise HTTPException(status_code=404, detail="Scene not found")
@@ -153,6 +173,7 @@ def first_scene_for_sku(db: Session, sku: str) -> Scene | None:
 
 
 def commit_patch(db: Session, scene: Scene, body: ScenePatch) -> SceneListItem:
+    assert_variants_fit_plan(db, scene, body)
     apply_patch(scene, body)
     db.commit()
     db.refresh(scene)

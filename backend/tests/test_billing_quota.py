@@ -6,7 +6,7 @@ from app.features.billing.plans import PLAN_QUOTAS, get_quotas
 def test_free_plan_allotments():
     quotas = get_quotas("free")
     assert quotas.model_credits == 3
-    assert quotas.ai_image_credits == 150
+    assert quotas.ai_image_credits == 25
     assert quotas.max_variants_per_model == 3
     assert quotas.max_polygons == 100_000
     assert quotas.watermark_exports is True
@@ -30,3 +30,17 @@ def test_plan_quotas_define_max_polygons():
     assert PLAN_QUOTAS["free"].max_polygons == 100_000
     assert PLAN_QUOTAS["grow"].max_polygons == 500_000
     assert PLAN_QUOTAS["studio"].max_polygons == 2_000_000
+
+
+def test_plan_quotas_define_ai_image_credits():
+    assert PLAN_QUOTAS["free"].ai_image_credits == 25
+    assert PLAN_QUOTAS["grow"].ai_image_credits == 150
+    assert PLAN_QUOTAS["studio"].ai_image_credits == 500
+
+
+def test_pricing_catalog_lists_ai_image_credits_per_plan():
+    """The pricing page reads these numbers from the catalog, so it must carry plans.py's."""
+    from app.features.billing.service import get_pricing_catalog
+
+    credits = {plan.tier: plan.quotas.ai_image_credits for plan in get_pricing_catalog().plans}
+    assert credits == {"free": 25, "grow": 150, "studio": 500}

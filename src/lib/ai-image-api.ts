@@ -14,6 +14,8 @@ export type AiImageResponse = {
   mode?: string;
   sub_mode?: string;
   prompt?: string;
+  /** The account's AI image credits after this request; a stub placeholder costs none. */
+  credits_remaining?: number;
   error?: string;
 };
 

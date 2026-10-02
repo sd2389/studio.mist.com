@@ -9,8 +9,11 @@ export type PolygonCap = {
   planLabel: string;
   /** False until the visitor's own plan is read (signed out, or not loaded yet). */
   known: boolean;
-  /** Re-read the plan cap (e.g. after signing in mid-upload) and return the fresh value. */
-  refresh: () => Promise<number>;
+  /**
+   * Re-read the plan cap (e.g. after signing in mid-upload) and return the fresh values; the
+   * hook's own fields only catch up on the next render.
+   */
+  refresh: () => Promise<Pick<PolygonCap, "maxPolygons" | "planLabel">>;
 };
 
 /**
@@ -28,12 +31,12 @@ export function usePolygonCap(): PolygonCap {
       setMaxPolygons(snapshot.features.max_polygons);
       setPlanLabel(snapshot.plan_label);
       setKnown(true);
-      return snapshot.features.max_polygons;
+      return { maxPolygons: snapshot.features.max_polygons, planLabel: snapshot.plan_label };
     } catch {
       setMaxPolygons(FREE_MAX_POLYGONS);
       setPlanLabel("Free");
       setKnown(false);
-      return FREE_MAX_POLYGONS;
+      return { maxPolygons: FREE_MAX_POLYGONS, planLabel: "Free" };
     }
   }, []);
 

@@ -6,7 +6,11 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.core.deps import get_current_user, require_feature
 from app.database import get_db
-from app.features.billing.quota_service import assert_ai_image_credit, consume_ai_image_credit
+from app.features.billing.quota_service import (
+    assert_ai_image_credit,
+    consume_ai_image_credit,
+    get_or_create_billing,
+)
 from app.core.observability import get_logger, log_event
 from app.core.rate_limit import rate_limit_dependency
 from app.core.public_urls import public_file_url
@@ -48,22 +52,19 @@ def _run_background_pipeline(im, prompt: str, mode: str) -> bytes:
     )
 
 
-def _run_on_model_pipeline(im, prompt: str, variant: str) -> tuple[bytes, str]:
-    settings = get_settings()
-    provider = (settings.ai_on_model_provider or "stub").lower().strip()
-
+def _run_on_model_pipeline(im, prompt: str, variant: str, provider: str) -> bytes:
     if provider == "stub":
-        return on_model_svc.run_on_model_stub(im, variant), "stub"
+        return on_model_svc.run_on_model_stub(im, variant)
 
     if provider == "replicate":
-        token = settings.replicate_api_token
+        token = get_settings().replicate_api_token
         if not token:
             raise HTTPException(
                 status_code=503,
                 detail="Set REPLICATE_API_TOKEN for AI_ON_MODEL_PROVIDER=replicate",
             )
         try:
-            return on_model_svc.run_on_model_replicate(im, prompt, token, variant), "replicate"
+            return on_model_svc.run_on_model_replicate(im, prompt, token, variant)
         except RuntimeError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         except Exception as exc:
@@ -71,7 +72,7 @@ def _run_on_model_pipeline(im, prompt: str, variant: str) -> tuple[bytes, str]:
 
     if provider == "sdxl":
         try:
-            return ai_svc.run_sdxl_inpaint(im, prompt), "sdxl"
+            return ai_svc.run_sdxl_inpaint(im, prompt)
         except ImportError as exc:
             raise HTTPException(
                 status_code=503,
@@ -88,6 +89,13 @@ def _run_on_model_pipeline(im, prompt: str, variant: str) -> tuple[bytes, str]:
     )
 
 
+def _pipeline_engine(sub_mode: str, background_mode: str) -> str:
+    """The generator a request runs on; "stub" makes a placeholder rather than an AI image."""
+    if sub_mode == "model":
+        return (get_settings().ai_on_model_provider or "stub").lower().strip()
+    return background_mode
+
+
 @router.post("")
 async def ai_background(
     body: AiBackgroundBody,
@@ -100,7 +108,10 @@ async def ai_background(
     if mode == "off":
         raise HTTPException(status_code=503, detail="AI background is disabled (AI_BACKGROUND_MODE=off)")
 
-    billing = assert_ai_image_credit(db, user)
+    engine = _pipeline_engine(body.sub_mode, mode)
+    # Placeholders cost nothing: a stub result neither needs nor spends an AI image credit.
+    charged = engine != "stub"
+    billing = assert_ai_image_credit(db, user) if charged else get_or_create_billing(db, user)
 
     log_event(
         logger,
@@ -125,15 +136,15 @@ async def ai_background(
     )
 
     if body.sub_mode == "model":
-        out_bytes, provider_mode = _run_on_model_pipeline(im, prompt, body.model_variant or "hand")
-        pipeline_mode = f"model:{provider_mode}"
+        out_bytes = _run_on_model_pipeline(im, prompt, body.model_variant or "hand", engine)
     else:
-        out_bytes = _run_background_pipeline(im, prompt, mode)
-        pipeline_mode = f"{body.sub_mode}:{mode}"
+        out_bytes = _run_background_pipeline(im, prompt, engine)
+    pipeline_mode = f"{body.sub_mode}:{engine}"
 
     key = ai_svc.save_ai_png(out_bytes, user.id)
     url = public_file_url(key)
-    consume_ai_image_credit(db, billing)
+    if charged:
+        consume_ai_image_credit(db, billing)
     log_event(
         logger,
         "ai.background.done",
@@ -149,4 +160,5 @@ async def ai_background(
         "mode": pipeline_mode,
         "sub_mode": body.sub_mode,
         "prompt": prompt,
+        "credits_remaining": billing.ai_image_credits_balance,
     }

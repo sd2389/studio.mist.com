@@ -141,6 +141,34 @@ def assert_polygon_limit(db: Session, user: User, polygon_count: int) -> UserBil
     return billing
 
 
+def assert_variant_limit(db: Session, user: User, variant_count: int) -> UserBilling:
+    billing = get_or_create_billing(db, user)
+    tier = normalize_tier(billing.plan_tier)
+    cap = get_quotas(tier).max_variants_per_model
+    if variant_count > cap:
+        raise HTTPException(
+            status_code=402,
+            detail=f"Variant limit reached for {PLAN_LABELS[tier]} (max {cap} per model).",
+        )
+    return billing
+
+
+def assert_image_resolution(db: Session, user: User, width: int | None, height: int | None) -> int:
+    """Either side above the plan's max_image_resolution is refused; an unknown side passes.
+
+    Returns that cap (px per side).
+    """
+    billing = get_or_create_billing(db, user)
+    tier = normalize_tier(billing.plan_tier)
+    cap = get_quotas(tier).max_image_resolution
+    if max(width or 0, height or 0) > cap:
+        raise HTTPException(
+            status_code=402,
+            detail=f"Resolution limit exceeded for {PLAN_LABELS[tier]} (max {cap} px per side).",
+        )
+    return cap
+
+
 def assert_model_credit(db: Session, user: User) -> UserBilling:
     billing = get_or_create_billing(db, user)
     if billing.model_credits_balance <= 0:

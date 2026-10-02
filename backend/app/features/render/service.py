@@ -3,7 +3,10 @@
 import base64
 import re
 from datetime import datetime
+from io import BytesIO
+
 from fastapi import HTTPException
+from PIL import Image
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -12,8 +15,10 @@ from app.core import storage_keys as keys
 from app.core.model_keys import normalized_model_key
 from app.core.observability import get_logger, log_event
 from app.core.public_urls import public_file_url
+from app.features.billing.quota_service import assert_image_resolution
 from app.features.scene.service import first_scene_for_model, require_owned_scene
 from app.models import Render, Scene
+from app.models.user import User
 from app.schemas.render import RenderSaveRequest
 from app.schemas.scene import RenderItem
 
@@ -34,9 +39,35 @@ def resolve_scene_for_render(
     return first_scene_for_model(db, model_key)
 
 
+def fit_to_plan(raw: bytes, cap: int) -> tuple[bytes, int, int]:
+    """The image as it is stored, and its real size, read from the bytes rather than the request.
+
+    One wider or taller than the plan allows, such as a viewport capture on a high-DPI screen
+    (which declares no size), is scaled down to fit instead of refused.
+    """
+    try:
+        image = Image.open(BytesIO(raw))
+        kind = image.format
+        if kind not in ("PNG", "JPEG"):
+            raise HTTPException(status_code=400, detail="Expected a PNG or JPEG image")
+        if max(image.size) <= cap:
+            return raw, *image.size
+        image.thumbnail((cap, cap), Image.Resampling.LANCZOS)
+        out = BytesIO()
+        if kind == "JPEG":
+            image.convert("RGB").save(out, format="JPEG", quality=92)
+        else:
+            image.save(out, format="PNG")
+    except (Image.DecompressionBombError, OSError) as exc:
+        raise HTTPException(status_code=400, detail="Expected a PNG or JPEG image") from exc
+    return out.getvalue(), *image.size
+
+
 def save_render_from_data_url(
-    db: Session, body: RenderSaveRequest, user_id: int
+    db: Session, body: RenderSaveRequest, user: User
 ) -> dict[str, bool | str | int | None]:
+    # A declared size above the plan is refused; the image itself is then fitted to the plan.
+    cap = assert_image_resolution(db, user, body.width, body.height)
     m = _DATA_URL.match(body.image.strip())
     if not m:
         raise HTTPException(status_code=400, detail="Expected data:image/png or jpeg;base64,...")
@@ -52,25 +83,26 @@ def save_render_from_data_url(
 
     if not raw:
         raise HTTPException(status_code=400, detail="Empty image")
+    raw, width, height = fit_to_plan(raw, cap)
 
-    key = keys.render_key(user_id, ext)
+    key = keys.render_key(user.id, ext)
     storage.write_bytes(key, raw, content_type=mime)
     log_event(
         _logger,
         "render.save",
-        user_id=user_id,
+        user_id=user.id,
         scene_id=body.scene_id,
         model_id=body.model_id,
         kind=body.kind,
         bytes=len(raw),
-        width=body.width,
-        height=body.height,
+        width=width,
+        height=height,
     )
 
     render_id: int | None = None
     scene = resolve_scene_for_render(db, body.scene_id, body.model_id)
     if scene is not None:
-        require_owned_scene(scene, user_id)
+        require_owned_scene(scene, user.id)
         render = Render(
             scene_id=scene.id,
             key=key,
@@ -78,8 +110,8 @@ def save_render_from_data_url(
             kind=body.kind,
             material=body.material,
             lighting=body.lighting,
-            width=body.width,
-            height=body.height,
+            width=width,
+            height=height,
             created_at=datetime.utcnow(),
         )
         db.add(render)

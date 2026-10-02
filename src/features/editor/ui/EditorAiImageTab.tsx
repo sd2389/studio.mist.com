@@ -39,7 +39,6 @@ function resolveSubMode(entry: AiVisualsEntry, backgroundKind: BackgroundKind): 
 export function EditorAiImageTab({ viewerId }: EditorAiImageTabProps) {
   const remaining = useAiImageCreditsStore((s) => s.remaining);
   const total = useAiImageCreditsStore((s) => s.total);
-  const consumeOne = useAiImageCreditsStore((s) => s.consumeOne);
   const hydrateFromServer = useAiImageCreditsStore((s) => s.hydrateFromServer);
   useEffect(() => {
     fetchBillingAccount()
@@ -73,22 +72,14 @@ export function EditorAiImageTab({ viewerId }: EditorAiImageTabProps) {
     setLastResultUrl(null);
     setLastMode(null);
 
-    if (remaining <= 0) {
-      setError("No AI image credits remaining. Upgrade or wait for your next billing cycle.");
-      return;
-    }
-
     const jewelry_b64 = captureTransparentPng();
     if (!jewelry_b64) {
       setError("3D view not ready — wait for the model to load, then try again.");
       return;
     }
 
-    if (!consumeOne()) {
-      setError("No AI image credits remaining.");
-      return;
-    }
-
+    // The server decides what a request costs (a stub placeholder is free), so a request goes
+    // out even with no credits left, and the balance it reports back replaces ours.
     setBusy(true);
     try {
       const data = await requestAiImage({
@@ -98,6 +89,7 @@ export function EditorAiImageTab({ viewerId }: EditorAiImageTabProps) {
         model_variant: subMode === "model" ? modelVariant : null,
         prompt: subMode === "custom" ? customPrompt.trim() : null,
       });
+      if (data.credits_remaining != null) hydrateFromServer(data.credits_remaining, total);
 
       if (!data.result_url) {
         const base = getPublicApiUrl();
@@ -112,10 +104,6 @@ export function EditorAiImageTab({ viewerId }: EditorAiImageTabProps) {
       setLastMode(data.mode ?? null);
       setStatus(aiImageStatusLabel(data.mode));
     } catch (e) {
-      useAiImageCreditsStore.setState((s) => ({
-        remaining: Math.min(s.total, s.remaining + 1),
-        usedThisCycle: Math.max(0, s.usedThisCycle - 1),
-      }));
       const message = e instanceof Error ? e.message : "Generation failed";
       setError(message);
       if (message.toLowerCase().includes("credit")) {
@@ -191,7 +179,7 @@ export function EditorAiImageTab({ viewerId }: EditorAiImageTabProps) {
         <Button
           type="button"
           className="w-full gap-2"
-          disabled={busy || remaining <= 0}
+          disabled={busy}
           onClick={() => void handleGenerate()}
         >
           {busy ? (

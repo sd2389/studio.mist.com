@@ -3,7 +3,7 @@
 import { Download, ImageIcon, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { updateScene } from "@/features/scene";
-import { VariantManager } from "@/features/variants";
+import { VariantManager, type VariantPlan } from "@/features/variants";
 import type { ModelVariant } from "@/lib/variants/types";
 import { UploadMetadataForm, type UploadMetadata } from "@/features/upload/ui/UploadMetadataForm";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,8 @@ type EditorSettingsTabProps = {
   variantItems?: ModelVariant[];
   activeVariantId?: string | null;
   canAddVariant?: boolean;
+  variantPlan?: VariantPlan | null;
+  variantLimitError?: string | null;
   onSaveVariant?: () => void;
   onUpdateActiveVariant?: () => boolean;
   onSwitchVariant?: (variantId: string | null) => void;
@@ -38,6 +40,8 @@ export function EditorSettingsTab({
   variantItems = [],
   activeVariantId = null,
   canAddVariant = true,
+  variantPlan = null,
+  variantLimitError = null,
   onSaveVariant,
   onUpdateActiveVariant,
   onSwitchVariant,
@@ -153,6 +157,8 @@ export function EditorSettingsTab({
           items={variantItems}
           activeVariantId={activeVariantId}
           canAdd={canAddVariant}
+          plan={variantPlan}
+          limitError={variantLimitError}
           onSave={onSaveVariant}
           onUpdateActive={onUpdateActiveVariant}
           onSwitch={onSwitchVariant}

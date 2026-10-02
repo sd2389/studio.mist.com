@@ -27,7 +27,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "draco3dgltf": "^1.5.7",
-    "fflate": "^0.8.2",
+    "fflate": "^0.8.3",
     "framer-motion": "^12.38.0",
     "lucide-react": "^1.9.0",
     "mediabunny": "^1.44.2",
@@ -57,6 +57,6 @@
     "ssim.js": "^3.5.0",
     "tailwindcss": "^4",
     "typescript": "^5",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   }
 }

@@ -19,7 +19,7 @@ async def save_render(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> dict[str, bool | str | int | None]:
-    return render_service.save_render_from_data_url(db, body, user.id)
+    return render_service.save_render_from_data_url(db, body, user)
 
 
 @router.get("", response_model=list[RenderItem])

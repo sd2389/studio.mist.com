@@ -11,8 +11,12 @@ from sqlalchemy.orm import Session
 from app.config import Settings, get_settings
 from app.core.storage import presign_get, write_bytes
 from app.core.storage_keys import render_key
-from app.features.billing.plans import get_quotas, normalize_tier
-from app.features.billing.quota_service import consume_render_credit, get_or_create_billing, assert_render_credit
+from app.features.billing.quota_service import (
+    assert_image_resolution,
+    assert_render_credit,
+    consume_render_credit,
+    get_or_create_billing,
+)
 from app.features.scene.service import require_owned_scene
 from app.models.render_job import RenderJob
 from app.models.scene import Scene
@@ -28,7 +32,7 @@ MAX_ACTIVE_JOBS_PER_USER = 10
 
 
 def create_job(db: Session, user: User, body: RenderJobCreate) -> RenderJob:
-    """Assert credit (no consume), cap active jobs, resolve owned scene, clamp dims, enqueue."""
+    """Assert credit (no consume), cap active jobs, resolve owned scene, check dims, enqueue."""
     # 402 guard — does NOT consume
     assert_render_credit(db, user)
 
@@ -47,13 +51,8 @@ def create_job(db: Session, user: User, body: RenderJobCreate) -> RenderJob:
     # Owner check on scene — 404 if not found or not owned
     scene: Scene = require_owned_scene(db.get(Scene, body.scene_id), user.id)
 
-    # Clamp width/height to plan max_image_resolution
-    billing = get_or_create_billing(db, user)
-    tier = normalize_tier(billing.plan_tier)
-    quotas = get_quotas(tier)
-    max_res = quotas.max_image_resolution
-    width = min(body.width, max_res)
-    height = min(body.height, max_res)
+    # 402 when either side is above the plan's max_image_resolution (no silent downsizing)
+    assert_image_resolution(db, user, body.width, body.height)
 
     now = datetime.utcnow()
     job = RenderJob(
@@ -62,8 +61,8 @@ def create_job(db: Session, user: User, body: RenderJobCreate) -> RenderJob:
         model_ref=scene.model_key,
         lighting=body.lighting,
         preset=body.preset,
-        width=width,
-        height=height,
+        width=body.width,
+        height=body.height,
         status="queued",
         attempts=0,
         created_at=now,

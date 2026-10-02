@@ -12,8 +12,10 @@ from app.core import storage_keys as keys
 from app.core.model_keys import normalized_model_key
 from app.core.observability import get_logger, log_event
 from app.core.public_urls import public_file_url
+from app.features.billing.quota_service import assert_image_resolution
 from app.features.scene.service import first_scene_for_model, require_owned_scene
 from app.models import Render, Scene
+from app.models.user import User
 from app.schemas.render import RenderSaveRequest
 from app.schemas.scene import RenderItem
 
@@ -35,8 +37,10 @@ def resolve_scene_for_render(
 
 
 def save_render_from_data_url(
-    db: Session, body: RenderSaveRequest, user_id: int
+    db: Session, body: RenderSaveRequest, user: User
 ) -> dict[str, bool | str | int | None]:
+    # The declared size is recorded with the render, so it must fit the plan.
+    assert_image_resolution(db, user, body.width, body.height)
     m = _DATA_URL.match(body.image.strip())
     if not m:
         raise HTTPException(status_code=400, detail="Expected data:image/png or jpeg;base64,...")
@@ -53,12 +57,12 @@ def save_render_from_data_url(
     if not raw:
         raise HTTPException(status_code=400, detail="Empty image")
 
-    key = keys.render_key(user_id, ext)
+    key = keys.render_key(user.id, ext)
     storage.write_bytes(key, raw, content_type=mime)
     log_event(
         _logger,
         "render.save",
-        user_id=user_id,
+        user_id=user.id,
         scene_id=body.scene_id,
         model_id=body.model_id,
         kind=body.kind,
@@ -70,7 +74,7 @@ def save_render_from_data_url(
     render_id: int | None = None
     scene = resolve_scene_for_render(db, body.scene_id, body.model_id)
     if scene is not None:
-        require_owned_scene(scene, user_id)
+        require_owned_scene(scene, user.id)
         render = Render(
             scene_id=scene.id,
             key=key,

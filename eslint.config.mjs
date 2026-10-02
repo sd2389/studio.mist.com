@@ -19,8 +19,6 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
-    // Vendor / generated bundles (not project source)
-    "public/rhino3dm/**",
   ]),
 ]);
 

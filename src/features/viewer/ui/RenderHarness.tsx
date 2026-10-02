@@ -188,7 +188,7 @@ export function RenderHarness() {
               width: jobPayloadDims.width,
               height: jobPayloadDims.height,
               pixelRatio: 1,
-              // The API already clamped the job's size to the owner's plan (render_jobs/service.py).
+              // The API already checked the job's size against the owner's plan (render_jobs/service.py).
               limits: NO_EXPORT_LIMITS,
             });
             const form = new FormData();

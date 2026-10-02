@@ -18,7 +18,10 @@ export type FinishMaps = {
   repeat: number;
   /** Normal map strength fed to MeshPhysicalMaterial.normalScale. */
   normalScale: number;
-  /** Multiplier on the base material roughness. <1 stays polished. */
+  /**
+   * Multiplier on the base material roughness. <1 stays polished. The catalogue seed
+   * (`backend/app/features/catalog/seed/metals.py`) stores the same factors; change both.
+   */
   roughnessFactor: number;
 };
 

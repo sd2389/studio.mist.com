@@ -10,13 +10,16 @@ from typing import Any
 
 FINISHES = ["polished", "brushed", "satin", "hammered", "sandblasted"]
 
-# Roughness multiplier and clearcoat scale per finish (matches finish-textures.ts logic).
+# Roughness multiplier and clearcoat scale per finish, copied from the renderer, which owns
+# them: each finish's `roughnessFactor` in src/lib/finish-textures.ts, and the clearcoat scale
+# in createPresetMaterial (src/lib/material-presets.ts), 1 for polished and satin, else 0.35.
+# Change both sides together.
 _FINISH_SPEC: dict[str, dict[str, float]] = {
     "polished": {"roughnessFactor": 1.0, "clearcoatScale": 1.0},
-    "brushed": {"roughnessFactor": 1.45, "clearcoatScale": 0.35},
-    "satin": {"roughnessFactor": 1.2, "clearcoatScale": 1.0},
-    "hammered": {"roughnessFactor": 1.65, "clearcoatScale": 0.35},
-    "sandblasted": {"roughnessFactor": 1.85, "clearcoatScale": 0.35},
+    "brushed": {"roughnessFactor": 1.6, "clearcoatScale": 0.35},
+    "satin": {"roughnessFactor": 1.3, "clearcoatScale": 1.0},
+    "hammered": {"roughnessFactor": 1.45, "clearcoatScale": 0.35},
+    "sandblasted": {"roughnessFactor": 2.4, "clearcoatScale": 0.35},
 }
 
 

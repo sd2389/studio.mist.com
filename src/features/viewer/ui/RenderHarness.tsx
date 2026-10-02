@@ -10,7 +10,6 @@ import { jobEndpoints, jobHeaders, isValidPayload } from "@/lib/golden/job-mode"
 import { getPublicApiUrl } from "@/lib/api-url";
 import { getHiresRefs } from "@/stores/hires-export-store";
 import { getRenderFidelity } from "@/stores/render-fidelity-store";
-import { NO_EXPORT_LIMITS } from "@/lib/export-limits";
 import { renderAtResolution } from "@/lib/offscreen-render";
 
 const LIGHTING_IDS: readonly LightingPresetId[] = ["studio", "soft", "dark", "catalog", "dramatic"];
@@ -75,7 +74,7 @@ export function RenderHarness() {
   const modelUrl = !isJobMode && isGlb ? modelPath : loadedModelUrl;
   const [jobLighting, setJobLighting] = useState<LightingPresetId>("studio");
   const [jobPreset, setJobPreset] = useState<MaterialPresetId>("gold-18k-yellow");
-  const [jobPayloadDims, setJobPayloadDims] = useState<{ width: number; height: number } | null>(null);
+  const [jobOutput, setJobOutput] = useState<{ width: number; height: number; watermark: boolean } | null>(null);
 
   // Job mode: fetch payload and set up for rendering
   useEffect(() => {
@@ -117,7 +116,7 @@ export function RenderHarness() {
       const resolvedPreset = raw.preset as MaterialPresetId;
       setJobLighting(resolvedLighting);
       setJobPreset(resolvedPreset);
-      setJobPayloadDims({ width: raw.width, height: raw.height });
+      setJobOutput({ width: raw.width, height: raw.height, watermark: raw.watermark });
       setModelUrl(raw.model_url);
     };
 
@@ -207,7 +206,7 @@ export function RenderHarness() {
 
   // Job render: fires after canvas is mounted and warm
   useEffect(() => {
-    if (!isJobMode || !modelUrl || !jobPayloadDims) return;
+    if (!isJobMode || !modelUrl || !jobOutput) return;
 
     let frames = 0;
     let raf = 0;
@@ -224,11 +223,12 @@ export function RenderHarness() {
           const blob = await renderAtResolution({
             ...refs,
             ...getRenderFidelity(),
-            width: jobPayloadDims.width,
-            height: jobPayloadDims.height,
+            width: jobOutput.width,
+            height: jobOutput.height,
             pixelRatio: 1,
-            // The API already checked the job's size against the owner's plan (render_jobs/service.py).
-            limits: NO_EXPORT_LIMITS,
+            // The API already checked the size against the owner's plan, and the payload says
+            // whether that plan watermarks (render_jobs/service.py).
+            limits: { maxEdge: Number.POSITIVE_INFINITY, watermark: jobOutput.watermark },
           });
           const form = new FormData();
           form.append("file", blob, "render.png");
@@ -246,11 +246,11 @@ export function RenderHarness() {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [modelUrl, isJobMode, jobPayloadDims, jobId, warmup]);
+  }, [modelUrl, isJobMode, jobOutput, jobId, warmup]);
 
   const activePreset = isJobMode ? jobPreset : preset;
   const activeLighting = isJobMode ? jobLighting : lighting;
-  const activeSize = isJobMode && jobPayloadDims ? Math.max(jobPayloadDims.width, jobPayloadDims.height) : size;
+  const activeSize = isJobMode && jobOutput ? Math.max(jobOutput.width, jobOutput.height) : size;
 
   return (
     <div style={{ width: activeSize, height: activeSize }} data-harness-canvas>

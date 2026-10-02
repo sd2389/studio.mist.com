@@ -43,8 +43,21 @@ describe("isValidPayload", () => {
         preset: "gold-18k-yellow",
         width: 2048,
         height: 2048,
+        watermark: false,
       }),
     ).toBe(true);
+  });
+
+  it("rejects a payload without the watermark flag", () => {
+    expect(
+      isValidPayload({
+        model_url: "https://cdn.example.com/ring.glb",
+        lighting: "studio",
+        preset: "gold-18k-yellow",
+        width: 2048,
+        height: 2048,
+      }),
+    ).toBe(false);
   });
 
   it("rejects a payload missing the height field", () => {

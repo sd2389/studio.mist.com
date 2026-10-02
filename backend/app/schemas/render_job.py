@@ -28,6 +28,8 @@ class RenderJobPayload(BaseModel):
     preset: str
     width: int
     height: int
+    # The owner's plan watermarks exports (Free), so the render carries the mark.
+    watermark: bool
 
 
 class RenderJobFailRequest(BaseModel):

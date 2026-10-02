@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.config import Settings, get_settings
 from app.core.storage import presign_get, write_bytes
 from app.core.storage_keys import render_key
+from app.features.billing.plans import get_quotas, normalize_tier
 from app.features.billing.quota_service import (
     assert_image_resolution,
     assert_render_credit,
@@ -198,12 +199,14 @@ def get_job_payload(db: Session, job_id: int, token: str) -> RenderJobPayload:
     else:
         model_url = presign_get(job.model_ref)
 
+    owner_plan = normalize_tier(get_or_create_billing(db, db.get(User, job.user_id)).plan_tier)
     return RenderJobPayload(
         model_url=model_url,
         lighting=job.lighting,
         preset=job.preset,
         width=job.width,
         height=job.height,
+        watermark=get_quotas(owner_plan).watermark_exports,
     )
 
 

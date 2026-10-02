@@ -4,6 +4,8 @@ export type JobPayload = {
   preset: string;
   width: number;
   height: number;
+  /** The owner's plan watermarks exports (Free). */
+  watermark: boolean;
 };
 
 export function jobEndpoints(apiBase: string, jobId: string) {
@@ -28,6 +30,7 @@ export function isValidPayload(p: unknown): p is JobPayload {
     typeof o.lighting === "string" &&
     typeof o.preset === "string" &&
     typeof o.width === "number" &&
-    typeof o.height === "number"
+    typeof o.height === "number" &&
+    typeof o.watermark === "boolean"
   );
 }

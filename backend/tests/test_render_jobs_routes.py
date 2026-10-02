@@ -11,6 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.config import get_settings
+from app.features.billing.quota_service import get_or_create_billing
 from app.main import app
 from app.models.render_job import RenderJob
 
@@ -76,6 +77,18 @@ def test_payload_takes_the_token_from_the_header(client, job):
 
     assert res.status_code == 200
     assert res.json()["model_url"] == "https://cdn.example.com/ring.glb"
+
+
+@pytest.mark.parametrize(("tier", "watermark"), [("free", True), ("grow", False), ("studio", False)])
+def test_payload_says_whether_the_owner_plan_watermarks(client, db, sample_user, job, tier, watermark):
+    billing = get_or_create_billing(db, sample_user)
+    billing.plan_tier = tier
+    db.commit()
+    claimed = _claim(client)
+
+    res = client.get(f"/render-jobs/{job.id}/payload", headers={"X-Job-Token": claimed["page_token"]})
+
+    assert res.json()["watermark"] is watermark
 
 
 def test_token_in_the_query_string_is_not_accepted(client, job):

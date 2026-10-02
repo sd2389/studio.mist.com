@@ -44,8 +44,9 @@ import {
 } from "@/lib/stones/briolette";
 
 /**
- * Generated cuts for the CAD library: every stone here is built from facet planes, so it
- * is ours to ship in downloads (unlike the CC-BY-SA OBJ behind the stone pages).
+ * Procedural cuts: every stone is built in code from its facet planes, with no third-party
+ * mesh behind it, so it ships freely in downloads. The stone pages, the ring designer and
+ * the CAD library all draw these.
  *
  * Geometry frame: girdle mid-plane at y = 0, table toward +y, length along x, width
  * along z, units of the caller (mm in `@/lib/jewelry-cad`).

@@ -6,7 +6,11 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.core.deps import get_current_user, require_feature
 from app.database import get_db
-from app.features.billing.quota_service import assert_ai_image_credit, consume_ai_image_credit
+from app.features.billing.quota_service import (
+    assert_ai_image_credit,
+    consume_ai_image_credit,
+    get_or_create_billing,
+)
 from app.core.observability import get_logger, log_event
 from app.core.rate_limit import rate_limit_dependency
 from app.core.public_urls import public_file_url
@@ -106,7 +110,8 @@ async def ai_background(
 
     engine = _pipeline_engine(body.sub_mode, mode)
     # Placeholders cost nothing: a stub result neither needs nor spends an AI image credit.
-    billing = None if engine == "stub" else assert_ai_image_credit(db, user)
+    charged = engine != "stub"
+    billing = assert_ai_image_credit(db, user) if charged else get_or_create_billing(db, user)
 
     log_event(
         logger,
@@ -138,7 +143,7 @@ async def ai_background(
 
     key = ai_svc.save_ai_png(out_bytes, user.id)
     url = public_file_url(key)
-    if billing is not None:
+    if charged:
         consume_ai_image_credit(db, billing)
     log_event(
         logger,
@@ -155,4 +160,5 @@ async def ai_background(
         "mode": pipeline_mode,
         "sub_mode": body.sub_mode,
         "prompt": prompt,
+        "credits_remaining": billing.ai_image_credits_balance,
     }

@@ -6,27 +6,17 @@ type State = {
   total: number;
   usedThisCycle: number;
   hydrated: boolean;
-  consumeOne: () => boolean;
   hydrateFromServer: (remaining: number, total: number) => void;
   resetCycle: (remaining?: number, total?: number) => void;
 };
 
 export const useAiImageCreditsStore = create<State>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       remaining: 0,
       total: 0,
       usedThisCycle: 0,
       hydrated: false,
-      consumeOne: () => {
-        const { remaining } = get();
-        if (remaining <= 0) return false;
-        set({
-          remaining: remaining - 1,
-          usedThisCycle: get().usedThisCycle + 1,
-        });
-        return true;
-      },
       hydrateFromServer: (remaining, total) =>
         set({
           remaining,

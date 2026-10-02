@@ -54,6 +54,7 @@ export async function POST(request: Request) {
     mode?: string;
     sub_mode?: string;
     prompt?: string;
+    credits_remaining?: number;
     detail?: unknown;
     error?: string;
   };
@@ -76,5 +77,6 @@ export async function POST(request: Request) {
     mode: json.mode,
     sub_mode: json.sub_mode,
     prompt: json.prompt,
+    credits_remaining: json.credits_remaining,
   });
 }

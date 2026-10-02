@@ -14,17 +14,16 @@ export type AiImageResponse = {
   mode?: string;
   sub_mode?: string;
   prompt?: string;
+  /** The account's AI image credits after this request; a stub placeholder costs none. */
+  credits_remaining?: number;
   error?: string;
 };
 
-/** A stub placeholder (API `mode` such as `shoot:stub`): not production AI, and uses no credit. */
-export function isStubResult(mode: string | null | undefined): boolean {
-  return (mode ?? "").includes("stub");
-}
-
 /** User-facing status from API `mode` (e.g. `shoot:stub`, `model:stub`). */
 export function aiImageStatusLabel(mode: string | null | undefined): string {
-  return isStubResult(mode) ? "Stub result (dev mode) — not production AI" : "AI image ready";
+  return (mode ?? "").includes("stub")
+    ? "Stub result (dev mode) — not production AI"
+    : "AI image ready";
 }
 
 export async function requestAiImage(body: AiImageRequest): Promise<AiImageResponse> {

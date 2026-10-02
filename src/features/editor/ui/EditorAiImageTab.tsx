@@ -13,7 +13,7 @@ import {
   type AiVisualsEntry,
 } from "@/features/editor/ui/ai-visuals/AiVisualsEntryPicker";
 import { AiVisualsResult } from "@/features/editor/ui/ai-visuals/AiVisualsResult";
-import { aiImageStatusLabel, isStubResult, requestAiImage } from "@/lib/ai-image-api";
+import { aiImageStatusLabel, requestAiImage } from "@/lib/ai-image-api";
 import { fetchBillingAccount } from "@/lib/billing/client";
 import { formatAiCredits } from "@/lib/ai-image-credits";
 import {
@@ -39,7 +39,6 @@ function resolveSubMode(entry: AiVisualsEntry, backgroundKind: BackgroundKind): 
 export function EditorAiImageTab({ viewerId }: EditorAiImageTabProps) {
   const remaining = useAiImageCreditsStore((s) => s.remaining);
   const total = useAiImageCreditsStore((s) => s.total);
-  const consumeOne = useAiImageCreditsStore((s) => s.consumeOne);
   const hydrateFromServer = useAiImageCreditsStore((s) => s.hydrateFromServer);
   useEffect(() => {
     fetchBillingAccount()
@@ -67,24 +66,11 @@ export function EditorAiImageTab({ viewerId }: EditorAiImageTabProps) {
   const selectedPreset = AI_SHOOT_PRESETS[presetIdx] ?? AI_SHOOT_PRESETS[0]!;
   const creditsLabel = useMemo(() => formatAiCredits(remaining, total), [remaining, total]);
 
-  /** Gives back the credit taken up front: the request failed, or made a free stub placeholder. */
-  function returnCredit() {
-    useAiImageCreditsStore.setState((s) => ({
-      remaining: Math.min(s.total, s.remaining + 1),
-      usedThisCycle: Math.max(0, s.usedThisCycle - 1),
-    }));
-  }
-
   async function handleGenerate() {
     setError(null);
     setStatus(null);
     setLastResultUrl(null);
     setLastMode(null);
-
-    if (remaining <= 0) {
-      setError("No AI image credits remaining. Upgrade or wait for your next billing cycle.");
-      return;
-    }
 
     const jewelry_b64 = captureTransparentPng();
     if (!jewelry_b64) {
@@ -92,11 +78,8 @@ export function EditorAiImageTab({ viewerId }: EditorAiImageTabProps) {
       return;
     }
 
-    if (!consumeOne()) {
-      setError("No AI image credits remaining.");
-      return;
-    }
-
+    // The server decides what a request costs (a stub placeholder is free), so a request goes
+    // out even with no credits left, and the balance it reports back replaces ours.
     setBusy(true);
     try {
       const data = await requestAiImage({
@@ -106,6 +89,7 @@ export function EditorAiImageTab({ viewerId }: EditorAiImageTabProps) {
         model_variant: subMode === "model" ? modelVariant : null,
         prompt: subMode === "custom" ? customPrompt.trim() : null,
       });
+      if (data.credits_remaining != null) hydrateFromServer(data.credits_remaining, total);
 
       if (!data.result_url) {
         const base = getPublicApiUrl();
@@ -119,9 +103,7 @@ export function EditorAiImageTab({ viewerId }: EditorAiImageTabProps) {
       setLastResultUrl(data.result_url);
       setLastMode(data.mode ?? null);
       setStatus(aiImageStatusLabel(data.mode));
-      if (isStubResult(data.mode)) returnCredit();
     } catch (e) {
-      returnCredit();
       const message = e instanceof Error ? e.message : "Generation failed";
       setError(message);
       if (message.toLowerCase().includes("credit")) {
@@ -197,7 +179,7 @@ export function EditorAiImageTab({ viewerId }: EditorAiImageTabProps) {
         <Button
           type="button"
           className="w-full gap-2"
-          disabled={busy || remaining <= 0}
+          disabled={busy}
           onClick={() => void handleGenerate()}
         >
           {busy ? (

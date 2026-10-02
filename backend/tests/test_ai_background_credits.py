@@ -65,6 +65,7 @@ def test_stub_background_spends_no_credit(db, sample_user, engines):
 
     assert result["mode"] == "shoot:stub"
     assert _ai_balance(db, sample_user) == before
+    assert result["credits_remaining"] == before
 
 
 def test_stub_on_model_spends_no_credit(db, sample_user, engines):
@@ -75,6 +76,7 @@ def test_stub_on_model_spends_no_credit(db, sample_user, engines):
 
     assert result["mode"] == "model:stub"
     assert _ai_balance(db, sample_user) == before
+    assert result["credits_remaining"] == before
 
 
 def test_stub_works_with_no_credits_left(db, sample_user, engines):
@@ -85,6 +87,7 @@ def test_stub_works_with_no_credits_left(db, sample_user, engines):
 
     assert result["mode"] == "custom:stub"
     assert _ai_balance(db, sample_user) == 0
+    assert result["credits_remaining"] == 0
 
 
 def test_sdxl_background_spends_one_credit(db, sample_user, engines):
@@ -95,6 +98,7 @@ def test_sdxl_background_spends_one_credit(db, sample_user, engines):
 
     assert result["mode"] == "shoot:sdxl"
     assert _ai_balance(db, sample_user) == before - 1
+    assert result["credits_remaining"] == before - 1
 
 
 def test_real_on_model_spends_one_credit_even_with_stub_backgrounds(db, sample_user, engines):
@@ -105,6 +109,7 @@ def test_real_on_model_spends_one_credit_even_with_stub_backgrounds(db, sample_u
 
     assert result["mode"] == "model:replicate"
     assert _ai_balance(db, sample_user) == before - 1
+    assert result["credits_remaining"] == before - 1
 
 
 def test_real_mode_needs_a_credit(db, sample_user, engines):

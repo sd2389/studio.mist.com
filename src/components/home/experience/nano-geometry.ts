@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { armAngle, GALAXY_RINGS, pickArm } from "./galaxy-shape";
 import { mergeVertices } from "three/addons/utils/BufferGeometryUtils.js";
 
 /**
@@ -197,24 +198,30 @@ export function surfaceSamples(parts: SurfacePart[], total: number, random: () =
  * vertex carries its orbit (radius, angle, height in ring space, mm) and its place along
  * the thread (`aAlong` = s, seed); the shader turns them with the disc.
  */
-export function galaxyStrings(count: number, segments: number, arms: number, random: () => number): THREE.BufferGeometry {
+export function galaxyStrings(count: number, segments: number, random: () => number): THREE.BufferGeometry {
   const vertices = count * segments * 2;
   const orbit = new Float32Array(vertices * 3);
   const along = new Float32Array(vertices * 2);
   let v = 0;
   for (let k = 0; k < count; k++) {
-    const arm = Math.floor(random() * arms) * ((Math.PI * 2) / arms);
-    // Most threads wind through the arms; the longest run out to the disc's rim.
-    const start = 3 + 44 * random() ** 1.3;
-    const span = 16 + 40 * random();
-    const offset = (random() + random() + random() - 1.5) * 0.24;
     const lift = (random() - 0.5) * 2.4;
     const wobble = random() * Math.PI * 2;
     const seed = random();
+    // A fifth of the threads trace the rings as arcs; the rest follow the arms' logarithmic
+    // spirals, more of them on the major arms.
+    const ring = random() < 0.2 ? GALAXY_RINGS[random() < 0.45 ? 0 : 1] : null;
+    const arm = pickArm(random);
+    const start = 3 + 44 * random() ** 1.3;
+    const span = 16 + 40 * random();
+    const offset = (random() + random() + random() - 1.5) * 0.18;
+    const ringRadius = ring ? ring.radius + (random() + random() + random() - 1.5) * ring.width : 0;
+    const arcStart = random() * Math.PI * 2;
+    const arc = 0.7 + 1.6 * random();
     for (let i = 0; i < segments; i++) {
       for (const s of [i / segments, (i + 1) / segments]) {
-        const radius = start + span * s;
-        orbit.set([radius, arm + radius * 0.07 + offset + 0.05 * Math.sin(s * 7 + wobble), lift * (1 - s * 0.5) + 0.6 * Math.sin(s * 5 + wobble)], v * 3);
+        const radius = ring ? ringRadius * (1 + 0.012 * Math.sin(s * 9 + wobble)) : start + span * s;
+        const angle = ring ? arcStart + arc * s : armAngle(arm, radius) + offset + 0.04 * Math.sin(s * 7 + wobble);
+        orbit.set([radius, angle, lift * (1 - s * 0.5) + 0.6 * Math.sin(s * 5 + wobble)], v * 3);
         along.set([s, seed], v * 2);
         v += 1;
       }

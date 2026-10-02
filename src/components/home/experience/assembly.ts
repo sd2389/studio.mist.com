@@ -21,6 +21,7 @@ import {
   sweepAt,
   wireAt,
 } from "./chapters";
+import { STAR_KIND, armAngle, pickArm } from "./galaxy-shape";
 import { facetGeometry, galaxyStrings, seededRandom, surfaceSamples, tileGeometry, wireGeometry, type Climb, type SurfacePart } from "./nano-geometry";
 import {
   applyNanoTiles,
@@ -49,8 +50,7 @@ const MM = 0.12;
 /** How far the stone lifts clear of its claws to take its spark, mm. */
 const STONE_LIFT = 7;
 /** The galaxy's arms and the strings laid along them. */
-const GALAXY_ARMS = 7;
-const GALAXY_STRINGS = 560;
+const GALAXY_STRINGS = 900;
 const STRING_SEGMENTS = 40;
 /** Faint stars of the halo and the sky behind it. */
 const HALO_STARS = 6000;
@@ -115,11 +115,6 @@ function gridGeometry(floorY: number): THREE.BufferGeometry {
 const gauss = (random: () => number) => random() + random() + random() - 1.5;
 
 /**
- * The swarm's free orbits: an exponential disc with wound arms and a soft bulge at
- * its heart — dense in the middle and thinning outward, with no hollow for the eye to read
- * as a shape before the ring forms.
- */
-/**
  * The halo round the disc and the sky beyond it, as orbits (radius, angle, height) and seeds
  * (size, twinkle): stars on rays from the centre, thinning outward and flattened toward the
  * disc, reaching past the frame's corners so the space around the spiral is never empty.
@@ -136,22 +131,54 @@ function galaxyHalo(random: () => number): { orbit: Float32Array; seed: Float32A
   return { orbit, seed };
 }
 
+/**
+ * The swarm's free orbits (radius, angle, height, kind): a grand-design spiral built like a
+ * real one. A round bulge of old stars at the heart; logarithmic arms of young stars, each with
+ * a dust lane along its inner edge where few stars show; knots of star formation strung along
+ * the arms; and an older disc filling in between, out past the arms so the rim is never bare.
+ */
 function galaxyOrbits(random: () => number): Float32Array {
-  const orbit = new Float32Array(SWARM_POINTS * 3);
+  const orbit = new Float32Array(SWARM_POINTS * 4);
+  let knot = { r: 30, angle: 0, left: 0 };
   for (let i = 0; i < SWARM_POINTS; i++) {
-    const kind = random();
-    const bulge = kind < 0.12;
-    const dust = kind > 0.9;
-    // Dust spreads evenly over the whole disc, out past the arms, so its rim is never bare.
-    const radius = bulge
-      ? Math.abs(gauss(random)) * 14
-      : dust
-        ? 20 + 115 * Math.sqrt(random())
-        : Math.min(-13 * Math.log(Math.max(random() * random(), 1e-6)), 90);
-    const arm = Math.floor(random() * GALAXY_ARMS) * ((Math.PI * 2) / GALAXY_ARMS) + radius * 0.07;
-    const angle = bulge || dust ? random() * Math.PI * 2 : arm + gauss(random) * (0.2 + radius * 0.003);
-    const thickness = gauss(random) * (bulge ? 9 : 2 + radius * 0.08);
-    orbit.set([radius, angle, thickness], i * 3);
+    const roll = random();
+    let radius: number, angle: number, height: number, kind: number;
+    if (roll < 0.12) {
+      // Bulge: an exponential ball sampled from the very centre, so it is densest at the nucleus.
+      radius = Math.min(7 * -Math.log(Math.max(random(), 1e-6)), 30);
+      angle = random() * Math.PI * 2;
+      height = gauss(random) * (2.5 + 0.55 * (30 - radius));
+      kind = STAR_KIND.bulge;
+    } else if (roll < 0.3) {
+      // The older disc between the arms.
+      radius = Math.min(10 - 26 * Math.log(Math.max(random(), 1e-6)), 135);
+      angle = random() * Math.PI * 2;
+      height = gauss(random) * (1.5 + radius * 0.05);
+      kind = STAR_KIND.disc;
+    } else if (roll < 0.34) {
+      // Star-forming knots: tight clumps a few millimetres across, sitting on an arm.
+      if (knot.left <= 0) {
+        const arm = pickArm(random);
+        const r = 14 + 70 * random();
+        knot = { r, angle: armAngle(arm, r), left: 12 + Math.floor(random() * 20) };
+      }
+      knot.left -= 1;
+      radius = Math.max(4, knot.r + gauss(random) * 2.4);
+      angle = knot.angle + (gauss(random) * 2.4) / knot.r;
+      height = gauss(random) * 1.2;
+      kind = STAR_KIND.knot;
+    } else {
+      // Arms: young stars across the arm's width, thinned to a dust lane on its inner edge.
+      const arm = pickArm(random);
+      radius = Math.min(-13 * Math.log(Math.max(random() * random(), 1e-6)), 95);
+      const width = 2.2 + radius * 0.09;
+      let across = gauss(random) * width;
+      if (across < -0.35 * width && across > -1.25 * width && random() < 0.85) across = Math.abs(across) * 0.6;
+      angle = armAngle(arm, radius) + across / Math.max(radius, 4);
+      height = gauss(random) * (1.4 + radius * 0.06);
+      kind = STAR_KIND.arm;
+    }
+    orbit.set([radius, angle, height, kind], i * 4);
   }
   return orbit;
 }
@@ -268,7 +295,7 @@ export function createAssembly(): Assembly {
     u,
   );
   const stringMaterial = createStringMaterial(discY, u);
-  const strings = new THREE.LineSegments(galaxyStrings(GALAXY_STRINGS, STRING_SEGMENTS, GALAXY_ARMS, random), stringMaterial);
+  const strings = new THREE.LineSegments(galaxyStrings(GALAXY_STRINGS, STRING_SEGMENTS, random), stringMaterial);
   strings.frustumCulled = false;
   ring.add(swarm);
   // Its own seed, so the halo leaves the galaxy's layout as it was.
@@ -335,8 +362,13 @@ export function createAssembly(): Assembly {
     camera.position.addScaledVector(right, -key.shift * wide);
   }
 
-  function build(i: number, p: number) {
+  function build(i: number, p: number, time: number) {
     u.gather.value = gatherAt(i, p);
+    // While the swarm is all free, keep the moment the gather would start from (see createSwarm).
+    if (u.gather.value <= 0) {
+      u.gatherClock.value = time;
+      u.gatherSpin.value = u.spin.value;
+    }
     u.wire.value = wireAt(i, p);
     u.climb.value = climbAt(i, p);
     u.sweep.value = stoneTop - sweepAt(i, p) * stoneDepth;
@@ -420,7 +452,7 @@ export function createAssembly(): Assembly {
       if (frames === 4) story.ready = true;
       const { index: i, progress: p } = filmMoment();
       aim(camera, i + p, time);
-      build(i, p);
+      build(i, p, time);
       play(camera, i, time, dt);
       turn(i, dt);
       lightStone(i, p);

@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import {
   abs,
+  atan,
   attribute,
   clamp,
   color,
@@ -34,6 +35,7 @@ import {
 } from "three/tsl";
 import { LineBasicNodeMaterial, MeshBasicNodeMaterial, PointsNodeMaterial, type Node } from "three/webgpu";
 import { LANDING_FLIGHT, LANDING_SPREAD } from "./chapters";
+import { STAR_KIND } from "./galaxy-shape";
 
 /**
  * Shaders for the home film's assembly. One set of uniforms drives the whole build — swarm,
@@ -52,6 +54,12 @@ const HOLO = vec3(0.5, 0.82, 1);
 const WHITE_HOT = vec3(1, 0.96, 0.88);
 /** The afterglow of a landed tile as it cools, like fresh-cast metal. */
 const EMBER = vec3(1, 0.6, 0.26);
+/** A real galaxy's palette for the free swarm: old golden bulge, young blue arms, older disc, star-forming knots. */
+const CORE_GOLD = vec3(1, 0.8, 0.52);
+const ARM_BLUE = vec3(0.56, 0.76, 1);
+const DISC_WHITE = vec3(0.86, 0.86, 0.94);
+const KNOT_PINK = vec3(1, 0.42, 0.66);
+const STAR_WHITE = vec3(1, 0.95, 0.86);
 /**
  * The light theme's ink: blueprint blue, amber where the build is hot. Paper has no glow
  * to give the galaxy depth, so the ink does it: near-black where it is nearer than the
@@ -102,6 +110,9 @@ export function createNanoUniforms() {
     now: uniform(0),
     /** Extra turn of the free disc, radians (fast scrolls spin it). */
     spin: uniform(0),
+    /** The clock and spin when the swarm last began to gather: fixes which way each point winds in. */
+    gatherClock: uniform(0),
+    gatherSpin: uniform(0),
     /** Wireframe draw-in scan, 0..1, and its overall strength. */
     wire: uniform(0),
     wireAlpha: uniform(0),
@@ -196,9 +207,14 @@ export function themeHologram(materials: readonly HologramMaterial[], light: boo
   }
 }
 
+/** How far round its orbit a free point of the galaxy is at `clock` (unwrapped radians). */
+function orbitAngle(orbit: Vec3Node, clock: FloatNode, spin: FloatNode): FloatNode {
+  return orbit.y.add(clock.mul(float(0.09).add(float(1.1).div(orbit.x.add(8))))).add(spin);
+}
+
 /** Where a free point of the galaxy is now: the disc turns almost rigidly, so its arms keep their shape. */
 function orbiting(orbit: Vec3Node, discY: number, u: NanoUniforms): Vec3Node {
-  const angle = orbit.y.add(time.mul(float(0.09).add(float(1.1).div(orbit.x.add(8))))).add(u.spin);
+  const angle = orbitAngle(orbit, time, u.spin);
   return vec3(cos(angle).mul(orbit.x), orbit.z.add(discY), sin(angle).mul(orbit.x));
 }
 
@@ -328,7 +344,7 @@ export function applyStoneSweep(material: THREE.MeshPhysicalMaterial, u: NanoUni
 }
 
 export type SwarmData = {
-  /** Free orbit of each point: radius, start angle, height (ring space, mm). */
+  /** Free orbit of each point: radius, start angle, height (ring space, mm), and its `STAR_KIND`. */
   orbit: Float32Array;
   /** Height of the galaxy's plane (ring space, mm): the ring rises out of it. */
   discY: number;
@@ -345,19 +361,28 @@ export type SwarmData = {
  */
 export function createSwarm(data: SwarmData, u: NanoUniforms): { swarm: THREE.Sprite; material: PointsNodeMaterial } {
   const count = data.seed.length / 4;
-  const orbit = instancedBufferAttribute(new THREE.InstancedBufferAttribute(data.orbit, 3)) as unknown as Vec3Node;
+  const orbitKind = instancedBufferAttribute(new THREE.InstancedBufferAttribute(data.orbit, 4)) as unknown as Node<"vec4">;
+  const orbit = orbitKind.xyz as Vec3Node;
+  const kind = orbitKind.w as FloatNode;
   const target = instancedBufferAttribute(new THREE.InstancedBufferAttribute(data.target, 3)) as unknown as Vec3Node;
   const seed = instancedBufferAttribute(new THREE.InstancedBufferAttribute(data.seed, 4)) as unknown as Node<"vec4">;
 
   const free = orbiting(orbit, data.discY, u);
   const t = clamp(u.gather.sub(seed.x.mul(LANDING_SPREAD)).div(LANDING_FLIGHT), 0, 1);
-  const landed = t.mul(t).mul(float(3).sub(t.mul(2)));
+  // Smootherstep: each point leaves and arrives at rest, so the stream has no jolts.
+  const landed = t.mul(t).mul(t).mul(t.mul(t.mul(6).sub(15)).add(10));
   const loose = float(1).sub(landed);
-  const p = mix(free, target, landed);
-  // One swirl for every point, unwinding as it lands: the free disc keeps its arms, and each
-  // point spirals in on its own schedule.
-  const swirl = loose.mul(2.4);
-  const spun = vec3(p.x.mul(cos(swirl)).sub(p.z.mul(sin(swirl))), p.y, p.x.mul(sin(swirl)).add(p.z.mul(cos(swirl))));
+  // Each point spirals in along the disc's own turn, like matter falling into a vortex: its
+  // radius, angle and height ease from its orbit to its place on the ring. Its target angle is
+  // taken one turn ahead of where its orbit stood when the gather began, so the winding is fixed
+  // for the whole flight and every path stays continuous while the disc keeps turning.
+  const TURN = Math.PI * 2;
+  const a1 = atan(target.z, target.x);
+  const startedAt = orbitAngle(orbit, u.gatherClock, u.gatherSpin);
+  const landingAngle = a1.add(startedAt.sub(a1).div(TURN).ceil().mul(TURN));
+  const angle = mix(orbitAngle(orbit, time, u.spin), landingAngle, landed);
+  const radius = mix(orbit.x, length(target.xz), landed);
+  const spun = vec3(cos(angle).mul(radius), mix(free.y, target.y, landed), sin(angle).mul(radius));
   const cursor = cursorField(spun, u);
 
   const material = hologramMaterial(new PointsNodeMaterial({ sizeAttenuation: true }));
@@ -372,13 +397,21 @@ export function createSwarm(data: SwarmData, u: NanoUniforms): { swarm: THREE.Sp
   const twinkle = sin(time.mul(2.6).add(seed.y.mul(40))).mul(0.35).add(0.65);
   const underMetal = smoothstep(seed.w.sub(0.01), seed.w.add(0.03), u.climb);
   const disc = float(1).sub(smoothstep(0.18, 0.5, length(uv().sub(0.5))));
-  // A few points burn warm, like embers in the swarm.
-  const tint = mix(HOLO, WHITE_HOT, max(pow(seed.y, 10), layer.mul(0.6)));
+  // While free, each point has a real galaxy's colour: a golden bulge, blue-white young arms
+  // warming toward the core, an older whiter disc between them, and pink star-forming knots.
+  // Landing, it turns to the hologram's light; a few burn warm, like embers in the swarm.
+  const is = (k: number) => float(1).sub(min(abs(kind.sub(k)), 1));
+  const armTint = mix(ARM_BLUE, CORE_GOLD, float(1).sub(smoothstep(5, 24, orbit.x)));
+  const galaxyTint = mix(mix(mix(armTint, CORE_GOLD, is(STAR_KIND.bulge)), DISC_WHITE, is(STAR_KIND.disc)), KNOT_PINK, is(STAR_KIND.knot));
+  const brightness = float(1).add(is(STAR_KIND.bulge).mul(0.35)).sub(is(STAR_KIND.disc).mul(0.4)).add(is(STAR_KIND.knot).mul(0.3));
+  const tint = mix(mix(HOLO, galaxyTint.mul(brightness), loose), WHITE_HOT, max(pow(seed.y, 10), layer.mul(0.6)));
   const glow = tint.mul(twinkle.mul(float(1.3).add(loose.mul(1.6))).mul(energy)) as Vec3Node;
   // On paper the bulge prints darkest, as in a negative of a galaxy: the free core takes the deepest ink.
   const bulge = exp(orbit.x.div(15).pow(2).negate()).mul(loose);
   const depth = max(galaxyDepth(data.discY), bulge.mul(0.5).add(0.5));
-  paint(material, u, glow, u.pointsAlpha.mul(float(1).sub(underMetal)).mul(disc), layer, depth);
+  // On paper the knots print in the warm ink, as star-forming regions do in a colour plate.
+  const heat = max(layer, is(STAR_KIND.knot).mul(loose).mul(0.7));
+  paint(material, u, glow, u.pointsAlpha.mul(float(1).sub(underMetal)).mul(disc), heat, depth);
   // Ink dots on paper need a little more body than points of light.
   material.sizeNode = seed.z.mul(u.pointSize).mul(float(1).add(layer.mul(0.3))).mul(u.light.mul(0.45).add(1));
 
@@ -401,7 +434,8 @@ export function createHalo(data: { orbit: Float32Array; seed: Float32Array }, di
   material.positionNode = vec3(cos(angle).mul(orbit.x), orbit.z.add(discY), sin(angle).mul(orbit.x));
   const twinkle = sin(time.mul(1.7).add(seed.y.mul(50))).mul(0.3).add(0.7);
   const round = float(1).sub(smoothstep(0.2, 0.5, length(uv().sub(0.5))));
-  const glow = HOLO.mul(seed.x.mul(0.9).add(0.3).mul(twinkle)) as Vec3Node;
+  // Stars of the sky run from blue-white to warm white, as real ones do.
+  const glow = mix(HOLO, STAR_WHITE, seed.y).mul(seed.x.mul(0.9).add(0.3).mul(twinkle)) as Vec3Node;
   // Most of the sky is far behind the disc; on paper it would pale away entirely, so it keeps some ink.
   paint(material, u, glow, round.mul(float(1).sub(smoothstep(0.02, 0.42, u.gather))), float(0), max(galaxyDepth(discY), 0.4));
   material.sizeNode = seed.x.mul(2.2).add(1.6).mul(u.light.mul(0.25).add(1));
@@ -420,7 +454,10 @@ export function createStringMaterial(discY: number, u: NanoUniforms): LineBasicN
   const material = hologramMaterial(new LineBasicNodeMaterial());
   const orbit = attribute<"vec3">("aOrbit", "vec3");
   const along = attribute<"vec2">("aAlong", "vec2");
-  const free = orbiting(orbit, discY, u);
+  // As the swarm leaves for the ring the arms wind up and draw in toward it, then fade.
+  const collapse = smoothstep(0, 0.42, u.gather);
+  const drawn = float(1).sub(collapse.mul(0.55));
+  const free = orbiting(vec3(orbit.x.mul(drawn), orbit.y.add(collapse.mul(1.1)), orbit.z.mul(drawn)), discY, u);
   const cursor = cursorField(free, u);
   material.positionNode = free.add(cursor.offset);
   const phase = fract(along.x.sub(time.mul(0.11)).add(along.y)).sub(0.5);

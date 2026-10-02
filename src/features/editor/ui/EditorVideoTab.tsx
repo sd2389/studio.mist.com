@@ -1,19 +1,15 @@
 "use client";
 
 import { AlertTriangle, Loader2, Video, X } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import {
-  useBatchExport,
-  type BatchExportTabProps,
-  type BatchTileResult,
-} from "@/features/editor/hooks/useBatchExport";
+import { useBatchExport, type BatchExportTabProps } from "@/features/editor/hooks/useBatchExport";
+import { useVideoExport, type VideoMode } from "@/features/editor/hooks/useVideoExport";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   CampaignPackLauncher,
   CaptureNotice,
-  turntableCaptureOptions,
   VideoResolutionField,
   videoSizeLabel,
 } from "@/features/render";
@@ -21,28 +17,15 @@ import { ModelMultiSelect, VariantMultiSelect } from "@/features/variants";
 import {
   VIDEO_FPS_OPTIONS,
   VIDEO_RESOLUTIONS,
-  downloadBlob,
   type VideoFps,
   type VideoResolutionId,
 } from "@/lib/export-presets";
-import { batchFilenamePrefix, runBatchExportJobs } from "@/lib/variants/batch-export";
-import {
-  isAbortError,
-  isWebCodecsSupported,
-  recordMultiAngle,
-  recordTurntable,
-  type CameraPose,
-  type RecordTurntableOpts,
-} from "@/lib/video-capture";
+import { isWebCodecsSupported, type CameraPose } from "@/lib/video-capture";
 import { mergePoses } from "@/lib/viewer-scene";
 import { cn } from "@/lib/utils";
-import { withLiveRenderingPaused } from "@/stores/hires-export-store";
-import { getVideoCaptureRefs } from "@/stores/video-capture-store";
 import { useMaterialPresetStore } from "@/stores/material-preset-store";
 import { ChipField } from "@/components/ui/chip";
 import { BatchJobEstimate } from "./BatchJobEstimate";
-
-type VideoMode = "simple" | "multi-angle" | "multiple";
 
 export function EditorVideoTab(props: BatchExportTabProps) {
   const { sceneId, viewerId, modelConfig, variantItems } = props;
@@ -62,15 +45,7 @@ export function EditorVideoTab(props: BatchExportTabProps) {
   const [durationSec, setDurationSec] = useState("4");
   const [fps, setFps] = useState<VideoFps>(30);
   const batch = useBatchExport(props);
-  const [busy, setBusy] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [error, setError] = useState<string | null>(null);
-  const [status, setStatus] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [hasWebCodecs] = useState(() => isWebCodecsSupported());
-  const [etaLabel, setEtaLabel] = useState<string | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
-  const startedAtRef = useRef<number>(0);
 
   const resolution = VIDEO_RESOLUTIONS.find((r) => r.id === resId) ?? VIDEO_RESOLUTIONS[1];
   const duration = Math.max(1, Number.parseFloat(durationSec) || 4);
@@ -79,129 +54,14 @@ export function EditorVideoTab(props: BatchExportTabProps) {
 
   const fileSizeStr = videoSizeLabel(bps, duration);
 
-  function trackProgress(p: number) {
-    setProgress(p);
-    const start = startedAtRef.current;
-    if (p > 0.01 && start > 0) {
-      const elapsed = (performance.now() - start) / 1000;
-      const remaining = Math.max(0, elapsed / p - elapsed);
-      setEtaLabel(`~${Math.round(remaining)}s remaining`);
-    }
-  }
-
-  function captureOptions(signal: AbortSignal, onProgress?: (p: number) => void): Promise<RecordTurntableOpts> {
-    return turntableCaptureOptions(
-      { width: resolution.width, height: resolution.height, frameCount, fps, bitrate: bps },
-      signal,
-      onProgress,
-    );
-  }
-
-
-  async function handleRender() {
-    setError(null);
-    setStatus(null);
-    setNotice(null);
-    setProgress(0);
-    setEtaLabel(null);
-
-    const refs = getVideoCaptureRefs();
-    if (!refs) {
-      setError("Viewer not ready. Wait for the model to load.");
-      return;
-    }
-
-    const controller = new AbortController();
-    abortRef.current = controller;
-    startedAtRef.current = performance.now();
-    setBusy(true);
-
-    try {
-      const baseOpts = await captureOptions(controller.signal, trackProgress);
-
-      if (mode === "multiple") {
-        if (!batch.batchExportEnabled) {
-          setError("Batch export requires a plan upgrade.");
-          return;
-        }
-
-        const jobs = await batch.buildJobs();
-
-        if (jobs.length === 0) {
-          setError("Select at least one variant or save variants in Settings.");
-          return;
-        }
-
-        const tileResults: BatchTileResult[] = [];
-        let completed = 0;
-
-        await runBatchExportJobs(jobs, batch.batchContext, async (job) => {
-          const label = batchFilenamePrefix(job);
-          try {
-            const jobOpts = await captureOptions(controller.signal);
-            const result = await withLiveRenderingPaused(() => recordTurntable(jobOpts));
-            const ext = result.kind === "png-zip" ? "zip" : "mp4";
-            downloadBlob(result.blob, `${label}-360.${ext}`);
-            if (result.notice) setNotice(result.notice);
-            tileResults.push({ ok: true, label });
-          } catch (e) {
-            if (isAbortError(e)) throw e;
-            tileResults.push({
-              ok: false,
-              label,
-              message: e instanceof Error ? e.message : "Render failed",
-            });
-          } finally {
-            completed += 1;
-            setProgress(completed / jobs.length);
-            setStatus(`Batch ${completed}/${jobs.length}`);
-          }
-          return tileResults[tileResults.length - 1]!;
-        });
-
-        const failed = tileResults.filter((t) => !t.ok);
-        setStatus(
-          failed.length === 0
-            ? `Downloaded ${tileResults.length} videos`
-            : `Finished ${tileResults.length} jobs — ${failed.length} failed`,
-        );
-        if (failed.length > 0) {
-          setError(failed.map((f) => `${f.label}: ${f.message}`).join("; "));
-        }
-        return;
-      }
-
-      const result = await withLiveRenderingPaused(() =>
-        mode === "multi-angle"
-          ? recordMultiAngle({ ...baseOpts, poses: poseAngles })
-          : recordTurntable(baseOpts),
-      );
-
-      const isZip = result.kind === "png-zip";
-      const suffix = mode === "multi-angle" ? "multi-angle" : "360";
-      downloadBlob(result.blob, `${viewerId}-${suffix}.${isZip ? "zip" : "mp4"}`);
-      setNotice(result.notice);
-      setStatus(
-        isZip
-          ? `Downloaded ZIP of ${frameCount} PNG frames`
-          : `Downloaded MP4 (${(result.blob.size / 1024 / 1024).toFixed(1)} MB · ${result.codec})`,
-      );
-    } catch (e) {
-      if (isAbortError(e)) {
-        setStatus("Cancelled");
-      } else {
-        setError(e instanceof Error ? e.message : "Render failed");
-      }
-    } finally {
-      setBusy(false);
-      setEtaLabel(null);
-      abortRef.current = null;
-    }
-  }
-
-  function handleCancel() {
-    abortRef.current?.abort();
-  }
+  const video = useVideoExport({
+    mode,
+    settings: { width: resolution.width, height: resolution.height, frameCount, fps, bitrate: bps },
+    poseAngles,
+    viewerId,
+    batch,
+  });
+  const { busy, progress, error, status, notice, etaLabel } = video;
 
   return (
     <div className="flex h-full flex-col">
@@ -226,45 +86,13 @@ export function EditorVideoTab(props: BatchExportTabProps) {
           </div>
         ) : null}
 
-        <div className="space-y-2">
-          <p className="font-mono text-[10px] uppercase tracking-[0.24em] text-muted-foreground">
-            Mode
-          </p>
-          <div className="grid grid-cols-3 gap-2">
-            {(
-              [
-                { id: "simple" as const, label: "Simple" },
-                { id: "multi-angle" as const, label: "Multi-angle" },
-                { id: "multiple" as const, label: "Multiple" },
-              ] as const
-            ).map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => setMode(item.id)}
-                disabled={busy}
-                className={cn(
-                  "rounded-lg border px-2 py-2 text-left text-xs transition-colors",
-                  mode === item.id
-                    ? "border-primary bg-primary/10 text-foreground"
-                    : "border-border bg-background hover:bg-muted",
-                )}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
-          {mode === "multi-angle" ? (
-            <p className="text-xs text-muted-foreground">
-              Cycles through {poses.length} saved poses over {duration.toFixed(1)}s.
-            </p>
-          ) : null}
-          {mode === "multiple" ? (
-            <p className="text-xs text-muted-foreground">
-              Renders a turntable video per selected variant and model.
-            </p>
-          ) : null}
-        </div>
+        <VideoModePicker
+          mode={mode}
+          onModeChange={setMode}
+          disabled={busy}
+          poseCount={poses.length}
+          duration={duration}
+        />
 
         {mode === "multiple" ? (
           <>
@@ -353,14 +181,14 @@ export function EditorVideoTab(props: BatchExportTabProps) {
             <BatchJobEstimate count={batch.estimatedJobCount} enabled={batch.batchExportEnabled} />
           ) : null}
           {busy ? (
-            <Button type="button" variant="outline" onClick={handleCancel} className="gap-2">
+            <Button type="button" variant="outline" onClick={video.cancel} className="gap-2">
               <X className="size-4" aria-hidden />
               Cancel
             </Button>
           ) : null}
           <Button
             type="button"
-            onClick={() => void handleRender()}
+            onClick={() => void video.render()}
             disabled={busy || (mode === "multiple" && !batch.batchExportEnabled)}
             className="gap-2"
           >
@@ -378,6 +206,59 @@ export function EditorVideoTab(props: BatchExportTabProps) {
           </Button>
         </div>
       </div>
+    </div>
+  );
+}
+
+type VideoModePickerProps = {
+  mode: VideoMode;
+  onModeChange: (mode: VideoMode) => void;
+  disabled: boolean;
+  poseCount: number;
+  duration: number;
+};
+
+/** Simple, Multi-angle or Multiple, with a line on what the two longer modes record. */
+function VideoModePicker({ mode, onModeChange, disabled, poseCount, duration }: VideoModePickerProps) {
+  return (
+    <div className="space-y-2">
+      <p className="font-mono text-[10px] uppercase tracking-[0.24em] text-muted-foreground">
+        Mode
+      </p>
+      <div className="grid grid-cols-3 gap-2">
+        {(
+          [
+            { id: "simple" as const, label: "Simple" },
+            { id: "multi-angle" as const, label: "Multi-angle" },
+            { id: "multiple" as const, label: "Multiple" },
+          ] as const
+        ).map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => onModeChange(item.id)}
+            disabled={disabled}
+            className={cn(
+              "rounded-lg border px-2 py-2 text-left text-xs transition-colors",
+              mode === item.id
+                ? "border-primary bg-primary/10 text-foreground"
+                : "border-border bg-background hover:bg-muted",
+            )}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+      {mode === "multi-angle" ? (
+        <p className="text-xs text-muted-foreground">
+          Cycles through {poseCount} saved poses over {duration.toFixed(1)}s.
+        </p>
+      ) : null}
+      {mode === "multiple" ? (
+        <p className="text-xs text-muted-foreground">
+          Renders a turntable video per selected variant and model.
+        </p>
+      ) : null}
     </div>
   );
 }

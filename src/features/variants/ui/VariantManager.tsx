@@ -190,7 +190,10 @@ export function VariantManager({
                     size="icon-sm"
                     variant="ghost"
                     title="Delete variant"
-                    onClick={() => onDelete(variant.id)}
+                    onClick={() => {
+                      onDelete(variant.id);
+                      setStatus("Variant deleted");
+                    }}
                   >
                     <Trash2 className="size-3.5 text-destructive" aria-hidden />
                   </Button>

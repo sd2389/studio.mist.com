@@ -33,7 +33,9 @@ function clearanceFor(stone: StoneModel): number {
 export function headMatrix(phi: number, girdleRadius: number): THREE.Matrix4 {
   const lift = new THREE.Matrix4().makeTranslation(Math.cos(phi) * girdleRadius, Math.sin(phi) * girdleRadius, 0);
   const tilt = new THREE.Matrix4().makeRotationZ(phi - TOP);
-  const turn = new THREE.Matrix4().makeRotationY(Math.PI / 2); // stone length runs along the finger
+  // The stone's length runs along the finger with its point (+x) toward the front (+z): face up,
+  // point down in the top view.
+  const turn = new THREE.Matrix4().makeRotationY(-Math.PI / 2);
   return lift.multiply(tilt).multiply(turn);
 }
 

@@ -29,7 +29,7 @@ export function FeatureMedia({ media }: { media: FeatureMediaSpec }) {
             className="h-auto w-full"
           />
         ) : (
-          <LiveStone cutId={media.cutId} className="aspect-[4/3]" camera={{ position: [2.2, 1.7, 2.2], fov: 36 }} />
+          <LiveStone cutId={media.cutId} className="aspect-[4/3]" />
         )}
       </div>
       <figcaption className="mt-3 font-mono text-[10px] uppercase tracking-[0.28em] text-faint">{media.caption}</figcaption>

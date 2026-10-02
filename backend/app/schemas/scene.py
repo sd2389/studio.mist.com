@@ -3,6 +3,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.catalog import BackgroundItem, EnvironmentItem, GemItem, GroundItem, MetalItem
+from app.schemas.library import UserMaterialItem
 from app.schemas.product_specs import ProductSpecs
 
 
@@ -48,6 +50,17 @@ class RenderItem(BaseModel):
     url: str | None
 
 
+class SceneLook(BaseModel):
+    """The catalogue items and library materials a scene's saved look draws from."""
+
+    environments: list[EnvironmentItem] = Field(default_factory=list)
+    backgrounds: list[BackgroundItem] = Field(default_factory=list)
+    grounds: list[GroundItem] = Field(default_factory=list)
+    metals: list[MetalItem] = Field(default_factory=list)
+    gems: list[GemItem] = Field(default_factory=list)
+    user_materials: list[UserMaterialItem] = Field(default_factory=list)
+
+
 class SceneDetail(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -74,6 +87,9 @@ class SceneDetail(BaseModel):
     created_at: datetime
     updated_at: datetime
     renders: list[RenderItem]
+    # Lets a view that only displays the scene (the embed) draw it without the auth-gated
+    # catalogue or the owner's library.
+    look: SceneLook = Field(default_factory=SceneLook)
 
 
 class ScenePatch(BaseModel):

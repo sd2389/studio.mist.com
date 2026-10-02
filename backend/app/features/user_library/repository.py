@@ -1,5 +1,6 @@
 """User library data access."""
 
+from collections.abc import Collection
 from typing import Any, TypeVar
 
 from sqlalchemy import func, select
@@ -54,6 +55,21 @@ def get_material(db: Session, user_id: int, material_id: int) -> UserMaterial | 
             UserMaterial.user_id == user_id,
         )
     ).scalar_one_or_none()
+
+
+def materials_by_ids(db: Session, user_id: int, material_ids: Collection[int]) -> list[UserMaterial]:
+    """The user's own materials among `material_ids`; ids owned by anyone else are skipped."""
+    if not material_ids:
+        return []
+    return list(
+        db.execute(
+            select(UserMaterial)
+            .where(UserMaterial.user_id == user_id, UserMaterial.id.in_(material_ids))
+            .order_by(UserMaterial.id)
+        )
+        .scalars()
+        .all()
+    )
 
 
 def list_assets(

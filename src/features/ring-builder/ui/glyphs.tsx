@@ -12,7 +12,7 @@ function outlinePath(cut: CadCutId, scale: number): string {
   const w = 1 / def.ratio;
   const pts = def.outline(1, w).points;
   // Length axis up the icon (north–south, as the stone sits on a ring).
-  return `${pts.map((p, i) => `${i === 0 ? "M" : "L"}${(24 + p.z * scale * 36).toFixed(2)} ${(24 - p.x * scale * 36).toFixed(2)}`).join(" ")}Z`;
+  return `${pts.map((p, i) => `${i === 0 ? "M" : "L"}${(24 + p.z * scale * 36).toFixed(2)} ${(24 + p.x * scale * 36).toFixed(2)}`).join(" ")}Z`;
 }
 
 const CUT_PATHS = new Map<CadCutId, { girdle: string; table: string }>();

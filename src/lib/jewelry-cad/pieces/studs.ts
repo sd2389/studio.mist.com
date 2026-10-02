@@ -53,7 +53,8 @@ export function buildStudsPiece(design: JewelryDesign, collector: PieceCollector
 
   const reach = halo ? halo.reach : 0;
   const spacing = Math.max(stone.length, stone.width) + reach * 2 + 8;
-  const face = new THREE.Matrix4().makeRotationX(Math.PI / 2); // table (+y) → +z
+  // Table (+y) toward the viewer (+z), the point (+x) hanging down (-y), as the pendant hangs.
+  const face = new THREE.Matrix4().makeBasis(new THREE.Vector3(0, -1, 0), new THREE.Vector3(0, 0, 1), new THREE.Vector3(-1, 0, 0));
   const matrices = [-1, 1].map((side) => new THREE.Matrix4().makeTranslation((side * spacing) / 2, 0, 0).multiply(face));
 
   const melee: THREE.Matrix4[] = [];

@@ -64,6 +64,11 @@
   background: #e3e8ef;
 }
 
+/* The dark stage (#0b0c10) after the same tone mapping. */
+:global(.dark) .stage {
+  background: #08090c;
+}
+
 .shimmer {
   background: linear-gradient(100deg, transparent 20%, rgba(255, 255, 255, 0.7) 50%, transparent 80%);
   background-size: 200% 100%;

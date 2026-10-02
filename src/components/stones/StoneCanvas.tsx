@@ -9,6 +9,7 @@ import { createPresetMaterial } from "@/lib/material-presets";
 import type { CutInfo } from "@/lib/stones/cut-geometries";
 import { useCutGeometry } from "@/lib/stones/load-cut-geometry";
 import type { LightingPresetId, MaterialPresetId } from "@/stores/material-preset-store";
+import { FACE_UP_CAMERA, FaceUpStone } from "./FaceUpStone";
 
 type StoneCanvasProps = {
   cut: CutInfo;
@@ -31,11 +32,15 @@ export function StoneCanvas({ cut, preset, autoRotate, lighting }: StoneCanvasPr
   return (
     <StudioCanvas
       lighting={lighting}
-      autoRotate={autoRotate}
-      camera={{ position: [0, 1.9, 3.8], fov: 40 }}
+      autoRotate={false}
+      camera={{ ...FACE_UP_CAMERA, position: [0, 4.3, 0.9], fov: 40 }}
       gemBackdrop={isGemPresetId(preset)}
     >
-      {mesh ? <primitive object={mesh} /> : null}
+      {mesh ? (
+        <FaceUpStone rocking={autoRotate}>
+          <primitive object={mesh} />
+        </FaceUpStone>
+      ) : null}
     </StudioCanvas>
   );
 }

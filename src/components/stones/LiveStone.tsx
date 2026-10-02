@@ -10,6 +10,7 @@ import type { CutId } from "@/lib/stones/cut-geometries";
 import { useCutGeometry } from "@/lib/stones/load-cut-geometry";
 import { useNearViewport } from "@/lib/use-near-viewport";
 import { LIGHTING_PRESETS, siteLighting } from "@/lib/viewer-lighting";
+import { FACE_UP_CAMERA, FaceUpStone } from "./FaceUpStone";
 
 type LiveStoneProps = {
   cutId: CutId;
@@ -23,7 +24,7 @@ type LiveStoneProps = {
  * A ray-traced stone turning on the site's stage (dark set on the dark theme, white
  * studio on paper). It only renders while near the viewport.
  */
-export function LiveStone({ cutId, gem = "diamond", className, camera = { position: [2.5, 1.9, 2.5], fov: 38 }, children }: LiveStoneProps) {
+export function LiveStone({ cutId, gem = "diamond", className, camera = FACE_UP_CAMERA, children }: LiveStoneProps) {
   const geometry = useCutGeometry(cutId);
   const material = useMemo(() => createGemMaterial(gem), [gem]);
   useEffect(() => () => material.dispose(), [material]);
@@ -37,9 +38,11 @@ export function LiveStone({ cutId, gem = "diamond", className, camera = { positi
     <div ref={frameRef} className={`relative overflow-hidden ${className ?? ""}`} style={{ backgroundColor: LIGHTING_PRESETS[lighting].gemBackground }}>
       {children}
       {live && geometry ? (
-        <StudioCanvas tile lighting={lighting} autoRotate camera={camera}>
-          {/* Geometry is shared; only the material is this view's. */}
-          <mesh geometry={geometry} material={material} dispose={null} />
+        <StudioCanvas tile lighting={lighting} autoRotate={false} camera={camera}>
+          <FaceUpStone>
+            {/* Geometry is shared; only the material is this view's. */}
+            <mesh geometry={geometry} material={material} dispose={null} />
+          </FaceUpStone>
         </StudioCanvas>
       ) : null}
     </div>

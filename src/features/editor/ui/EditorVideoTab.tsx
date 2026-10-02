@@ -39,7 +39,7 @@ import { cn } from "@/lib/utils";
 import { withLiveRenderingPaused } from "@/stores/hires-export-store";
 import { getVideoCaptureRefs } from "@/stores/video-capture-store";
 import { useMaterialPresetStore } from "@/stores/material-preset-store";
-import { Chip } from "@/components/ui/chip";
+import { ChipField } from "@/components/ui/chip";
 import { BatchJobEstimate } from "./BatchJobEstimate";
 
 type VideoMode = "simple" | "multi-angle" | "multiple";
@@ -302,21 +302,13 @@ export function EditorVideoTab(props: BatchExportTabProps) {
           />
         </div>
 
-        <div className="space-y-2">
-          <Label className="text-muted-foreground">FPS</Label>
-          <div className="flex flex-wrap gap-2">
-            {VIDEO_FPS_OPTIONS.map((value) => (
-              <Chip
-                key={value}
-                selected={fps === value}
-                onClick={() => setFps(value)}
-                disabled={busy}
-              >
-                {`${value} fps`}
-              </Chip>
-            ))}
-          </div>
-        </div>
+        <ChipField
+          label="FPS"
+          options={VIDEO_FPS_OPTIONS.map((value) => ({ value, label: `${value} fps` }))}
+          value={fps}
+          onChange={setFps}
+          disabled={busy}
+        />
 
         <div className="grid grid-cols-2 gap-3 rounded-lg border border-border bg-muted/40 p-3 text-xs">
           <div>

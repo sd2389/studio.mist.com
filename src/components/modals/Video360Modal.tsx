@@ -10,7 +10,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
 import {
   CaptureNotice,
   turntableCaptureOptions,
@@ -22,7 +21,7 @@ import { downloadBlob, VIDEO_RESOLUTIONS, type VideoResolutionId } from "@/lib/e
 import { isWebCodecsSupported, recordTurntable } from "@/lib/video-capture";
 import { withLiveRenderingPaused } from "@/stores/hires-export-store";
 import { getVideoCaptureRefs } from "@/stores/video-capture-store";
-import { Chip } from "@/components/ui/chip";
+import { ChipField } from "@/components/ui/chip";
 
 type Video360ModalProps = {
   open: boolean;
@@ -126,53 +125,29 @@ export function Video360Modal({ open, onOpenChange, modelId }: Video360ModalProp
         <div className="space-y-4">
           <VideoResolutionField value={resId} onChange={setResId} disabled={busy} showSize />
 
-          <div className="space-y-2">
-            <Label className="text-muted-foreground">Frames</Label>
-            <div className="flex flex-wrap gap-2">
-              {FRAME_COUNTS.map((f) => (
-                <Chip
-                  key={f}
-                  selected={frames === f}
-                  onClick={() => setFrames(f)}
-                  disabled={busy}
-                >
-                  {`${f} frames`}
-                </Chip>
-              ))}
-            </div>
-          </div>
+          <ChipField
+            label="Frames"
+            options={FRAME_COUNTS.map((f) => ({ value: f, label: `${f} frames` }))}
+            value={frames}
+            onChange={setFrames}
+            disabled={busy}
+          />
 
-          <div className="space-y-2">
-            <Label className="text-muted-foreground">FPS</Label>
-            <div className="flex flex-wrap gap-2">
-              {FPS_OPTIONS.map((f) => (
-                <Chip
-                  key={f}
-                  selected={fps === f}
-                  onClick={() => setFps(f)}
-                  disabled={busy}
-                >
-                  {`${f} fps`}
-                </Chip>
-              ))}
-            </div>
-          </div>
+          <ChipField
+            label="FPS"
+            options={FPS_OPTIONS.map((f) => ({ value: f, label: `${f} fps` }))}
+            value={fps}
+            onChange={setFps}
+            disabled={busy}
+          />
 
-          <div className="space-y-2">
-            <Label className="text-muted-foreground">Bitrate</Label>
-            <div className="flex flex-wrap gap-2">
-              {BITRATES.map((b) => (
-                <Chip
-                  key={b.id}
-                  selected={bitrateId === b.id}
-                  onClick={() => setBitrateId(b.id)}
-                  disabled={busy}
-                >
-                  {b.label}
-                </Chip>
-              ))}
-            </div>
-          </div>
+          <ChipField
+            label="Bitrate"
+            options={BITRATES.map((b) => ({ value: b.id, label: b.label }))}
+            value={bitrateId}
+            onChange={setBitrateId}
+            disabled={busy}
+          />
 
           <div className="grid grid-cols-2 gap-3 rounded-lg border border-border bg-muted/40 p-3 text-xs">
             <div>

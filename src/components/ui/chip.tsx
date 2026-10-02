@@ -2,6 +2,7 @@
 
 import { Check } from "lucide-react";
 import type { ReactNode } from "react";
+import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 
 /** Pill toggle for option rows: export settings, pack outputs. An optional colour dot leads the label. */
@@ -45,5 +46,38 @@ export function Chip({
       ) : null}
       {children}
     </button>
+  );
+}
+
+/** A labelled row of chips that picks one option, such as a frame count or frame rate. */
+export function ChipField<T extends string | number>({
+  label,
+  options,
+  value,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  options: readonly { value: T; label: string }[];
+  value: T;
+  onChange: (next: T) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="space-y-2">
+      <Label className="text-muted-foreground">{label}</Label>
+      <div className="flex flex-wrap gap-2">
+        {options.map((option) => (
+          <Chip
+            key={option.value}
+            selected={value === option.value}
+            onClick={() => onChange(option.value)}
+            disabled={disabled}
+          >
+            {option.label}
+          </Chip>
+        ))}
+      </div>
+    </div>
   );
 }

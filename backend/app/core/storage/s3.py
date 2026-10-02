@@ -11,7 +11,7 @@ from fastapi import HTTPException
 from app.config import Settings, get_settings
 from app.core.adapters.errors import StorageAdapterError
 from app.core.cache_policy import cache_control_for_key
-from app.core.s3_client import create_s3_client
+from app.core.s3_client import create_s3_client, read_object_body
 
 
 class S3Backend:
@@ -38,16 +38,10 @@ class S3Backend:
         except (BotoCoreError, ClientError) as exc:
             raise HTTPException(status_code=502, detail=f"S3 upload failed: {exc}") from exc
 
-    def get_bytes(self, key: str) -> bytes:
+    def get_bytes(self, key: str, max_bytes: int | None = None) -> bytes:
         try:
             obj = self._client.get_object(Bucket=self._bucket, Key=key)
-            stream = obj.get("Body")
-            if stream is None:
-                raise HTTPException(status_code=404, detail="Uploaded file not found")
-            data = stream.read()
-            if not data:
-                raise HTTPException(status_code=400, detail="Uploaded file is empty")
-            return data
+            return read_object_body(obj, key, max_bytes)
         except HTTPException:
             raise
         except (BotoCoreError, ClientError) as exc:

@@ -54,12 +54,17 @@ def get_public_storage() -> R2Backend | None:
     return None
 
 
-def read_bytes(key: str) -> bytes:
-    return get_storage().get_bytes(key)
+def read_bytes(key: str, max_bytes: int | None = None) -> bytes:
+    """The object's bytes; one over `max_bytes` raises StorageObjectTooLargeError unread."""
+    return get_storage().get_bytes(key, max_bytes=max_bytes)
 
 
 def write_bytes(key: str, data: bytes, content_type: str | None = None) -> None:
     get_storage().put_bytes(key, data, content_type=content_type)
+
+
+def delete(key: str) -> None:
+    get_storage().delete(key)
 
 
 def presign_put(key: str, content_type: str, expires_in: int = 900) -> str:
@@ -88,6 +93,7 @@ def copy_to_public(source_key: str, dest_key: str) -> None:
 __all__ = [
     "StorageBackend",
     "copy_to_public",
+    "delete",
     "get_public_storage",
     "get_s3_object_stream",
     "get_storage",

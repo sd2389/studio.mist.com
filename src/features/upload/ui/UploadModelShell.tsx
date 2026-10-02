@@ -6,11 +6,15 @@ import { useUploadModelFlow } from "@/features/upload/hooks/useUploadModelFlow";
 import { UploadDropPanel } from "./UploadDropPanel";
 import { UploadLayersEditor } from "./UploadLayersEditor";
 import { UploadMetadataForm } from "./UploadMetadataForm";
-import { UploadModelSummary, UploadParsingState, UploadPolyLimitNotice } from "./UploadModelStatus";
+import {
+  UploadModelSummary,
+  UploadParsingState,
+  UploadPolyLimitNotice,
+  UploadSaveStatus,
+} from "./UploadModelStatus";
 import { UploadModelViewport } from "./UploadModelViewport";
 import { UploadSignInDialog } from "./UploadSignInDialog";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
 import { BuyCreditsLink, outOfCredits } from "@/features/billing/ui/BuyCreditsLink";
 
 export function UploadModelShell() {
@@ -160,21 +164,12 @@ export function UploadModelShell() {
                   </div>
                 </div>
 
-                {phase === "saving" ? (
-                  <div className="space-y-2">
-                    <Progress value={saveProgress} />
-                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                      {saveMessage ?? "Saving…"}
-                    </p>
-                  </div>
-                ) : null}
-
-                {error ? (
-                  <p className="text-sm text-red-700" role="alert">
-                    {error}
-                    {outOfCredits(error) ? <BuyCreditsLink /> : null}
-                  </p>
-                ) : null}
+                <UploadSaveStatus
+                  saving={phase === "saving"}
+                  progress={saveProgress}
+                  message={saveMessage}
+                  error={error}
+                />
 
                 <Button
                   type="button"

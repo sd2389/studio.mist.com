@@ -7,6 +7,7 @@ import { formatPolyCount } from "@/lib/upload/polygon-limits";
 import { formatModelSizeMm, type ParsedUpload } from "@/features/upload/lib/parsed-upload";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { BuyCreditsLink, outOfCredits } from "@/features/billing/ui/BuyCreditsLink";
 
 /** Spinner + live parse step ("Converting CAD… tessellating STEP surfaces"). */
 export function UploadParsingState({ status }: { status: ModelLoadStatus | null }) {
@@ -76,5 +77,35 @@ export function UploadPolyLimitNotice({ polyCount, planLabel, maxPolygons, decim
         </Button>
       </div>
     </div>
+  );
+}
+
+type SaveStatusProps = {
+  saving: boolean;
+  progress: number;
+  message: string | null;
+  error: string | null;
+};
+
+/** Save progress while saving, then any error (with a way to buy credits when they ran out). */
+export function UploadSaveStatus({ saving, progress, message, error }: SaveStatusProps) {
+  return (
+    <>
+      {saving ? (
+        <div className="space-y-2">
+          <Progress value={progress} />
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+            {message ?? "Saving…"}
+          </p>
+        </div>
+      ) : null}
+
+      {error ? (
+        <p className="text-sm text-red-700" role="alert">
+          {error}
+          {outOfCredits(error) ? <BuyCreditsLink /> : null}
+        </p>
+      ) : null}
+    </>
   );
 }

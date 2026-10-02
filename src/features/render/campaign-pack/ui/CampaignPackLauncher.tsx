@@ -1,8 +1,9 @@
 "use client";
 
-import { ChevronRight, PackageOpen } from "lucide-react";
+import { ChevronRight, Lock, PackageOpen } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { useExportPlan } from "../../ui/useExportPlan";
 import { CampaignPackDialog, type CampaignPackDialogProps } from "./CampaignPackDialog";
 
 type CampaignPackLauncherProps = Omit<CampaignPackDialogProps, "open" | "onOpenChange"> & {
@@ -12,6 +13,9 @@ type CampaignPackLauncherProps = Omit<CampaignPackDialogProps, "open" | "onOpenC
 /** Prominent entry point: one click from the studio to a full marketing pack. */
 export function CampaignPackLauncher({ className, ...dialogProps }: CampaignPackLauncherProps) {
   const [open, setOpen] = useState(false);
+  // Plans without packs still open the dialog, which offers the upgrade.
+  const exportPlan = useExportPlan();
+  const locked = exportPlan !== null && !exportPlan.campaignPack;
   return (
     <>
       <button
@@ -32,7 +36,14 @@ export function CampaignPackLauncher({ className, ...dialogProps }: CampaignPack
             3 golds × 4 angles · turntables · 360° spin · one ZIP
           </span>
         </span>
-        <ChevronRight className="size-4 shrink-0 opacity-70 transition-transform group-hover:translate-x-0.5" aria-hidden />
+        {locked ? (
+          <>
+            <Lock className="size-4 shrink-0 opacity-70" aria-hidden />
+            <span className="sr-only">(Grow and Studio)</span>
+          </>
+        ) : (
+          <ChevronRight className="size-4 shrink-0 opacity-70 transition-transform group-hover:translate-x-0.5" aria-hidden />
+        )}
       </button>
       <CampaignPackDialog open={open} onOpenChange={setOpen} {...dialogProps} />
     </>

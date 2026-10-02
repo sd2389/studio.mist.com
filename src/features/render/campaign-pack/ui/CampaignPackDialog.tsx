@@ -2,6 +2,7 @@
 
 import { PackageOpen, Sparkles } from "lucide-react";
 import { useMemo, useState } from "react";
+import { UpgradeButton } from "@/components/billing/UpgradePrompt";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -12,6 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import type { PersistedModelConfig } from "@/lib/slot-materials/model-config";
 import { useMaterialPresetStore } from "@/stores/material-preset-store";
+import { useExportPlan } from "../../ui/useExportPlan";
 import { DEFAULT_CAMPAIGN_PACK_CONFIG } from "../domain/defaults";
 import { planCampaignPack } from "../domain/plan";
 import type { CampaignPackConfig, PackPlan, SavedPoseLike } from "../domain/types";
@@ -68,6 +70,9 @@ export function CampaignPackDialog({
   const savedPoses = poses ?? NO_POSES;
   const identity = usePackIdentity({ modelId, sku, name, sceneId, enabled: open });
   const { state, start, cancel, reset } = useCampaignPackRun();
+  // Grow and Studio only: other plans see the pack with an upgrade in place of the run button.
+  const exportPlan = useExportPlan();
+  const locked = exportPlan !== null && !exportPlan.campaignPack;
   const running = state.status === "running";
   const hasSku = Boolean(identity.sku);
   const studio = useMemo(
@@ -145,12 +150,19 @@ export function CampaignPackDialog({
             {/* Sticky offsets are inset by the dialog's p-4; -bottom-4 pins it to the edge. */}
             <div className="sticky -bottom-4 -mx-4 -mb-4 flex flex-col gap-2 border-t border-border bg-card/95 px-4 py-3 backdrop-blur sm:flex-row sm:items-center sm:justify-between">
               <p className="text-xs text-muted-foreground" role="status">
-                {blocked ?? `${plan.totals.files} files · ${planSummary(plan)}`}
+                {locked ? "Campaign packs come with Grow and Studio." : blocked ?? `${plan.totals.files} files · ${planSummary(plan)}`}
               </p>
-              <Button type="button" onClick={handleStart} disabled={Boolean(blocked)} className="gap-2">
-                <Sparkles className="size-4" aria-hidden />
-                Render campaign pack
-              </Button>
+              {locked ? (
+                <UpgradeButton className="gap-2">
+                  <Sparkles className="size-4" aria-hidden />
+                  Upgrade to render
+                </UpgradeButton>
+              ) : (
+                <Button type="button" onClick={handleStart} disabled={Boolean(blocked) || !exportPlan} className="gap-2">
+                  <Sparkles className="size-4" aria-hidden />
+                  Render campaign pack
+                </Button>
+              )}
             </div>
           </div>
         ) : null}

@@ -5,7 +5,7 @@ import { getHiresRefs, pauseLiveRendering } from "@/stores/hires-export-store";
 import { useMaterialPresetStore } from "@/stores/material-preset-store";
 import { useOrbitControlsStore } from "@/stores/orbit-controls-store";
 import { getRenderFidelity } from "@/stores/render-fidelity-store";
-import { loadExportPlan } from "../../lib/export-plan";
+import { assertCampaignPackAllowed, loadExportPlan } from "../../lib/export-plan";
 import { sceneHasStudioSet } from "../../lib/stage-visibility";
 import { buildPackDocuments } from "../domain/documents";
 import { planCampaignPack } from "../domain/plan";
@@ -78,9 +78,11 @@ function orbitTarget(): Vec3 {
 /**
  * Plans and renders a campaign pack against the live studio scene. The live viewport is
  * paused (not modified) for the duration; everything renders on one offscreen renderer.
+ * Packs are a Grow and Studio feature: on any other plan this refuses before rendering.
  */
 export async function runStudioCampaignPack(input: StudioPackInput): Promise<PackRunResult> {
   const exportPlan = await loadExportPlan();
+  assertCampaignPackAllowed(exportPlan);
   const refs = getHiresRefs();
   if (!refs) throw new Error("Open a model first — the 3D scene must be loaded.");
   if (!(refs.camera instanceof THREE.PerspectiveCamera)) {

@@ -4,14 +4,20 @@ Captured via `npm run golden:capture` against `/render-harness` in headless
 Chromium + SwiftShader (see `scripts/golden/browser.mjs`). `npm run test:golden`
 re-captures and compares with SSIM ≥ 0.98.
 
-Regenerate ONLY when a render change is intentional and visually approved:
-1. `npm run dev` (separate terminal)
-2. `npm run golden:capture`
-3. Eyeball each PNG in `tests/goldens/`
-4. Commit the new goldens with the change that caused them.
+Each capture asks the harness for `WARMUP_FRAMES` (24, in `scripts/golden/browser.mjs`) frames
+before it reports ready, instead of the 60 a render job draws; changing that number changes
+every capture.
 
-Never regenerate on a desktop GPU environment — goldens are pinned to the
-SwiftShader software renderer for cross-machine consistency.
+Regenerate ONLY when a render change is intentional and visually approved. The safest source
+is CI itself: when `golden` fails it uploads its captures as the `golden-failures` artifact,
+made on the same runner image as every later check.
+1. `gh run download <run id> -n golden-failures`
+2. Eyeball each PNG against the old one in `tests/goldens/`
+3. Copy them over the old ones and commit them with the change that caused them.
+
+To capture locally instead, start the app (`npm run dev`) and run
+`HARNESS_BASE_URL=<its URL> npm run golden:capture`. Local captures can differ slightly from
+CI's even on SwiftShader, so prefer CI's. Never regenerate on a desktop GPU.
 
 ## Version and fixture pinning
 

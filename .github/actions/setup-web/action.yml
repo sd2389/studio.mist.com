@@ -1,0 +1,13 @@
+name: Set up web
+description: Node 22 with the npm cache, and dependencies installed exactly from the lockfile with install scripts off.
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      with:
+        node-version: "22"
+        cache: npm
+    - name: Install dependencies
+      shell: bash
+      # No dependency gets to run code at install time; nothing in this repo needs it to.
+      run: npm ci --ignore-scripts --no-audit --no-fund

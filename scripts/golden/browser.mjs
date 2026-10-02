@@ -1,6 +1,11 @@
 import { chromium } from "playwright";
 
 export const LIGHTING_IDS = ["studio", "soft", "dark", "catalog", "dramatic"];
+/**
+ * Frames the harness draws before it reports ready. A render job takes 60; a golden only has to
+ * match itself from run to run, and on SwiftShader every frame costs CI time.
+ */
+export const WARMUP_FRAMES = 24;
 export const BASE_URL = process.env.HARNESS_BASE_URL ?? "http://localhost:3000";
 
 export async function launchDeterministicBrowser() {
@@ -23,7 +28,7 @@ export async function captureAll(outDir) {
     const context = await browser.newContext({ viewport: { width: 800, height: 800 }, deviceScaleFactor: 1 });
     const page = await context.newPage();
     for (const lighting of LIGHTING_IDS) {
-      const url = `${BASE_URL}/render-harness?lighting=${lighting}&size=512`;
+      const url = `${BASE_URL}/render-harness?lighting=${lighting}&size=512&warmup=${WARMUP_FRAMES}`;
       await page.goto(url, { waitUntil: "domcontentloaded" });
       await page.waitForFunction(
         () => window.__HARNESS_STATE__ === "ready" || String(window.__HARNESS_STATE__).startsWith("error"),

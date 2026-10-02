@@ -1,4 +1,4 @@
-"""CLI: seed one published demo piece for /embed shopper Metal + Gem.
+"""CLI: seed one published demo piece for /embed.
 
 Idempotent. Re-running updates the same SKU and reprints the embed id.
 

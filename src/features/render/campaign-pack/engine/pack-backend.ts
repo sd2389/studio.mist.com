@@ -1,6 +1,7 @@
 import type * as THREE from "three";
 import { turntableAngle } from "@/lib/camera-orbit";
 import { loadBackdropImage, type ExportBackdrop } from "@/lib/export-backdrop";
+import type { ExportLimits } from "@/lib/export-limits";
 import type { ViewerRenderer } from "@/lib/gpu/viewer-renderer";
 import { createOffscreenRenderSession, encodeCanvas } from "@/lib/offscreen-render";
 import type { PersistedSlotTokens } from "@/lib/slot-materials/detect-slots";
@@ -50,6 +51,8 @@ export type PackBackendInput = {
   environment: MetalEnvironment | null;
   finish: FinishId;
   slotTokens?: PersistedSlotTokens;
+  /** The plan's cap and watermark, applied to every still, frame and video in the pack. */
+  limits: ExportLimits;
 };
 
 function nextTick(): Promise<void> {
@@ -74,6 +77,7 @@ export async function createPackRenderBackend(input: PackBackendInput): Promise<
     height: config.stillSize,
     exposure: input.exposure,
     postfxConfig: input.postfxConfig,
+    limits: input.limits,
   });
   const backdropImage = await loadBackdropImage(backdrop);
   const gems = collectTracedGems(session.scene);

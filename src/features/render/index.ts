@@ -17,3 +17,7 @@ export {
   type StillExportOptions,
 } from "./ui/StillExportSettings";
 export { turntableCaptureOptions, videoSizeLabel, type TurntableSettings } from "./lib/turntable-capture";
+export { VideoResolutionField } from "./ui/VideoResolutionField";
+export { loadExportPlan, type ExportPlan } from "./lib/export-plan";
+export { useExportPlan } from "./ui/useExportPlan";
+export { ExportPlanNote } from "./ui/ExportPlanNote";

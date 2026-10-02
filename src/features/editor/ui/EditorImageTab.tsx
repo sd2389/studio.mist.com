@@ -1,8 +1,8 @@
 "use client";
 
 import { AlertTriangle, Download, Loader2 } from "lucide-react";
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { UpgradePrompt } from "@/components/billing/UpgradePrompt";
 import { Button } from "@/components/ui/button";
 import {
   CampaignPackLauncher,
@@ -72,7 +72,6 @@ export function EditorImageTab({
       .catch(() => {});
   }, []);
 
-  const allows8k = (planFeatures?.max_image_resolution ?? 4096) >= 8192;
   const batchExportEnabled = planFeatures?.batch_export_enabled !== false;
 
   const estimatedJobCount = useMemo(
@@ -230,7 +229,7 @@ export function EditorImageTab({
           </>
         ) : null}
 
-        <StillExportSettings value={options} onChange={setOptions} allows8k={allows8k} />
+        <StillExportSettings value={options} onChange={setOptions} />
 
         {options.resolution === "8k" ? (
           <div
@@ -251,12 +250,7 @@ export function EditorImageTab({
               <span className="font-medium text-foreground">{estimatedJobCount}</span>
             </p>
             {!batchExportEnabled ? (
-              <p className="text-destructive">
-                Batch export requires a plan upgrade.{" "}
-                <Link href="/pricing" className="text-primary hover:underline">
-                  Upgrade
-                </Link>
-              </p>
+              <UpgradePrompt className="text-destructive">Batch export requires a plan upgrade.</UpgradePrompt>
             ) : null}
           </div>
         ) : null}

@@ -1,10 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import type { ReactNode } from "react";
-import { buttonVariants } from "@/components/ui/button";
 import type { PlanFeatures } from "@/lib/billing/types";
-import { cn } from "@/lib/utils";
+import { UpgradeButton } from "./UpgradePrompt";
 
 type PlanGateProps = {
   features: PlanFeatures | null;
@@ -33,9 +31,7 @@ export function PlanGate({ features, require: gate, currentValue, children, fall
       <p className="text-sm text-muted-foreground">
         This feature requires a paid plan.
       </p>
-      <Link href="/pricing" className={cn(buttonVariants({ size: "sm" }), "mt-3 inline-flex")}>
-        Upgrade
-      </Link>
+      <UpgradeButton size="sm" className="mt-3 inline-flex" />
     </div>
   );
 }

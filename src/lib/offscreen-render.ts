@@ -8,8 +8,10 @@ import {
   canvasToBlob,
   createExportLayers,
   makeCanvas,
+  stampWatermark,
   type ExportCanvas,
 } from "@/lib/export-compositing";
+import { assertExportSize, type ExportLimits } from "@/lib/export-limits";
 import { applyViewerColorManagement } from "@/lib/render-color-management";
 import {
   DEFAULT_VIEWER_POSTFX,
@@ -45,6 +47,8 @@ type RenderOpts = {
   backdrop?: ExportBackdrop | null;
   /** Adjusts the private scene clone before rendering (e.g. hide the studio set for cutouts). */
   prepareScene?: (scene: THREE.Scene) => void;
+  /** The plan's size cap and watermark (see OffscreenSessionOpts). */
+  limits: ExportLimits;
 };
 
 export type OffscreenSessionOpts = {
@@ -57,6 +61,11 @@ export type OffscreenSessionOpts = {
   exposure?: number;
   postfxConfig?: ViewerPostFXConfig;
   prepareScene?: (scene: THREE.Scene) => void;
+  /**
+   * The plan's cap and watermark. A size above the cap is refused; when the plan watermarks,
+   * every frame the session hands out carries the mark, cutouts included.
+   */
+  limits: ExportLimits;
 };
 
 export type CaptureOpts = {
@@ -84,7 +93,6 @@ export type Capture = {
  * private camera, so the live viewport is never moved or resized.
  */
 export type OffscreenRenderSession = {
-  readonly canvas: ExportCanvas;
   readonly scene: THREE.Scene;
   readonly camera: THREE.Camera;
   readonly width: number;
@@ -171,12 +179,17 @@ export async function createOffscreenRenderSession(
     gl,
     scene,
     camera,
+    limits,
     pixelRatio = 1,
     exposure = gl.toneMappingExposure ?? 1,
     postfxConfig = DEFAULT_VIEWER_POSTFX,
   } = opts;
   let width = Math.max(1, Math.round(opts.width));
   let height = Math.max(1, Math.round(opts.height));
+  // Output pixels, as the renderer sizes its canvas: floor(size × pixel ratio).
+  const checkSize = (w: number, h: number) =>
+    assertExportSize(limits, Math.floor(w * pixelRatio), Math.floor(h * pixelRatio));
+  checkSize(width, height);
 
   const canvas = makeCanvas(width, height);
   const renderer = await createViewerRenderer({ canvas, antialias: true, alpha: true });
@@ -230,8 +243,17 @@ export async function createOffscreenRenderSession(
     withGemTraceBounces(exportScene, GEM_TRACE_BOUNCES.photometric, () => renderWithPostFX(handle.composer));
   };
 
+  /** The last step for every frame handed out: the watermark, when the plan asks for it. */
+  const finish = (frame: ExportCanvas): ExportCanvas => {
+    if (!limits.watermark) return frame;
+    return stampWatermark(frame === canvas ? layers.copyFrame(canvas) : frame);
+  };
+  const finishCapture = (shot: Capture): Capture => ({
+    cutout: shot.cutout && finish(shot.cutout),
+    flat: shot.flat && finish(shot.flat),
+  });
+
   return {
-    canvas,
     scene: exportScene,
     camera: exportCamera,
     hasOpaqueBackground: sceneBackground !== null,
@@ -245,6 +267,7 @@ export async function createOffscreenRenderSession(
       const w = Math.max(1, Math.round(nextWidth));
       const h = Math.max(1, Math.round(nextHeight));
       if (w === width && h === height) return;
+      checkSize(w, h);
       width = w;
       height = h;
       renderer.setSize(width, height, false);
@@ -253,14 +276,14 @@ export async function createOffscreenRenderSession(
     render({ timeSec = 0, samples = 1 } = {}) {
       if (samples <= 1) {
         draw(main, sceneBackground, timeSec);
-        return canvas;
+        return finish(canvas);
       }
       const average = createSampleAverager();
       withJitter(samples, () => {
         draw(main, sceneBackground, timeSec);
         average.add(canvas);
       });
-      return average.resolve();
+      return finish(average.resolve());
     },
     capture({ timeSec = 0, backdrop = null, backdropImage = null, cutout = true, samples = 1 } = {}) {
       const captureOnce = (): Capture => {
@@ -272,7 +295,7 @@ export async function createOffscreenRenderSession(
           flat: backdrop ? layers.flatten(backdrop, backdropImage, matteLayer, canvas) : null,
         };
       };
-      if (samples <= 1) return captureOnce();
+      if (samples <= 1) return finishCapture(captureOnce());
       const cutouts = cutout ? createSampleAverager() : null;
       const flats = backdrop ? createSampleAverager() : null;
       withJitter(samples, () => {
@@ -280,7 +303,7 @@ export async function createOffscreenRenderSession(
         if (shot.cutout) cutouts?.add(shot.cutout);
         if (shot.flat) flats?.add(shot.flat);
       });
-      return { cutout: cutouts?.resolve() ?? null, flat: flats?.resolve() ?? null };
+      return finishCapture({ cutout: cutouts?.resolve() ?? null, flat: flats?.resolve() ?? null });
     },
     dispose() {
       matte?.dispose();

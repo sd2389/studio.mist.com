@@ -1,9 +1,10 @@
 "use client";
 
-import Link from "next/link";
+import { Lock } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { readViewportBackdrop } from "@/lib/export-backdrop";
+import { fitsExportLimits } from "@/lib/export-limits";
 import {
   ASPECT_RATIO,
   computeImageSize,
@@ -19,8 +20,11 @@ import { DEFAULT_JPEG_QUALITY, renderAtResolution } from "@/lib/offscreen-render
 import { cn } from "@/lib/utils";
 import { getHiresRefs } from "@/stores/hires-export-store";
 import { getRenderFidelity } from "@/stores/render-fidelity-store";
+import { FREE_EXPORT_PLAN, loadExportPlan } from "../lib/export-plan";
 import { prepareCutoutScene } from "../lib/stage-visibility";
+import { ExportPlanNote } from "./ExportPlanNote";
 import { JpegQualityField } from "./JpegQualityField";
+import { useExportPlan } from "./useExportPlan";
 
 export type StillExportOptions = {
   resolution: ImageResolutionId;
@@ -45,9 +49,11 @@ export function stillExportLabel(options: StillExportOptions): string {
 
 /**
  * Render the current studio view at production resolution — same post-processing as the
- * viewport — and download it as `filename` plus the format's extension.
+ * viewport — and download it as `filename` plus the format's extension. The plan's limits
+ * apply here, not only in the picker: a size above its cap is refused, Free gets the watermark.
  */
 export async function exportStill(options: StillExportOptions, filename: string): Promise<void> {
+  const plan = await loadExportPlan();
   const refs = getHiresRefs();
   if (!refs) throw new Error("Open a model first — the 3D scene must be loaded.");
   const { width, height } = computeImageSize(options.resolution, options.aspect);
@@ -67,6 +73,7 @@ export async function exportStill(options: StillExportOptions, filename: string)
     backdrop: options.transparent ? null : readViewportBackdrop(refs.gl.domElement),
     // Cutouts are the piece alone: no studio set, no contact-shadow catcher.
     prepareScene: options.transparent ? prepareCutoutScene : undefined,
+    limits: plan,
   });
   downloadBlob(blob, `${filename}.${extForImageFormat(options.format)}`);
 }
@@ -79,17 +86,19 @@ function FieldTitle({ children }: { children: string }) {
   return <p className="font-mono text-[10px] uppercase tracking-[0.24em] text-muted-foreground">{children}</p>;
 }
 
-/** Resolution, aspect, format, JPEG quality and transparency for a still, with its output estimate. */
+/**
+ * Resolution, aspect, format, JPEG quality and transparency for a still, with its output
+ * estimate. Sizes above the plan's cap are shown locked, with the upgrade prompt.
+ */
 export function StillExportSettings({
   value,
   onChange,
-  allows8k = true,
 }: {
   value: StillExportOptions;
   onChange: (next: StillExportOptions) => void;
-  /** Plan gate; 8K renders need Grow or Studio. */
-  allows8k?: boolean;
 }) {
+  const plan = useExportPlan();
+  const limits = plan ?? FREE_EXPORT_PLAN;
   const set = <K extends keyof StillExportOptions>(key: K, next: StillExportOptions[K]) => onChange({ ...value, [key]: next });
   const { width, height } = computeImageSize(value.resolution, value.aspect);
   const estimateBytes = width * height * (value.format === "jpeg" ? 2 : 4);
@@ -100,8 +109,8 @@ export function StillExportSettings({
         <FieldTitle>Resolution</FieldTitle>
         <div className="grid grid-cols-2 gap-2">
           {(Object.keys(IMAGE_RESOLUTIONS) as ImageResolutionId[]).map((id) => {
-            const locked = id === "8k" && !allows8k;
             const size = computeImageSize(id, value.aspect);
+            const locked = !fitsExportLimits(limits, size.width, size.height);
             return (
               <button
                 key={id}
@@ -110,9 +119,14 @@ export function StillExportSettings({
                 onClick={() => set("resolution", id)}
                 className={cn(OPTION, "text-left", locked && "cursor-not-allowed opacity-50", optionState(value.resolution === id))}
               >
-                <span className="block">
+                <span className="flex items-center gap-1">
                   {IMAGE_RESOLUTIONS[id].label}
-                  {locked ? " · Pro" : ""}
+                  {locked ? (
+                    <>
+                      <Lock className="size-3" aria-hidden />
+                      <span className="sr-only">(needs a plan upgrade)</span>
+                    </>
+                  ) : null}
                 </span>
                 <span className="block text-[10px] font-normal text-muted-foreground">
                   {size.width}×{size.height}
@@ -121,14 +135,7 @@ export function StillExportSettings({
             );
           })}
         </div>
-        {!allows8k ? (
-          <p className="text-xs text-muted-foreground">
-            8K exports require Grow or Studio.{" "}
-            <Link href="/pricing" className="text-primary hover:underline">
-              Upgrade
-            </Link>
-          </p>
-        ) : null}
+        <ExportPlanNote plan={plan} />
       </div>
 
       <div className="space-y-2">

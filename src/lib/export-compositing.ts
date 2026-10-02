@@ -1,4 +1,5 @@
 import { paintBackdrop, type ExportBackdrop } from "@/lib/export-backdrop";
+import { drawExportWatermark } from "@/lib/export-watermark";
 
 export type ExportCanvas = OffscreenCanvas | HTMLCanvasElement;
 export type Canvas2D = OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D;
@@ -18,10 +19,22 @@ export function canvasToBlob(canvas: ExportCanvas, mimeType: string, quality?: n
   });
 }
 
-function context2d(canvas: ExportCanvas): Canvas2D {
-  const ctx = canvas.getContext("2d", { willReadFrequently: true }) as Canvas2D | null;
+function context2d(canvas: ExportCanvas, willReadFrequently = true): Canvas2D {
+  const ctx = canvas.getContext("2d", { willReadFrequently }) as Canvas2D | null;
   if (!ctx) throw new Error("2D canvas unavailable for export compositing");
   return ctx;
+}
+
+function copyOnto(ctx: Canvas2D, source: ExportCanvas): void {
+  ctx.globalCompositeOperation = "copy";
+  ctx.drawImage(source, 0, 0);
+  ctx.globalCompositeOperation = "source-over";
+}
+
+/** Draws the export watermark over a 2D layer, in place (see export-watermark.ts). */
+export function stampWatermark(layer: ExportCanvas): ExportCanvas {
+  drawExportWatermark(context2d(layer), layer.width, layer.height);
+  return layer;
 }
 
 function sizedSurface(existing: ExportCanvas | null, width: number, height: number): ExportCanvas {
@@ -61,14 +74,19 @@ export function createExportLayers() {
   let matte: ExportCanvas | null = null;
   let cutout: ExportCanvas | null = null;
   let flat: ExportCanvas | null = null;
+  let frame: ExportCanvas | null = null;
   return {
     copyMatte(source: ExportCanvas): ExportCanvas {
       matte = sizedSurface(matte, source.width, source.height);
-      const ctx = context2d(matte);
-      ctx.globalCompositeOperation = "copy";
-      ctx.drawImage(source, 0, 0);
-      ctx.globalCompositeOperation = "source-over";
+      copyOnto(context2d(matte), source);
       return matte;
+    },
+    /** A 2D copy of a WebGPU frame, which has no 2D context to draw on. */
+    copyFrame(source: ExportCanvas): ExportCanvas {
+      frame = sizedSurface(frame, source.width, source.height);
+      // Drawn on, never read back: it can stay GPU-backed.
+      copyOnto(context2d(frame, false), source);
+      return frame;
     },
     /** Transparent PNG layer: full-render colour with the matte's alpha. */
     cutout(matteLayer: ExportCanvas, colorRender: ExportCanvas): ExportCanvas {

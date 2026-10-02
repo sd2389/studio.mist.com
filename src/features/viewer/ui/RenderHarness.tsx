@@ -9,6 +9,7 @@ import { jobEndpoints, isValidPayload } from "@/lib/golden/job-mode";
 import { getPublicApiUrl } from "@/lib/api-url";
 import { getHiresRefs } from "@/stores/hires-export-store";
 import { getRenderFidelity } from "@/stores/render-fidelity-store";
+import { NO_EXPORT_LIMITS } from "@/lib/export-limits";
 import { renderAtResolution } from "@/lib/offscreen-render";
 
 const LIGHTING_IDS: readonly LightingPresetId[] = ["studio", "soft", "dark", "catalog", "dramatic"];
@@ -187,6 +188,8 @@ export function RenderHarness() {
               width: jobPayloadDims.width,
               height: jobPayloadDims.height,
               pixelRatio: 1,
+              // The API already checked the job's size against the owner's plan (render_jobs/service.py).
+              limits: NO_EXPORT_LIMITS,
             });
             const form = new FormData();
             form.append("file", blob, "render.png");

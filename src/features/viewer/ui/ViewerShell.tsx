@@ -44,6 +44,13 @@ import {
   type MaterialPresetId,
 } from "@/stores/material-preset-store";
 
+/** A scene's model config, rebuilt from its slot selections for scenes saved before configs had slots. */
+function resolveModelConfig(scene: SceneDetail) {
+  return scene.model_config?.slots?.length
+    ? scene.model_config
+    : buildModelConfigFromSlots(Object.keys(scene.slot_selections ?? {}));
+}
+
 type ViewerShellProps = {
   modelId: string;
   variant: "studio" | "embed";
@@ -84,7 +91,7 @@ export function ViewerShell({
   );
 
   const [modelConfig, setModelConfig] = useState(() =>
-    initialScene?.model_config ?? buildModelConfigFromSlots([]),
+    initialScene ? resolveModelConfig(initialScene) : buildModelConfigFromSlots([]),
   );
   const [sceneSku, setSceneSku] = useState<string | null>(
     initialScene?.sku ?? null,
@@ -123,9 +130,7 @@ export function ViewerShell({
     if (initialScene) {
       applyingPersistedState.current = true;
       const scene = initialScene;
-      const resolvedModelConfig = scene.model_config?.slots?.length
-        ? scene.model_config
-        : buildModelConfigFromSlots(Object.keys(scene.slot_selections ?? {}));
+      const resolvedModelConfig = resolveModelConfig(scene);
       const safeSelections = sanitizeSlotSelections(
         (scene.slot_selections ?? {}) as Record<string, MaterialPresetId>,
         resolvedModelConfig,
@@ -147,9 +152,7 @@ export function ViewerShell({
     void getSceneByViewerId(modelId)
       .then((scene) => {
         if (cancelled) return;
-        const resolvedModelConfig = scene.model_config?.slots?.length
-          ? scene.model_config
-          : buildModelConfigFromSlots(Object.keys(scene.slot_selections ?? {}));
+        const resolvedModelConfig = resolveModelConfig(scene);
         const safeSelections = sanitizeSlotSelections(
           (scene.slot_selections ?? {}) as Record<string, MaterialPresetId>,
           resolvedModelConfig,

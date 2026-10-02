@@ -26,6 +26,7 @@ from app.models.user import User
 from app.services.model_config import (
     build_scene_settings_config,
     build_slot_material_config,
+    count_glb_triangles,
     merge_scene_settings,
     merge_slot_material_config,
 )
@@ -156,9 +157,11 @@ def register_after_presign(
         if existing is not None:
             raise HTTPException(status_code=409, detail="SKU already exists")
 
+    # A declared count over the cap fails before storage is read; the cap then also holds
+    # against what the GLB itself draws, since the declared count comes from the client.
     assert_polygon_limit(db, user, polygon_count)
-
     model_bytes = storage.read_bytes(key)
+    assert_polygon_limit(db, user, count_glb_triangles(model_bytes))
     upload_bytes = _total_upload_bytes(model_bytes, thumbnail_key)
     assert_storage_for_upload(db, user, upload_bytes)
     billing = assert_model_credit(db, user)
@@ -217,7 +220,8 @@ def save_direct_multipart(
         if existing is not None:
             raise HTTPException(status_code=409, detail="SKU already exists")
 
-    assert_polygon_limit(db, user, polygon_count)
+    # The declared count comes from the client; the cap also holds against what the GLB draws.
+    assert_polygon_limit(db, user, max(polygon_count, count_glb_triangles(body)))
 
     assert_storage_for_upload(db, user, len(body))
     billing = assert_model_credit(db, user)

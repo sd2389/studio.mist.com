@@ -35,8 +35,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  if (!body.key?.startsWith("models/")) {
-    return NextResponse.json({ error: "key must start with models/" }, { status: 400 });
+  // Presigned uploads land under the customer's own prefix; the API checks the key is theirs.
+  if (!/^customers\/\d+\/models\/[^/]+$/.test(body.key ?? "")) {
+    return NextResponse.json({ error: "key must be a customer model key" }, { status: 400 });
   }
 
   if (!Number.isInteger(body.polygon_count) || (body.polygon_count ?? -1) < 0) {

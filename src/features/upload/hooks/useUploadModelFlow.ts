@@ -45,7 +45,7 @@ export function useUploadModelFlow() {
   const [decimating, setDecimating] = useState(false);
   /** Bumped when geometry changes in place (decimation) so the preview re-clones it. */
   const [previewRevision, setPreviewRevision] = useState(0);
-  const { maxPolygons, planLabel, refresh: refreshPolygonCap } = usePolygonCap();
+  const { maxPolygons, planLabel, known: capKnown, refresh: refreshPolygonCap } = usePolygonCap();
   const pendingSaveAfterAuthRef = useRef(false);
   /** Serializes Save: acquired before fetchMe, held through auth dialog / persist. */
   const saveFlowActiveRef = useRef(false);
@@ -55,7 +55,9 @@ export function useUploadModelFlow() {
     [layers],
   );
   const slotIds = useMemo(() => layers.map((layer) => layer.slotId), [layers]);
-  const overPolyLimit = parsed != null && parsed.polyCount > maxPolygons;
+  // A signed-out visitor may be on a paid plan: Save stays open so they can sign in, and the
+  // real cap is checked once it is known (see handleAuthSuccess).
+  const overPolyLimit = capKnown && parsed != null && parsed.polyCount > maxPolygons;
   const busy = phase === "parsing" || phase === "saving" || decimating;
 
   const reset = useCallback(() => {
@@ -223,7 +225,7 @@ export function useUploadModelFlow() {
       setSkuError("SKU is required.");
       return;
     }
-    if (parsed.polyCount > maxPolygons) {
+    if (overPolyLimit) {
       setError(overPolyLimitMessage(planLabel, maxPolygons));
       return;
     }
@@ -249,7 +251,7 @@ export function useUploadModelFlow() {
         saveFlowActiveRef.current = false;
       }
     }
-  }, [maxPolygons, metadata.name, metadata.sku, parsed, persistReadyModel, planLabel, requestSignInForSave]);
+  }, [maxPolygons, metadata.name, metadata.sku, overPolyLimit, parsed, persistReadyModel, planLabel, requestSignInForSave]);
 
   const handleAuthDialogOpenChange = useCallback((open: boolean) => {
     setAuthDialogOpen(open);

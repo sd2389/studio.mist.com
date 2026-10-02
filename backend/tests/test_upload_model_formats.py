@@ -8,7 +8,7 @@ from fastapi import HTTPException
 
 from app.features.billing.quota_service import get_or_create_billing
 from app.features.upload import service as upload_service
-from app.services.model_config import _normalize_slot_token, build_slot_material_config
+from app.services.model_config import _normalize_slot_token, build_slot_material_config, count_glb_triangles
 
 CAD_FILENAMES = [
     "ring.glb",
@@ -117,3 +117,42 @@ def test_backend_redetects_slots_named_by_browser_segmentation():
 )
 def test_slot_tokens_accept_plural_layers_and_underscored_names(name, slot):
     assert _normalize_slot_token(name) == slot
+
+
+def _glb_with_triangles(index_count: int, *, placements: int = 1) -> bytes:
+    """A GLB whose JSON declares one indexed triangle mesh, placed by `placements` nodes."""
+    doc = {
+        "asset": {"version": "2.0"},
+        "accessors": [{"count": 3, "componentType": 5126, "type": "VEC3"}, {"count": index_count, "componentType": 5125, "type": "SCALAR"}],
+        "meshes": [{"primitives": [{"attributes": {"POSITION": 0}, "indices": 1}]}],
+        "nodes": [{"mesh": 0} for _ in range(placements)],
+    }
+    chunk = json.dumps(doc).encode()
+    chunk += b" " * (-len(chunk) % 4)
+    header = struct.pack("<4sII", b"glTF", 2, 12 + 8 + len(chunk))
+    return header + struct.pack("<II", len(chunk), 0x4E4F534A) + chunk
+
+
+def test_triangle_count_comes_from_the_glb_itself():
+    assert count_glb_triangles(_glb_with_triangles(300)) == 100
+    assert count_glb_triangles(_glb_with_triangles(300, placements=3)) == 300
+    assert count_glb_triangles(b"not a model") == 0
+
+
+def test_direct_save_holds_the_cap_against_an_understated_polygon_count(db, sample_user):
+    billing = get_or_create_billing(db, sample_user)
+    before = billing.model_credits_balance
+    with pytest.raises(HTTPException) as exc:
+        upload_service.save_direct_multipart(
+            db,
+            user=sample_user,
+            filename="ring.glb",
+            body=_glb_with_triangles(3 * 150_000),
+            model_config_raw=None,
+            slot_selections_raw=None,
+            scene_settings_raw=None,
+            polygon_count=0,
+        )
+    assert exc.value.status_code == 402
+    db.refresh(billing)
+    assert billing.model_credits_balance == before

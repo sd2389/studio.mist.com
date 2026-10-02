@@ -13,8 +13,9 @@ RUN apt-get update \
         libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt ./
-RUN pip install -r requirements.txt
+# Exact, hash-checked versions (requirements.lock is compiled from requirements.txt).
+COPY requirements.lock ./
+RUN pip install --no-cache-dir -r requirements.lock
 
 COPY app ./app
 COPY alembic ./alembic

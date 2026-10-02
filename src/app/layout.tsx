@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { DM_Sans, Fraunces, Geist_Mono } from "next/font/google";
-import { FILM_THEME_SCRIPT } from "@/components/scroll-film/film-theme-script";
+import { ThemeScript } from "@/components/site/ThemeScript";
 import "./globals.css";
 
 const dmSans = DM_Sans({
@@ -39,7 +39,7 @@ export default function RootLayout({
     >
       <head>
         {/* Before first paint: the visitor's light or dark look, so no page flashes. */}
-        <script dangerouslySetInnerHTML={{ __html: FILM_THEME_SCRIPT }} />
+        <ThemeScript />
       </head>
       <body className="min-h-full flex flex-col font-sans">{children}</body>
     </html>

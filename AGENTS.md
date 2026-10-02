@@ -21,7 +21,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 |---|---|---|---|
 | PostgreSQL 16 | `docker run -d --name studio-postgres -p 5433:5432 -e POSTGRES_USER=studio -e POSTGRES_PASSWORD=studio -e POSTGRES_DB=studio postgres:16-alpine` | 5433 | Must be running before backend starts |
 | FastAPI backend | `cd backend && uvicorn app.main:app --host 0.0.0.0 --port 8765 --reload` | 8765 | Run Alembic migrations first: `cd backend && alembic upgrade head` |
-| Next.js frontend | `NEXT_PUBLIC_API_URL=http://localhost:8765 npm run dev` | 3000 | Set env var so browser hits backend directly |
+| Next.js frontend | `NEXT_PUBLIC_API_URL=http://localhost:8765 npm run dev` | 3001 | The port comes from the `dev` script in `package.json`; set the env var so the browser hits the backend directly |
 
 ### Startup order
 
@@ -36,8 +36,10 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - The backend default `DATABASE_URL` in `backend/app/config.py` already points to `localhost:5433` — no env override needed for local dev.
 - `pip install` puts scripts (`alembic`, `uvicorn`, `celery`) into `~/.local/bin`, which may not be on `PATH`. Run `export PATH="$HOME/.local/bin:$PATH"` or add it to `~/.bashrc`.
 - Docker in the Cloud VM requires `fuse-overlayfs` storage driver and `iptables-legacy`. See the environment setup for details.
-- ESLint (`npx eslint .`) and TypeScript (`npx tsc --noEmit`) run from the repo root. Pre-existing lint warnings/errors exist in the codebase.
+- ESLint (`npx eslint .`) and TypeScript (`npx tsc --noEmit`) run from the repo root. Lint has no errors; keep it that way (CI's `frontend-quality` check runs both).
 - `AI_BACKGROUND_MODE` defaults to `stub` — no GPU or SDXL deps needed for dev.
-- AWS S3 is optional; without `AWS_BUCKET` set, uploads go to `backend/uploads/` on the local filesystem.
+- Storage: `STORAGE_BACKEND` picks `local`, `r2` or `s3`. Unset (or `auto`), it uses R2 when the `R2_*` keys are set, then S3 when `AWS_BUCKET` is set, and otherwise `backend/uploads/` on the local filesystem.
 - Lint: `npm run lint` (alias for `eslint`). Build: `npm run build`. See `package.json` scripts.
-- Backend tests: `cd backend && .venv/bin/python -m pytest`. Frontend has no test runner configured.
+- Frontend tests: `npm test` (Vitest). Backend tests: `cd backend && .venv/bin/python -m pytest` after `pip install -r requirements-dev.txt` (it adds `httpx2` for Starlette's TestClient).
+- Backend dependencies: `requirements.txt` holds the ranges; `requirements.lock` and `requirements-dev.lock` pin them with hashes for the Docker image and CI (Linux, Python 3.12). After changing a requirements file, run `backend/scripts/lock-requirements.sh` (needs `uv`).
+- CI (`.github/workflows/ci.yml`) runs only the checks a change needs (`scripts/ci/changed-areas.mjs`); see `docs/QUALITY-GATES.md`.

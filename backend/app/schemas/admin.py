@@ -38,6 +38,17 @@ class CreditAdjustmentRow(BaseModel):
     created_at: datetime
 
 
+class CreditPurchaseRow(BaseModel):
+    id: int
+    kind: str
+    credits: int
+    stripe_checkout_session_id: str
+    stripe_event_id: str
+    amount_total: int | None
+    currency: str | None
+    created_at: datetime
+
+
 class AdminUserUsage(BaseModel):
     scene_count: int
     embedded_count: int
@@ -66,6 +77,7 @@ class AdminUserDetail(BaseModel):
     billing: UserBillingSnapshot
     usage: AdminUserUsage
     recent_adjustments: list[CreditAdjustmentRow]
+    recent_purchases: list[CreditPurchaseRow]
 
 
 class SetActiveRequest(BaseModel):

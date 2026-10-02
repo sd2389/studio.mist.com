@@ -2,6 +2,7 @@
 
 from sqlalchemy import func, select
 
+from app.features.admin.service import get_user_detail
 from app.features.billing import purchases
 from app.features.billing.purchases import record_topup_purchase
 from app.features.billing.quota_service import get_or_create_billing
@@ -78,3 +79,16 @@ def test_simultaneous_duplicate_is_stopped_by_the_unique_session_id(db, sample_u
     assert lookups == ["cs_1", "cs_1"]  # the missed lookup, then the check after the rollback
     assert billing.ai_image_credits_balance == after_first
     assert _purchase_count(db) == 1
+
+
+def test_admin_user_detail_lists_purchases_newest_first(db, sample_user):
+    billing = get_or_create_billing(db, sample_user)
+    _record(db, billing, session_id="cs_older")
+    _record(db, billing, session_id="cs_newer", kind="model", credits=10)
+
+    purchases_shown = get_user_detail(db, sample_user.id).recent_purchases
+
+    assert [row.stripe_checkout_session_id for row in purchases_shown] == ["cs_newer", "cs_older"]
+    newest = purchases_shown[0]
+    assert (newest.kind, newest.credits, newest.stripe_event_id) == ("model", 10, "evt_1")
+    assert (newest.amount_total, newest.currency) == (1900, "usd")

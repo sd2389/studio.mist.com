@@ -18,7 +18,7 @@ from app.features.billing.quota_service import (
     reset_allotments,
     snapshot,
 )
-from app.models.billing import BillingEvent, UserBilling
+from app.models.billing import BillingEvent, CreditPurchase, UserBilling
 from app.models.scene import Scene
 from app.models.user import ContactMessage, Session as DbSession, User
 from app.schemas.admin import (
@@ -32,6 +32,7 @@ from app.schemas.admin import (
     ContactMessageListResponse,
     ContactMessageRow,
     CreditAdjustmentRow,
+    CreditPurchaseRow,
     ImpersonateResponse,
     TopUserRow,
 )
@@ -155,6 +156,28 @@ def _adjustment_rows(db: Session, user_id: int, limit: int = 20) -> list[CreditA
     ]
 
 
+def _purchase_rows(db: Session, user_id: int, limit: int = 20) -> list[CreditPurchaseRow]:
+    purchases = db.scalars(
+        select(CreditPurchase)
+        .where(CreditPurchase.user_id == user_id)
+        .order_by(CreditPurchase.created_at.desc(), CreditPurchase.id.desc())
+        .limit(limit)
+    ).all()
+    return [
+        CreditPurchaseRow(
+            id=purchase.id,
+            kind=purchase.kind,
+            credits=purchase.credits,
+            stripe_checkout_session_id=purchase.stripe_checkout_session_id,
+            stripe_event_id=purchase.stripe_event_id,
+            amount_total=purchase.amount_total,
+            currency=purchase.currency,
+            created_at=purchase.created_at,
+        )
+        for purchase in purchases
+    ]
+
+
 def get_user_detail(db: Session, user_id: int) -> AdminUserDetail:
     user = db.get(User, user_id)
     if user is None:
@@ -177,6 +200,7 @@ def get_user_detail(db: Session, user_id: int) -> AdminUserDetail:
         billing=billing_snapshot,
         usage=admin_analytics.get_user_usage(db, user_id),
         recent_adjustments=_adjustment_rows(db, user_id),
+        recent_purchases=_purchase_rows(db, user_id),
     )
 
 

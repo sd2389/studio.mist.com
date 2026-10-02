@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# CodeRabbit stays installed on the account but does nothing on this repository: no reviews,
+# no commit status, no "review skipped" comments and no replies.
+reviews:
+  auto_review:
+    enabled: false
+  commit_status: false
+  review_status: false
+  high_level_summary: false
+chat:
+  auto_reply: false

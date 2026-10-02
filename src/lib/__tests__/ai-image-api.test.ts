@@ -1,5 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { aiImageStatusLabel } from "@/lib/ai-image-api";
+import { aiImageStatusLabel, isStubResult } from "@/lib/ai-image-api";
+
+describe("isStubResult", () => {
+  it("is true for stub placeholders, which the server does not charge for", () => {
+    expect(isStubResult("shoot:stub")).toBe(true);
+    expect(isStubResult("model:stub")).toBe(true);
+  });
+
+  it("is false for real generations and a missing mode", () => {
+    expect(isStubResult("shoot:sdxl")).toBe(false);
+    expect(isStubResult("model:replicate")).toBe(false);
+    expect(isStubResult(undefined)).toBe(false);
+  });
+});
 
 describe("aiImageStatusLabel", () => {
   it("labels stub pipeline modes", () => {

@@ -13,7 +13,7 @@ import {
   type AiVisualsEntry,
 } from "@/features/editor/ui/ai-visuals/AiVisualsEntryPicker";
 import { AiVisualsResult } from "@/features/editor/ui/ai-visuals/AiVisualsResult";
-import { aiImageStatusLabel, requestAiImage } from "@/lib/ai-image-api";
+import { aiImageStatusLabel, isStubResult, requestAiImage } from "@/lib/ai-image-api";
 import { fetchBillingAccount } from "@/lib/billing/client";
 import { formatAiCredits } from "@/lib/ai-image-credits";
 import {
@@ -67,6 +67,14 @@ export function EditorAiImageTab({ viewerId }: EditorAiImageTabProps) {
   const selectedPreset = AI_SHOOT_PRESETS[presetIdx] ?? AI_SHOOT_PRESETS[0]!;
   const creditsLabel = useMemo(() => formatAiCredits(remaining, total), [remaining, total]);
 
+  /** Gives back the credit taken up front: the request failed, or made a free stub placeholder. */
+  function returnCredit() {
+    useAiImageCreditsStore.setState((s) => ({
+      remaining: Math.min(s.total, s.remaining + 1),
+      usedThisCycle: Math.max(0, s.usedThisCycle - 1),
+    }));
+  }
+
   async function handleGenerate() {
     setError(null);
     setStatus(null);
@@ -111,11 +119,9 @@ export function EditorAiImageTab({ viewerId }: EditorAiImageTabProps) {
       setLastResultUrl(data.result_url);
       setLastMode(data.mode ?? null);
       setStatus(aiImageStatusLabel(data.mode));
+      if (isStubResult(data.mode)) returnCredit();
     } catch (e) {
-      useAiImageCreditsStore.setState((s) => ({
-        remaining: Math.min(s.total, s.remaining + 1),
-        usedThisCycle: Math.max(0, s.usedThisCycle - 1),
-      }));
+      returnCredit();
       const message = e instanceof Error ? e.message : "Generation failed";
       setError(message);
       if (message.toLowerCase().includes("credit")) {

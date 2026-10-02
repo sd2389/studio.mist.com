@@ -4,6 +4,9 @@ Tests cover:
 - Worker auth dependency: 401 missing/wrong header; 503 when setting unset.
 - POST /render-jobs/claim: oldest-first claim; sets status=running, attempts+=1;
   second sequential claim on empty queue → 204/None.
+- Leases: each claim issues a new token and a lease; a running job whose lease
+  ran out is claimed again as a failed attempt (failed for good after 3); the
+  token of a claim that lost its lease is refused.
 - GET /render-jobs/{id}/payload: 401 wrong token; model_url http passthrough;
   model_url presign path.
 - POST /render-jobs/{id}/complete: 401 wrong token; bytes stored; result_key set;
@@ -14,8 +17,9 @@ Tests cover:
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from io import BytesIO
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -240,6 +244,141 @@ class TestClaimJob:
 
         second = claim_job(db)
         assert second is None
+
+
+# ---------------------------------------------------------------------------
+# Lease tests
+# ---------------------------------------------------------------------------
+
+
+def _expire_lease(db: Session, job) -> None:
+    """Make a claimed job look abandoned: its lease ran out a second ago."""
+    job.lease_expires_at = datetime.utcnow() - timedelta(seconds=1)
+    db.commit()
+
+
+class TestClaimLease:
+    """A claim leases the job; a lapsed lease hands it to the next claim."""
+
+    def test_claim_leases_the_job_for_the_configured_time(self, db, user):
+        """lease_expires_at is claim time + RENDER_JOB_LEASE_SECONDS."""
+        from app.features.render_jobs.service import claim_job
+
+        _make_job(db, user.id)
+        before = datetime.utcnow()
+        job = claim_job(db, SimpleNamespace(render_job_lease_seconds=900))
+
+        assert before + timedelta(seconds=900) <= job.lease_expires_at
+        assert job.lease_expires_at <= datetime.utcnow() + timedelta(seconds=900)
+
+    def test_claim_issues_a_new_token(self, db, user):
+        """The token a job was created with stops working once it is claimed."""
+        from app.features.render_jobs.service import claim_job
+
+        job = _make_job(db, user.id)
+        created_token = job.worker_token
+
+        claimed = claim_job(db)
+
+        assert claimed.worker_token != created_token
+
+    def test_running_job_with_live_lease_is_not_claimed(self, db, user):
+        """A job whose worker still holds the lease stays with that worker."""
+        from app.features.render_jobs.service import claim_job
+
+        _make_job(db, user.id)
+        claim_job(db)
+
+        assert claim_job(db) is None
+
+    def test_lapsed_lease_is_claimed_again_as_a_failed_attempt(self, db, user):
+        """The abandoned attempt counts; the job runs again with a new token and lease."""
+        from app.features.render_jobs.service import LEASE_EXPIRED_ERROR, claim_job
+
+        _make_job(db, user.id)
+        first = claim_job(db)
+        first_token = first.worker_token
+        _expire_lease(db, first)
+
+        second = claim_job(db)
+
+        assert second.id == first.id
+        assert second.status == "running"
+        assert second.attempts == 2
+        assert second.error == LEASE_EXPIRED_ERROR
+        assert second.worker_token != first_token
+        assert second.lease_expires_at > datetime.utcnow()
+
+    def test_lapsed_leases_keep_the_three_attempt_limit(self, db, user):
+        """A job whose worker keeps vanishing is claimed 3 times, then fails for good."""
+        from app.features.render_jobs.service import LEASE_EXPIRED_ERROR, claim_job
+
+        job = _make_job(db, user.id)
+        for attempt in (1, 2, 3):
+            claimed = claim_job(db)
+            assert claimed.id == job.id
+            assert claimed.attempts == attempt
+            _expire_lease(db, claimed)
+
+        assert claim_job(db) is None
+        db.refresh(job)
+        assert job.status == "failed"
+        assert job.attempts == 3
+        assert job.error == LEASE_EXPIRED_ERROR
+
+    def test_exhausted_job_does_not_block_the_queue(self, db, user):
+        """Failing an exhausted job and claiming the next one happen in the same claim."""
+        from app.features.render_jobs.service import claim_job
+
+        stuck = _make_job(db, user.id)
+        stuck.status = "running"
+        stuck.attempts = 3
+        db.commit()
+        _expire_lease(db, stuck)
+        waiting = _make_job(db, user.id)
+
+        claimed = claim_job(db)
+
+        assert claimed.id == waiting.id
+        db.refresh(stuck)
+        assert stuck.status == "failed"
+
+    def test_worker_that_lost_the_lease_is_refused(self, db, user):
+        """After a re-claim, the old token can neither fetch, complete nor fail the job."""
+        from app.features.render_jobs.service import claim_job, complete_job, fail_job, get_job_payload
+
+        _make_job(db, user.id)
+        first = claim_job(db)
+        stale_token = first.worker_token
+        _expire_lease(db, first)
+        claim_job(db)
+
+        for call in (
+            lambda: get_job_payload(db, first.id, token=stale_token),
+            lambda: complete_job(db, first.id, token=stale_token, data=b"PNG"),
+            lambda: fail_job(db, first.id, token=stale_token, error="late"),
+        ):
+            with pytest.raises(HTTPException) as exc:
+                call()
+            assert exc.value.status_code == 401
+
+        db.refresh(first)
+        assert first.status == "running"
+        assert first.attempts == 2
+
+    def test_late_worker_can_still_finish_when_nobody_reclaimed(self, db, user):
+        """A lapsed lease alone refuses nothing: the job completes if no claim took it back."""
+        from app.features.render_jobs.service import claim_job, complete_job
+
+        _make_job(db, user.id)
+        job = claim_job(db)
+        _expire_lease(db, job)
+
+        with patch("app.features.render_jobs.service.write_bytes"):
+            with patch("app.features.render_jobs.service.render_key", return_value="customers/1/renders/abc.png"):
+                done = complete_job(db, job.id, token=job.worker_token, data=b"PNG-BYTES")
+
+        assert done.status == "completed"
 
 
 # ---------------------------------------------------------------------------
@@ -521,3 +660,30 @@ class TestFailJob:
         # No credit consumed on failure
         db.refresh(billing)
         assert billing.render_credits_balance == balance_before
+
+
+@pytest.mark.parametrize("call", ["complete", "fail"])
+def test_complete_and_fail_lock_the_job_row_on_postgres(call):
+    """A claim can't issue a new token between their token check and their update."""
+    from sqlalchemy.dialects import postgresql
+
+    from app.features.render_jobs import service
+
+    statements = []
+
+    class _Postgres:
+        def get_bind(self):
+            return SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
+
+        def execute(self, stmt):
+            statements.append(stmt)
+            return SimpleNamespace(scalars=lambda: SimpleNamespace(first=lambda: None))
+
+    with pytest.raises(HTTPException) as exc:
+        if call == "complete":
+            service.complete_job(_Postgres(), 1, token="t", data=b"png")
+        else:
+            service.fail_job(_Postgres(), 1, token="t", error="boom")
+
+    assert exc.value.status_code == 404
+    assert "FOR UPDATE" in str(statements[0].compile(dialect=postgresql.dialect()))

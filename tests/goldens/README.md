@@ -2,11 +2,15 @@
 
 Captured via `npm run golden:capture` against `/render-harness` in headless
 Chromium + SwiftShader (see `scripts/golden/browser.mjs`). `npm run test:golden`
-re-captures and compares with SSIM ≥ 0.98.
+re-captures and compares with SSIM ≥ 0.98. The five lighting setups are captured at once, each
+in its own browser, since all pages of one browser share its single SwiftShader GPU process;
+`GOLDEN_CONCURRENCY=<n>` runs at most n at a time.
 
-Each capture asks the harness for `WARMUP_FRAMES` (24, in `scripts/golden/browser.mjs`) frames
-before it reports ready, instead of the 60 a render job draws; changing that number changes
-every capture.
+Once the scene has loaded, the harness draws exactly `WARMUP_FRAMES` (24, in
+`scripts/golden/browser.mjs`) frames on a fixed clock (frame N at N/60 s), instead of the 60 a
+render job draws, then stops drawing and reports ready. A capture depends on neither load speed
+nor when the screenshot is taken, so on one machine it is the same PNG byte for byte every run.
+Changing that number changes every capture.
 
 Regenerate ONLY when a render change is intentional and visually approved. The safest source
 is CI itself: when `golden` fails it uploads its captures as the `golden-failures` artifact,

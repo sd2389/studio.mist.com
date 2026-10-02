@@ -4,16 +4,22 @@ export type JobPayload = {
   preset: string;
   width: number;
   height: number;
+  /** The owner's plan watermarks exports (Free). */
+  watermark: boolean;
 };
 
-export function jobEndpoints(apiBase: string, jobId: string, token: string) {
+export function jobEndpoints(apiBase: string, jobId: string) {
   const base = apiBase.replace(/\/$/, "");
-  const q = `?token=${encodeURIComponent(token)}`;
   return {
-    payload: `${base}/render-jobs/${jobId}/payload${q}`,
-    complete: `${base}/render-jobs/${jobId}/complete${q}`,
-    fail: `${base}/render-jobs/${jobId}/fail${q}`,
+    payload: `${base}/render-jobs/${jobId}/payload`,
+    complete: `${base}/render-jobs/${jobId}/complete`,
+    fail: `${base}/render-jobs/${jobId}/fail`,
   };
+}
+
+/** Headers for a job endpoint. The per-job token travels here, never in the URL, which access logs keep. */
+export function jobHeaders(token: string, headers: Record<string, string> = {}): Record<string, string> {
+  return { ...headers, "X-Job-Token": token };
 }
 
 export function isValidPayload(p: unknown): p is JobPayload {
@@ -24,6 +30,7 @@ export function isValidPayload(p: unknown): p is JobPayload {
     typeof o.lighting === "string" &&
     typeof o.preset === "string" &&
     typeof o.width === "number" &&
-    typeof o.height === "number"
+    typeof o.height === "number" &&
+    typeof o.watermark === "boolean"
   );
 }

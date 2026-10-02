@@ -140,6 +140,8 @@ Templates: [`.env.example`](.env.example) (web, Compose) and [`backend/.env.exam
 
 The backend can queue full-resolution renders (`POST /render-jobs`). A Node worker (`npm run worker:render`) claims each job, opens `/render-harness` in headless Chromium, renders 60 warm-up frames through the viewer's Three.js pipeline, and uploads the PNG. A successful render costs the owner 1 render credit. Failed attempts are never charged and are re-queued until a job has had 3 attempts.
 
+A claim leases the job to its worker for `RENDER_JOB_LEASE_SECONDS` (10 minutes by default), and the worker gives up a minute before the lease runs out. A job left `running` by a crashed worker or backend goes to the next claim once its lease has run out, and that counts as a failed attempt. Every claim issues a new per-job token, so the worker that lost the lease can no longer complete or fail the job. The token travels in the `X-Job-Token` header, never in a URL: the worker hands it to the harness page with a Playwright init script.
+
 To run it locally, keep the dev server running (`npm run dev`) and install Chromium once with `npx playwright install chromium`:
 
 ```bash
@@ -154,8 +156,8 @@ In production, point `RENDER_API_URL` at the backend and `HARNESS_BASE_URL` at a
 
 Known v1 limits:
 
-- Jobs have no lease. A job left `running` by a crashed worker or backend has to be reset by hand.
-- Per-job tokens are passed in the query string of `/payload`, `/complete` and `/fail`, so they can show up in access logs.
+- Leases are not renewed. A render that takes longer than the lease allows is given up and retried, so keep `RENDER_JOB_LEASE_SECONDS` a minute or more above the slowest render.
+- Only a claim takes back a job whose lease ran out, so with no worker polling it stays `running`.
 
 ## Project layout
 
@@ -197,7 +199,7 @@ Backend, from `backend/` with the virtualenv above:
 
 **Render goldens** (`npm run test:golden`):
 
-- Captures `/render-harness` under the 5 lighting setups in headless Chromium with the SwiftShader software renderer, and compares each frame with `tests/goldens/` (SSIM 0.98 or higher).
+- Captures `/render-harness` under the 5 lighting setups in headless Chromium with the SwiftShader software renderer, all at once with one browser each, and compares each frame with `tests/goldens/` (SSIM 0.98 or higher).
 - Needs Playwright's Chromium (`npx playwright install chromium`) and the app running at `HARNESS_BASE_URL` (default `http://localhost:3000`). That can be `npm run dev`, or `NEXT_PUBLIC_ENABLE_RENDER_HARNESS=1 npm run build && npm run start`, which is what CI does.
 - Goldens are pinned to SwiftShader, the Playwright version in `package.json` and the fixture model. Regenerate them only for an approved render change, following [tests/goldens/README.md](tests/goldens/README.md).
 

@@ -7,9 +7,6 @@ export type ExportLimits = {
   watermark: boolean;
 };
 
-/** Server render jobs (RenderHarness): the API clamps their size to the plan itself. */
-export const NO_EXPORT_LIMITS: ExportLimits = { maxEdge: Number.POSITIVE_INFINITY, watermark: false };
-
 export function fitsExportLimits(limits: ExportLimits, width: number, height: number): boolean {
   return Math.max(width, height) <= limits.maxEdge;
 }

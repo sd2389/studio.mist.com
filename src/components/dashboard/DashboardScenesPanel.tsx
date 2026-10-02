@@ -55,6 +55,19 @@ function SceneCardPreview({ scene }: { scene: Scene }) {
   return <ScenePreview modelKey={scene.model_key} />;
 }
 
+/** The piece's embed in its actions menu, once a SKU has published it. */
+function ShareEmbedItem({ scene }: { scene: Scene }) {
+  const href = embedHref(scene);
+  if (!href) return null;
+  return (
+    <DropdownMenuItem className="p-0">
+      <Link href={href} className="flex w-full min-h-10 items-center px-3 py-2 text-sm focus-visible:outline-none">
+        Share embed
+      </Link>
+    </DropdownMenuItem>
+  );
+}
+
 export function DashboardScenesPanel({
   loading,
   scenes,
@@ -283,14 +296,7 @@ export function DashboardScenesPanel({
                           <Settings2 className="size-3.5" aria-hidden />
                           Settings
                         </DropdownMenuItem>
-                        <DropdownMenuItem className="p-0">
-                          <Link
-                            href={embedHref(scene)}
-                            className="flex w-full min-h-10 items-center px-3 py-2 text-sm focus-visible:outline-none"
-                          >
-                            Share embed
-                          </Link>
-                        </DropdownMenuItem>
+                        <ShareEmbedItem scene={scene} />
                         <DropdownMenuItem
                           className="gap-2 text-destructive focus:text-destructive"
                           onClick={() =>

@@ -1,6 +1,6 @@
 # MIST Studio
 
-MIST Studio is a jewelry studio that runs in the browser. Upload a CAD file and it opens as a lit 3D scene, with its metals and stones split into slots you can dress. From there you can export stills, turntable video and Campaign Packs, or embed the 3D viewer on a product page so shoppers can switch metals and stones. A parametric ring designer outputs STL, OBJ and GLB files. Rendering happens in the browser on WebGPU (WebGL 2 fallback), and gemstones are ray-traced through their facets. A FastAPI service stores accounts, scenes, files and billing in PostgreSQL.
+MIST Studio is a jewelry studio that runs in the browser. Upload a CAD file and it opens as a lit 3D scene, with its metals and stones split into slots you can dress. From there you can export stills, turntable video and Campaign Packs, or embed the 3D viewer on a product page, where shoppers see the piece exactly as you finished it. A parametric ring designer outputs STL, OBJ and GLB files. Rendering happens in the browser on WebGPU (WebGL 2 fallback), and gemstones are ray-traced through their facets. A FastAPI service stores accounts, scenes, files and billing in PostgreSQL.
 
 ## Features
 
@@ -9,7 +9,7 @@ MIST Studio is a jewelry studio that runs in the browser. Upload a CAD file and 
 - **Materials:** 21 metals (yellow, white, rose and coloured golds from 9K to 24K, platinum, silver, titanium, rhodium black) in 5 finishes. Each slot takes its own material.
 - **Scenes:** 8 studio sets and 5 lighting setups, with bloom, star glints, macro depth of field, ambient occlusion and contact shadows.
 - **Outputs:** stills at HD, 2K, 4K or 8K (16:9, 1:1, 4:3) as PNG, JPEG or transparent cutouts, and looping H.264 MP4 turntables up to 8K. The Campaign Pack renders stills of every metal from every angle, turntables, a 360° spin with its own viewer, and ASET scopes into one ZIP. AI backgrounds and on-model shots are in beta.
-- **Embed:** one iframe puts the live viewer on a store page. Shoppers rotate, zoom and switch between 7 metals and 8 stones.
+- **Embed:** one iframe puts the live viewer on a store page, view only: the piece shows with the metals, stones, finish, lighting, backdrop and camera view saved in the studio, and shoppers rotate and zoom it. The link is keyed by the piece's SKU and reads the saved scene on every load, so later changes reach snippets already on a store.
 - **Ring designer** (`/design`): 9 parametric styles (solitaire, halo, pavé, three-stone, eternity, bezel, band, studs, pendant) with live specs, weight per alloy, a quote from your own metal and labour rates, and STL (per half size), OBJ and GLB downloads.
 - **Workspace:** Free, Grow and Studio plans (3 free pieces, 5 GB to 500 GB of storage, 100k to 2M polygons per model), plus credit packs.
 

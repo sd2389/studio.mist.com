@@ -1,4 +1,6 @@
 import { apiDelete, apiGet, apiPatch } from "@/lib/api/client";
+import type { BackgroundItem, EnvironmentItem, GemItem, GroundItem, MetalItem } from "@/lib/catalog/types";
+import type { UserMaterialItem } from "@/lib/library/types";
 import type { ProductSpecs } from "@/lib/product-specs/types";
 import type {
   PersistedModelConfig,
@@ -42,7 +44,20 @@ export type Render = {
   url: string | null;
 };
 
-export type SceneDetail = Omit<Scene, "render_count"> & { renders: Render[] };
+/**
+ * The catalogue items and library materials a scene's saved look names, sent with the scene
+ * so a view that only displays it (the embed) draws it without the auth-gated catalogue.
+ */
+export type SceneLook = {
+  environments: EnvironmentItem[];
+  backgrounds: BackgroundItem[];
+  grounds: GroundItem[];
+  metals: MetalItem[];
+  gems: GemItem[];
+  user_materials: UserMaterialItem[];
+};
+
+export type SceneDetail = Omit<Scene, "render_count"> & { renders: Render[]; look?: SceneLook };
 
 export type ScenePatch = Partial<{
   name: string;

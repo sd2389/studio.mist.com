@@ -30,6 +30,7 @@ function firstParam(
   return value;
 }
 
+/** Per-page overrides added to an embed link by hand (`?chrome=0`, `?branding=Acme`). */
 export function parseEmbedUrlParams(
   params: Record<string, string | string[] | undefined>,
 ): Partial<EmbedSettings> {
@@ -60,31 +61,18 @@ export function resolveEmbedSettings(
   };
 }
 
-export function embedSettingsToQuery(settings: EmbedSettings): string {
-  const params = new URLSearchParams();
-  if (settings.showChrome === false) params.set("chrome", "0");
-  if (settings.autoRotate === false) params.set("autorotate", "0");
-  if (settings.showTitle === false) params.set("title", "0");
-  if (settings.showZoomControls === false) params.set("zoom", "0");
-  if (settings.showStudioLink === false) params.set("studio", "0");
-  if (settings.brandingText) params.set("branding", settings.brandingText);
-  const qs = params.toString();
-  return qs ? `?${qs}` : "";
-}
-
 export function resolveEmbedKey(sku: string | null | undefined, viewerId: string): string {
   const trimmedSku = sku?.trim();
   return trimmedSku || viewerId;
 }
 
-export function buildEmbedUrl(
-  origin: string,
-  embedKey: string,
-  settings?: EmbedSettings,
-): string {
-  const base = `${origin.replace(/\/$/, "")}/embed/${encodeURIComponent(embedKey)}`;
-  if (!settings) return base;
-  return `${base}${embedSettingsToQuery(settings)}`;
+/**
+ * The one link to a piece's embed. It names the piece and nothing else: the look and the
+ * viewer options are read from the saved scene on every load, so a snippet already on a
+ * store page shows the jeweler's later changes.
+ */
+export function buildEmbedUrl(origin: string, embedKey: string): string {
+  return `${origin.replace(/\/$/, "")}/embed/${encodeURIComponent(embedKey)}`;
 }
 
 export function buildEmbedIframeSnippet(

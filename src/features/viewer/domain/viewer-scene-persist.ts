@@ -1,6 +1,6 @@
 export type ViewerShellVariant = "studio" | "embed";
 
-/** Shopper embed is session-only. Studio keeps the existing persist path. */
+/** The embed is view only and never saves; the studio saves every change to the scene. */
 export function shouldPersistViewerScene(variant: ViewerShellVariant): boolean {
   return variant === "studio";
 }

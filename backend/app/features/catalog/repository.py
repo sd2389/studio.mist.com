@@ -1,9 +1,11 @@
-"""Generic paginated read access for catalog tables.
+"""Generic read access for catalog tables.
 
-One job: turn (model, filters, paging) into (rows, total). Services stay free of
-SQL boilerplate, so a change to paging/sorting happens in exactly one place.
+Turns (model, filters, paging) into (rows, total), and a set of slugs into the rows a
+scene names. Services stay free of SQL boilerplate, so a change to paging/sorting
+happens in exactly one place.
 """
 
+from collections.abc import Collection
 from typing import Any, TypeVar
 
 from sqlalchemy import func, select
@@ -51,3 +53,18 @@ def list_active(
         .all()
     )
     return rows, total
+
+
+def active_by_slugs(db: Session, model: type[ModelT], slugs: Collection[str]) -> list[ModelT]:
+    """Active rows whose slug is one of `slugs`, in catalogue order."""
+    if not slugs:
+        return []
+    return list(
+        db.execute(
+            select(model)
+            .where(model.is_active.is_(True), model.slug.in_(slugs))
+            .order_by(model.sort_weight, model.slug)
+        )
+        .scalars()
+        .all()
+    )

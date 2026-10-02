@@ -31,7 +31,6 @@ export function EditorEmbedTab({ viewerId, sku, displayName }: EditorEmbedTabPro
   const { canEmbed, url: embedUrl, snippet: iframeSnippet } = useEmbedCode({
     sku,
     modelId: viewerId,
-    settings,
     title: displayName?.trim() || undefined,
   });
   const canCopyEmbed = Boolean(canEmbed && embedUrl);
@@ -43,7 +42,8 @@ export function EditorEmbedTab({ viewerId, sku, displayName }: EditorEmbedTabPro
         <div>
           <h2 className="text-sm font-semibold text-foreground">Embed</h2>
           <p className="mt-1 text-xs text-muted-foreground">
-            Share a SKU-keyed iframe with branding and viewer controls.
+            Shows this piece as you finished it; shoppers can turn and zoom it. Changes you save
+            later, these options included, reach snippets already on your store.
           </p>
         </div>
         <EmbedKeyNotice sku={sku} />

@@ -12,4 +12,3 @@ export { StudioPrimaryBar } from "./ui/StudioPrimaryBar";
 export { ZoomControls } from "./ui/ZoomControls";
 export { prettyName } from "./ui/studio-material-groups";
 export { EmbedChrome } from "./ui/EmbedChrome";
-export { EmbedShopperMaterials } from "./ui/EmbedShopperMaterials";

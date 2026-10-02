@@ -1,4 +1,3 @@
-import type { SceneDetail } from "@/lib/api/scenes";
 import { fetchSourceCatalogServer } from "@/lib/api/server-fetch";
 import type { SourceCatalogPayload } from "@/lib/source-catalog";
 import {
@@ -46,36 +45,4 @@ export async function loadEditCatalogsServer(): Promise<EditCatalogs> {
       quiet(fetchUserAssetsServer({ asset_type: "background" })),
     ]);
   return { source, metals, gems, metalEnvironments, gemEnvironments, backgrounds, grounds, scenePresets, userMetals, userGems, userBackgrounds };
-}
-
-const EMPTY: EditCatalogs = {
-  source: null,
-  metals: null,
-  gems: null,
-  metalEnvironments: null,
-  gemEnvironments: null,
-  backgrounds: null,
-  grounds: null,
-  scenePresets: null,
-  userMetals: null,
-  userGems: null,
-  userBackgrounds: null,
-};
-
-/**
- * Just the catalogues a scene's saved look draws from (environments, background, ground), for
- * views that only display it — the embed. Skipped entirely when the scene uses none of them.
- */
-export async function loadLookCatalogsServer(scene: SceneDetail): Promise<EditCatalogs | null> {
-  const settings = scene.scene_settings ?? {};
-  const uses = (key: string) => Boolean((settings as Record<string, unknown>)[key]);
-  if (!["ENVIRONMENT-METAL", "ENVIRONMENT-GEM", "BACKGROUND", "GROUND"].some(uses)) return null;
-  const quiet = <T,>(load: Promise<T>) => load.catch(() => null);
-  const [metalEnvironments, gemEnvironments, backgrounds, grounds] = await Promise.all([
-    uses("ENVIRONMENT-METAL") ? quiet(fetchEnvironmentsCatalogServer({ env_type: "metal_env" })) : null,
-    uses("ENVIRONMENT-GEM") ? quiet(fetchEnvironmentsCatalogServer({ env_type: "gem_env" })) : null,
-    uses("BACKGROUND") ? quiet(fetchBackgroundsCatalogServer()) : null,
-    uses("GROUND") ? quiet(fetchGroundsCatalogServer()) : null,
-  ]);
-  return { ...EMPTY, metalEnvironments, gemEnvironments, backgrounds, grounds };
 }

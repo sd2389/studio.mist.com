@@ -1,25 +1,26 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { buildEmbedIframeSnippet, buildEmbedUrl, resolveEmbedKey, type EmbedSettings } from "@/lib/embed-settings";
+import { buildEmbedIframeSnippet, buildEmbedUrl, resolveEmbedKey } from "@/lib/embed-settings";
 
 type EmbedCodeInput = {
   sku?: string | null;
   modelId: string;
-  /** Viewer options carried in the link; the default viewer when omitted. */
-  settings?: EmbedSettings;
   /** iframe title; defaults to the embed key. */
   title?: string;
 };
 
-/** The embed link and iframe snippet for a model. Both stay empty until a SKU keys them. */
-export function useEmbedCode({ sku, modelId, settings, title }: EmbedCodeInput) {
+/**
+ * The embed link and iframe snippet for a model: the published piece, view only, in the look
+ * last saved in the studio. Both stay empty until a SKU keys them.
+ */
+export function useEmbedCode({ sku, modelId, title }: EmbedCodeInput) {
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const canEmbed = Boolean(sku?.trim());
   const embedKey = resolveEmbedKey(sku, modelId);
   const url = useMemo(
-    () => (canEmbed && origin ? buildEmbedUrl(origin, embedKey, settings) : ""),
-    [canEmbed, origin, embedKey, settings],
+    () => (canEmbed && origin ? buildEmbedUrl(origin, embedKey) : ""),
+    [canEmbed, origin, embedKey],
   );
   const snippet = useMemo(() => (url ? buildEmbedIframeSnippet(url, { title: title ?? embedKey }) : ""), [url, title, embedKey]);
   return { canEmbed, embedKey, url, snippet };

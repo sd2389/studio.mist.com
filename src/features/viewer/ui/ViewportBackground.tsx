@@ -12,6 +12,11 @@ type ViewportBackgroundProps = {
   className?: string;
 };
 
+/**
+ * A gradient or image backdrop, as CSS behind the canvas: placed before the canvas in the
+ * stage, it shows wherever the canvas is transparent. A negative z-index would put it under
+ * the stage's own paper, out of sight.
+ */
 export function ViewportBackground({
   backgroundItem,
   customBackground,
@@ -24,5 +29,5 @@ export function ViewportBackground({
     fallbackColor,
   );
 
-  return <div aria-hidden className={cn("absolute inset-0 -z-10", className)} style={style} />;
+  return <div aria-hidden className={cn("absolute inset-0", className)} style={style} />;
 }

@@ -1,4 +1,4 @@
-"""Idempotent published demo piece for /embed shopper Metal + Gem."""
+"""Idempotent published demo piece for /embed, shown in the look it was saved with."""
 
 from __future__ import annotations
 

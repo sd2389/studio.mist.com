@@ -12,8 +12,9 @@ from app.core.model_keys import normalized_model_key
 from app.core.public_urls import public_file_url
 from app.features.billing.quota_service import assert_variant_limit
 from app.features.publish import service as publish_service
+from app.features.scene.look import scene_look
 from app.models import Render, Scene
-from app.schemas.scene import RenderItem, SceneDetail, SceneListItem, ScenePatch
+from app.schemas.scene import RenderItem, SceneDetail, SceneListItem, SceneLook, ScenePatch
 
 
 def _scene_model_url(scene: Scene) -> str | None:
@@ -56,7 +57,7 @@ def to_list_item(scene: Scene, render_count: int) -> SceneListItem:
     )
 
 
-def to_detail(scene: Scene, renders: list[Render]) -> SceneDetail:
+def to_detail(scene: Scene, renders: list[Render], look: SceneLook) -> SceneDetail:
     return SceneDetail(
         id=scene.id,
         name=scene.name,
@@ -92,6 +93,7 @@ def to_detail(scene: Scene, renders: list[Render]) -> SceneDetail:
             )
             for r in renders
         ],
+        look=look,
     )
 
 
@@ -195,22 +197,23 @@ def list_scenes(db: Session, user_id: int) -> list[SceneListItem]:
     return [to_list_item(scene, int(count or 0)) for scene, count in rows]
 
 
-def scene_detail(db: Session, scene_id: int, user_id: int) -> SceneDetail:
-    scene = require_owned_scene(db.get(Scene, scene_id), user_id)
+def load_scene_detail(db: Session, scene: Scene) -> SceneDetail:
+    """The scene with its renders, newest first, and everything its saved look draws from."""
     renders = db.execute(
-        select(Render).where(Render.scene_id == scene_id).order_by(Render.created_at.desc())
+        select(Render).where(Render.scene_id == scene.id).order_by(Render.created_at.desc())
     ).scalars().all()
-    return to_detail(scene, renders)
+    return to_detail(scene, renders, scene_look(db, scene))
+
+
+def scene_detail(db: Session, scene_id: int, user_id: int) -> SceneDetail:
+    return load_scene_detail(db, require_owned_scene(db.get(Scene, scene_id), user_id))
 
 
 def scene_detail_for_model(db: Session, viewer_id: str) -> SceneDetail:
     scene = first_scene_for_model(db, normalized_model_key(viewer_id))
     if scene is None:
         raise HTTPException(status_code=404, detail="Scene not found")
-    renders = db.execute(
-        select(Render).where(Render.scene_id == scene.id).order_by(Render.created_at.desc())
-    ).scalars().all()
-    return to_detail(scene, renders)
+    return load_scene_detail(db, scene)
 
 
 def scene_detail_for_sku(db: Session, sku: str) -> SceneDetail:
@@ -220,10 +223,7 @@ def scene_detail_for_sku(db: Session, sku: str) -> SceneDetail:
     scene = first_scene_for_sku(db, trimmed)
     if scene is None:
         raise HTTPException(status_code=404, detail="Scene not found")
-    renders = db.execute(
-        select(Render).where(Render.scene_id == scene.id).order_by(Render.created_at.desc())
-    ).scalars().all()
-    return to_detail(scene, renders)
+    return load_scene_detail(db, scene)
 
 
 def patch_scene_by_id(db: Session, scene_id: int, user_id: int, body: ScenePatch) -> SceneListItem:

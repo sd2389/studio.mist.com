@@ -5,8 +5,10 @@ export function viewerHref(scene: Scene) {
   return `/viewer/${encodeURIComponent(viewerIdFromModelKey(scene.model_key))}`;
 }
 
-export function embedHref(scene: Scene) {
-  return `/embed/${encodeURIComponent(viewerIdFromModelKey(scene.model_key))}`;
+/** The published piece's embed, keyed by SKU like every embed link; none until a SKU publishes it. */
+export function embedHref(scene: Scene): string | null {
+  const sku = scene.sku?.trim();
+  return sku ? `/embed/${encodeURIComponent(sku)}` : null;
 }
 
 export function sceneLabel(scene: Scene): string {

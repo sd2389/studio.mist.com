@@ -2,30 +2,25 @@ import { describe, expect, it } from "vitest";
 import {
   buildEmbedIframeSnippet,
   buildEmbedUrl,
-  embedSettingsToQuery,
   parseEmbedUrlParams,
   resolveEmbedKey,
   resolveEmbedSettings,
 } from "@/lib/embed-settings";
 
 describe("embed-settings", () => {
-  it("builds URL with query overrides", () => {
-    const url = buildEmbedUrl("https://studio.example", "SKU-1", {
-      autoRotate: false,
-      showChrome: false,
-    });
-    expect(url).toContain("/embed/SKU-1");
-    expect(url).toContain("autorotate=0");
-    expect(url).toContain("chrome=0");
+  it("links to the piece alone, so saved changes reach snippets already pasted", () => {
+    expect(buildEmbedUrl("https://studio.example/", "SKU 1")).toBe("https://studio.example/embed/SKU%201");
   });
 
-  it("round-trips settings through query params", () => {
-    const settings = resolveEmbedSettings({ showTitle: false, brandingText: "Acme" });
-    const qs = embedSettingsToQuery(settings);
-    const params = Object.fromEntries(new URLSearchParams(qs.replace(/^\?/, "")));
-    const parsed = parseEmbedUrlParams(params);
-    expect(resolveEmbedSettings(null, parsed).showTitle).toBe(false);
-    expect(resolveEmbedSettings(null, parsed).brandingText).toBe("Acme");
+  it("reads the saved viewer options, with any options on the link winning", () => {
+    const saved = { showChrome: true, showTitle: false, autoRotate: false };
+    const parsed = parseEmbedUrlParams({ chrome: "0", branding: [" Acme ", "Other"] });
+    const settings = resolveEmbedSettings(saved, parsed);
+    expect(settings.showChrome).toBe(false);
+    expect(settings.showTitle).toBe(false);
+    expect(settings.autoRotate).toBe(false);
+    expect(settings.brandingText).toBe("Acme");
+    expect(settings.showZoomControls).toBe(true);
   });
 
   it("iframe snippet includes src and dimensions", () => {
@@ -39,7 +34,7 @@ describe("embed-settings", () => {
     expect(snippet).toContain('title="Ring"');
   });
 
-  it("defaults shopper embed to stay on the jeweler site", () => {
+  it("defaults the embed to stay on the jeweler site", () => {
     expect(resolveEmbedSettings(null).showStudioLink).toBe(false);
   });
 

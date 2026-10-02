@@ -27,81 +27,92 @@ export { resolveSourceAssetUrl } from "@/lib/public-asset-url";
 const METAL_FALLBACK: MaterialPresetId = "gold-14k-yellow";
 const GEM_FALLBACK: MaterialPresetId = "diamond";
 
+/** Checked in order against the lower-cased "type name"; the first match wins. */
+type PresetRule = [RegExp, MaterialPresetId];
+
+const NAMED_METAL_RULES: PresetRule[] = [
+  [/blackrhodium/, "rhodium-black"],
+  [/platinum/, "platinum"],
+  [/silver/, "silver-sterling"],
+  [/titan/, "titanium"],
+  [/warmgold/, "gold-warm"],
+  [/sandgold/, "gold-sand"],
+  [/greengold/, "gold-green"],
+  [/greygold/, "gold-grey"],
+  [/redgoldlight/, "gold-red-light"],
+  [/redgold/, "gold-red"],
+];
+
+const WHITE_GOLD_RULES: PresetRule[] = [
+  [/10k/, "gold-10k-white"],
+  [/14k/, "gold-14k-white"],
+];
+
+const YELLOW_GOLD_RULES: PresetRule[] = [
+  [/24k/, "gold-24k"],
+  [/22k/, "gold-22k"],
+  [/18k/, "gold-18k-yellow"],
+  [/14k/, "gold-14k-yellow"],
+  [/10k/, "gold-10k-yellow"],
+  [/09k|9k/, "gold-9k-yellow"],
+  [/gold/, "gold-14k-yellow"],
+];
+
+const DIAMOND_COLOR_RULES: PresetRule[] = [
+  [/black/, "diamond-black"],
+  [/blue/, "diamond-blue"],
+  [/pink/, "diamond-pink"],
+  [/cognac|brown/, "diamond-cognac"],
+  [/champagne/, "diamond-champagne"],
+  [/yellow|canary|k faintyellow|p verylightyellow|t lightyellow/, "diamond-canary"],
+];
+
+const GEM_RULES: PresetRule[] = [
+  [/emerald/, "emerald"],
+  [/ruby/, "ruby"],
+  [/sapphire/, "sapphire"],
+  [/zircon/, "zircon"],
+  [/amethyst|amethist/, "amethyst"],
+  [/aquamarin/, "aquamarine"],
+  [/citrine/, "citrine"],
+  [/morganit/, "morganite"],
+  [/peridot/, "peridot"],
+  [/topas|topaz/, "topaz-blue"],
+  [/tourmalin/, "tourmaline"],
+  [/tansanit|tanzanit/, "tanzanite"],
+  [/tsavorit/, "garnet-tsavorite"],
+  [/garnet/, "garnet-almandine"],
+  [/spinel/, "spinel"],
+  [/opal/, "opal"],
+  [/jade/, "jade"],
+  [/pearl/, "pearl"],
+];
+
+function matchPreset(token: string, rules: PresetRule[]): MaterialPresetId | null {
+  for (const [pattern, preset] of rules) {
+    if (pattern.test(token)) return preset;
+  }
+  return null;
+}
+
 export function mapSourceMetalToPreset(item: SourceCatalogItem): MaterialPresetId {
   const token = `${item.type} ${item.name}`.toLowerCase();
 
-  if (token.includes("blackrhodium")) return "rhodium-black";
-  if (token.includes("platinum")) return "platinum";
-  if (token.includes("silver")) return "silver-sterling";
-  if (token.includes("titan")) return "titanium";
-  if (token.includes("warmgold")) return "gold-warm";
-  if (token.includes("sandgold")) return "gold-sand";
-  if (token.includes("greengold")) return "gold-green";
-  if (token.includes("greygold")) return "gold-grey";
-  if (token.includes("redgoldlight")) return "gold-red-light";
-  if (token.includes("redgold")) return "gold-red";
-  if (token.includes("rosegold")) {
-    if (token.includes("14k")) return "gold-14k-rose";
-    return "gold-18k-rose";
-  }
-  if (token.includes("whitegold")) {
-    if (token.includes("10k")) return "gold-10k-white";
-    if (token.includes("14k")) return "gold-14k-white";
-    return "gold-18k-white";
-  }
-  if (token.includes("24k")) return "gold-24k";
-  if (token.includes("22k")) return "gold-22k";
-  if (token.includes("18k")) return "gold-18k-yellow";
-  if (token.includes("14k")) return "gold-14k-yellow";
-  if (token.includes("10k")) return "gold-10k-yellow";
-  if (token.includes("09k") || token.includes("9k")) return "gold-9k-yellow";
-  if (token.includes("gold")) return "gold-14k-yellow";
+  const namedMetal = matchPreset(token, NAMED_METAL_RULES);
+  if (namedMetal) return namedMetal;
+  if (token.includes("rosegold")) return token.includes("14k") ? "gold-14k-rose" : "gold-18k-rose";
+  if (token.includes("whitegold")) return matchPreset(token, WHITE_GOLD_RULES) ?? "gold-18k-white";
 
-  return METAL_FALLBACK;
+  return matchPreset(token, YELLOW_GOLD_RULES) ?? METAL_FALLBACK;
 }
 
 export function mapSourceGemToPreset(item: SourceCatalogItem): MaterialPresetId {
   const token = `${item.type} ${item.name}`.toLowerCase();
 
   if (token.includes("moissanite")) return "moissanite";
-  if (token.includes("diamond")) {
-    if (token.includes("black")) return "diamond-black";
-    if (token.includes("blue")) return "diamond-blue";
-    if (token.includes("pink")) return "diamond-pink";
-    if (token.includes("cognac") || token.includes("brown")) return "diamond-cognac";
-    if (token.includes("champagne")) return "diamond-champagne";
-    if (
-      token.includes("yellow") ||
-      token.includes("canary") ||
-      token.includes("k faintyellow") ||
-      token.includes("p verylightyellow") ||
-      token.includes("t lightyellow")
-    ) {
-      return "diamond-canary";
-    }
-    return "diamond";
-  }
+  if (token.includes("diamond")) return matchPreset(token, DIAMOND_COLOR_RULES) ?? "diamond";
 
-  if (token.includes("emerald")) return "emerald";
-  if (token.includes("ruby")) return "ruby";
-  if (token.includes("sapphire")) return "sapphire";
-  if (token.includes("zircon")) return "zircon";
-  if (token.includes("amethyst") || token.includes("amethist")) return "amethyst";
-  if (token.includes("aquamarin")) return "aquamarine";
-  if (token.includes("citrine")) return "citrine";
-  if (token.includes("morganit")) return "morganite";
-  if (token.includes("peridot")) return "peridot";
-  if (token.includes("topas") || token.includes("topaz")) return "topaz-blue";
-  if (token.includes("tourmalin")) return "tourmaline";
-  if (token.includes("tansanit") || token.includes("tanzanit")) return "tanzanite";
-  if (token.includes("tsavorit")) return "garnet-tsavorite";
-  if (token.includes("garnet")) return "garnet-almandine";
-  if (token.includes("spinel")) return "spinel";
-  if (token.includes("opal")) return "opal";
-  if (token.includes("jade")) return "jade";
-  if (token.includes("pearl")) return "pearl";
-
-  return GEM_FALLBACK;
+  return matchPreset(token, GEM_RULES) ?? GEM_FALLBACK;
 }
 
 export async function fetchSourceCatalog(): Promise<SourceCatalogPayload> {

@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { readUpstreamJson, upstreamError, upstreamFetch } from "@/lib/auth/upstream";
+import { readUpstreamJson, upstreamError } from "@/lib/auth/upstream";
 import { getServerApiUrl } from "@/lib/api-url";
 import { authHeaders } from "@/lib/auth/server-session";
 

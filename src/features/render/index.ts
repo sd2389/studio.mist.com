@@ -20,4 +20,5 @@ export { turntableCaptureOptions, videoSizeLabel, type TurntableSettings } from 
 export { VideoResolutionField } from "./ui/VideoResolutionField";
 export { loadExportPlan, type ExportPlan } from "./lib/export-plan";
 export { useExportPlan } from "./ui/useExportPlan";
+export { useCaptureRun } from "./ui/useCaptureRun";
 export { ExportPlanNote } from "./ui/ExportPlanNote";

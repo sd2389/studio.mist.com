@@ -47,12 +47,12 @@ describe("studio primary IA", () => {
     const embed = readUi("EmbedChrome.tsx");
     expect(embed.includes("h-12")).toBe(true);
 
-    const embedStart = shell.indexOf('variant === "embed"');
+    // The shell hands the embed variant to EmbedView, at the end of the file.
+    const embedStart = shell.indexOf("function EmbedView(");
     expect(embedStart).toBeGreaterThan(-1);
-    const embedReturn = shell.indexOf("return (", embedStart);
-    const studioReturn = shell.indexOf("return (", embedReturn + 1);
-    const embedBlock = shell.slice(embedReturn, studioReturn);
-    const studioBlock = shell.slice(studioReturn);
+    const embedBlock = shell.slice(embedStart);
+    const studioBlock = shell.slice(0, embedStart);
+    expect(studioBlock.includes('variant === "embed"')).toBe(true);
     expect(embedBlock.includes("StudioPrimaryBar")).toBe(false);
     expect(/shopper|picker|swatch/i.test(embedBlock)).toBe(false);
     // Both draw the piece with the same stage, so the embed shows what the studio shows.

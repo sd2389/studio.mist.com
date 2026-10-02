@@ -68,6 +68,119 @@ function ShareEmbedItem({ scene }: { scene: Scene }) {
   );
 }
 
+type SceneCardProps = {
+  scene: Scene;
+  relativeTime: (iso: string) => string;
+  onDelete: (id: number, displayName: string) => void;
+  onOpenSettings: (scene: Scene) => void;
+};
+
+function SceneCard({ scene, relativeTime, onDelete, onOpenSettings }: SceneCardProps) {
+  return (
+    <Card className="group/card mb-3 grid overflow-hidden rounded-[1.6rem] border border-foreground/[0.06] bg-surface/38 p-0 shadow-none ring-0 transition-colors hover:bg-surface/70 md:grid-cols-[1fr_310px]">
+      <div className="relative aspect-[16/9] overflow-hidden rounded-[1.25rem] bg-[radial-gradient(circle_at_50%_42%,#ffffff_0%,#dfe7f0_48%,#c8d4e1_100%)] md:order-2 md:m-3 md:ml-0">
+        <div className="absolute inset-0">
+          <SceneCardPreview scene={scene} />
+        </div>
+        <Badge className="pointer-events-none absolute left-3 top-3 border border-background/10 bg-foreground/30 px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.24em] text-background/70 shadow-md backdrop-blur-sm">
+          {scene.category?.trim() || sceneLabel(scene)}
+        </Badge>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="absolute right-3 top-3 size-9 rounded-full bg-card/90 text-muted-foreground shadow-md backdrop-blur-sm hover:bg-destructive/10 hover:text-destructive dark:bg-card/80"
+          aria-label={`Delete ${sceneTitle(scene)}`}
+          onClick={() => void onDelete(scene.id, sceneTitle(scene))}
+        >
+          <Trash2 className="size-4" aria-hidden />
+        </Button>
+      </div>
+      <CardContent className="space-y-5 p-5 md:order-1 md:flex md:flex-col md:justify-center md:px-8">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 space-y-0.5">
+            <p className="truncate text-3xl font-light leading-none tracking-[-0.055em] text-foreground sm:text-5xl">
+              {sceneTitle(scene)}
+            </p>
+            {scene.sku?.trim() ? (
+              <p className="truncate text-xs text-muted-foreground">
+                SKU · {scene.sku.trim()}
+              </p>
+            ) : null}
+            <p className="text-xs text-muted-foreground">
+              Updated{" "}
+              <time className="tabular-nums">
+                {relativeTime(scene.updated_at)}
+              </time>
+            </p>
+          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              className={cn(
+                buttonVariants({ variant: "ghost", size: "icon" }),
+                "size-11 shrink-0 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground",
+              )}
+              aria-label={`Actions for ${sceneTitle(scene)}`}
+            >
+              <MoreHorizontal className="size-4" aria-hidden />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              className="border-border bg-popover text-popover-foreground"
+              align="end"
+            >
+              <DropdownMenuItem className="p-0">
+                <Link
+                  href={viewerHref(scene)}
+                  className="flex w-full min-h-10 items-center px-3 py-2 text-sm focus-visible:outline-none"
+                >
+                  Edit
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="gap-2"
+                onClick={() => onOpenSettings(scene)}
+              >
+                <Settings2 className="size-3.5" aria-hidden />
+                Settings
+              </DropdownMenuItem>
+              <ShareEmbedItem scene={scene} />
+              <DropdownMenuItem
+                className="gap-2 text-destructive focus:text-destructive"
+                onClick={() =>
+                  void onDelete(scene.id, sceneTitle(scene))
+                }
+              >
+                <Trash2 className="size-3.5" aria-hidden />
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+        <Separator className="bg-border/70" />
+        <div className="flex gap-2">
+          <Link
+            href={viewerHref(scene)}
+            className={cn(
+              buttonVariants({ size: "default" }),
+              "h-10 min-h-11 flex-1 rounded-xl shadow-sm transition-shadow hover:shadow-md",
+            )}
+          >
+            Edit
+          </Link>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-10 min-h-11 flex-1 rounded-xl border-border/80"
+            onClick={() => onOpenSettings(scene)}
+          >
+            Settings
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export function DashboardScenesPanel({
   loading,
   scenes,
@@ -230,107 +343,12 @@ export function DashboardScenesPanel({
                     }
               }
             >
-              <Card className="group/card mb-3 grid overflow-hidden rounded-[1.6rem] border border-foreground/[0.06] bg-surface/38 p-0 shadow-none ring-0 transition-colors hover:bg-surface/70 md:grid-cols-[1fr_310px]">
-                <div className="relative aspect-[16/9] overflow-hidden rounded-[1.25rem] bg-[radial-gradient(circle_at_50%_42%,#ffffff_0%,#dfe7f0_48%,#c8d4e1_100%)] md:order-2 md:m-3 md:ml-0">
-                  <div className="absolute inset-0">
-                    <SceneCardPreview scene={scene} />
-                  </div>
-                  <Badge className="pointer-events-none absolute left-3 top-3 border border-background/10 bg-foreground/30 px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.24em] text-background/70 shadow-md backdrop-blur-sm">
-                    {scene.category?.trim() || sceneLabel(scene)}
-                  </Badge>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="absolute right-3 top-3 size-9 rounded-full bg-card/90 text-muted-foreground shadow-md backdrop-blur-sm hover:bg-destructive/10 hover:text-destructive dark:bg-card/80"
-                    aria-label={`Delete ${sceneTitle(scene)}`}
-                    onClick={() => void onDelete(scene.id, sceneTitle(scene))}
-                  >
-                    <Trash2 className="size-4" aria-hidden />
-                  </Button>
-                </div>
-                <CardContent className="space-y-5 p-5 md:order-1 md:flex md:flex-col md:justify-center md:px-8">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0 space-y-0.5">
-                      <p className="truncate text-3xl font-light leading-none tracking-[-0.055em] text-foreground sm:text-5xl">
-                        {sceneTitle(scene)}
-                      </p>
-                      {scene.sku?.trim() ? (
-                        <p className="truncate text-xs text-muted-foreground">
-                          SKU · {scene.sku.trim()}
-                        </p>
-                      ) : null}
-                      <p className="text-xs text-muted-foreground">
-                        Updated{" "}
-                        <time className="tabular-nums">
-                          {relativeTime(scene.updated_at)}
-                        </time>
-                      </p>
-                    </div>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger
-                        className={cn(
-                          buttonVariants({ variant: "ghost", size: "icon" }),
-                          "size-11 shrink-0 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground",
-                        )}
-                        aria-label={`Actions for ${sceneTitle(scene)}`}
-                      >
-                        <MoreHorizontal className="size-4" aria-hidden />
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent
-                        className="border-border bg-popover text-popover-foreground"
-                        align="end"
-                      >
-                        <DropdownMenuItem className="p-0">
-                          <Link
-                            href={viewerHref(scene)}
-                            className="flex w-full min-h-10 items-center px-3 py-2 text-sm focus-visible:outline-none"
-                          >
-                            Edit
-                          </Link>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          className="gap-2"
-                          onClick={() => onOpenSettings(scene)}
-                        >
-                          <Settings2 className="size-3.5" aria-hidden />
-                          Settings
-                        </DropdownMenuItem>
-                        <ShareEmbedItem scene={scene} />
-                        <DropdownMenuItem
-                          className="gap-2 text-destructive focus:text-destructive"
-                          onClick={() =>
-                            void onDelete(scene.id, sceneTitle(scene))
-                          }
-                        >
-                          <Trash2 className="size-3.5" aria-hidden />
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                  <Separator className="bg-border/70" />
-                  <div className="flex gap-2">
-                    <Link
-                      href={viewerHref(scene)}
-                      className={cn(
-                        buttonVariants({ size: "default" }),
-                        "h-10 min-h-11 flex-1 rounded-xl shadow-sm transition-shadow hover:shadow-md",
-                      )}
-                    >
-                      Edit
-                    </Link>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="h-10 min-h-11 flex-1 rounded-xl border-border/80"
-                      onClick={() => onOpenSettings(scene)}
-                    >
-                      Settings
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
+              <SceneCard
+                scene={scene}
+                relativeTime={relativeTime}
+                onDelete={onDelete}
+                onOpenSettings={onOpenSettings}
+              />
             </motion.div>
           ))}
         </div>

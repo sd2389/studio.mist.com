@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import {
   Camera,
   Download,
@@ -161,107 +161,67 @@ export function ExportSharePanel({
         </h3>
         <ExportPlanNote plan={exportPlan} />
         <CampaignPackLauncher modelId={modelId} sku={sku} name={displayName} modelConfig={modelConfig} />
-        <Button
-          type="button"
-          variant="outline"
-          className="w-full justify-start gap-3 border-border/60 bg-card/60"
+        <ExportActionButton
+          icon={
+            saving ? (
+              <Loader2 className="size-4 animate-spin" aria-hidden />
+            ) : (
+              <Camera className="size-4" aria-hidden />
+            )
+          }
+          title="Capture still"
+          hint="Pushes current frame to cloud"
           onClick={() => void handleCapture()}
           disabled={saving}
-        >
-          {saving ? (
-            <Loader2 className="size-4 animate-spin" aria-hidden />
-          ) : (
-            <Camera className="size-4" aria-hidden />
-          )}
-          <span className="flex flex-col items-start leading-tight">
-            <span className="text-sm">Capture still</span>
-            <span className="text-[10px] text-muted-foreground">Pushes current frame to cloud</span>
-          </span>
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          className="w-full justify-start gap-3 border-border/60 bg-card/60"
+        />
+        <ExportActionButton
+          icon={<Download className="size-4" aria-hidden />}
+          title="Hi-res PNG"
+          hint="HD · 2K · 4K · 8K offscreen"
           onClick={onOpenHiResExport}
-        >
-          <Download className="size-4" aria-hidden />
-          <span className="flex flex-col items-start leading-tight">
-            <span className="text-sm">Hi-res PNG</span>
-            <span className="text-[10px] text-muted-foreground">HD · 2K · 4K · 8K offscreen</span>
-          </span>
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          className="w-full justify-start gap-3 border-border/60 bg-card/60"
+        />
+        <ExportActionButton
+          icon={<Link2 className="size-4" aria-hidden />}
+          title="Share link / Embed snippet"
+          hint="iframe for PDPs & decks"
           onClick={handleOpenEmbed}
           disabled={!embedReady}
-        >
-          <Link2 className="size-4" aria-hidden />
-          <span className="flex flex-col items-start leading-tight">
-            <span className="text-sm">Share link / Embed snippet</span>
-            <span className="text-[10px] text-muted-foreground">iframe for PDPs & decks</span>
-          </span>
-        </Button>
+        />
         {!embedReady ? (
           <p className="rounded-lg border border-dashed border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-400">
             Publish or set a SKU before embedding
           </p>
         ) : null}
-        <Button
-          type="button"
-          variant="outline"
-          className="w-full justify-start gap-3 border-border/60 bg-card/60"
+        <ExportActionButton
+          icon={<Video className="size-4" aria-hidden />}
+          title="360° turntable"
+          hint="MP4 via Mediabunny + WebCodecs"
           onClick={onOpenVideo360}
-        >
-          <Video className="size-4" aria-hidden />
-          <span className="flex flex-col items-start leading-tight">
-            <span className="text-sm">360° turntable</span>
-            <span className="text-[10px] text-muted-foreground">MP4 via Mediabunny + WebCodecs</span>
-          </span>
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          className="w-full justify-start gap-3 border-border/60 bg-card/60"
+        />
+        <ExportActionButton
+          icon={<Sparkles className="size-4 text-primary" aria-hidden />}
+          title="AI Visuals"
+          hint="Lifestyle scene compositing"
           onClick={onOpenAi}
-        >
-          <Sparkles className="size-4 text-primary" aria-hidden />
-          <span className="flex flex-col items-start leading-tight">
-            <span className="text-sm">AI Visuals</span>
-            <span className="text-[10px] text-muted-foreground">Lifestyle scene compositing</span>
-          </span>
-        </Button>
+        />
       </section>
 
       <section className="space-y-2">
         <h3 className="text-[10.5px] font-medium uppercase tracking-[0.16em] text-foreground/80">
           Downloads
         </h3>
-        <Button
-          type="button"
-          variant="outline"
-          className="w-full justify-start gap-3 border-border/60 bg-card/60"
+        <ExportActionButton
+          icon={<Download className="size-4" aria-hidden />}
+          title="Download PNG"
+          hint="Current frame · full fidelity"
           onClick={() => void downloadPng()}
-        >
-          <Download className="size-4" aria-hidden />
-          <span className="flex flex-col items-start leading-tight">
-            <span className="text-sm">Download PNG</span>
-            <span className="text-[10px] text-muted-foreground">Current frame · full fidelity</span>
-          </span>
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          className="w-full justify-start gap-3 border-border/60 bg-card/60"
+        />
+        <ExportActionButton
+          icon={<Download className="size-4" aria-hidden />}
+          title="Download source model"
+          hint="The converted GLB"
           onClick={() => void downloadSourceModel()}
-        >
-          <Download className="size-4" aria-hidden />
-          <span className="flex flex-col items-start leading-tight">
-            <span className="text-sm">Download source model</span>
-            <span className="text-[10px] text-muted-foreground">The converted GLB</span>
-          </span>
-        </Button>
+        />
       </section>
 
       {status ? (
@@ -270,5 +230,32 @@ export function ExportSharePanel({
         </p>
       ) : null}
     </div>
+  );
+}
+
+type ExportActionButtonProps = {
+  icon: ReactNode;
+  title: string;
+  hint: string;
+  onClick: () => void;
+  disabled?: boolean;
+};
+
+/** A full-width outline button: icon, then a title over a one-line hint. */
+function ExportActionButton({ icon, title, hint, onClick, disabled }: ExportActionButtonProps) {
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      className="w-full justify-start gap-3 border-border/60 bg-card/60"
+      onClick={onClick}
+      disabled={disabled}
+    >
+      {icon}
+      <span className="flex flex-col items-start leading-tight">
+        <span className="text-sm">{title}</span>
+        <span className="text-[10px] text-muted-foreground">{hint}</span>
+      </span>
+    </Button>
   );
 }

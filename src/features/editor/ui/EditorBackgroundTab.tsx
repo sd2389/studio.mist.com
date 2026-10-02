@@ -1,6 +1,6 @@
 "use client";
 
-import { ImagePlus, Search, Trash2, X } from "lucide-react";
+import { ImagePlus, Search, X } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,6 +11,7 @@ import { deleteUserAsset, uploadUserAsset } from "@/lib/library/fetch-library";
 import type { LibraryPage, UserAssetItem } from "@/lib/library/types";
 import { useMaterialPresetStore } from "@/stores/material-preset-store";
 import { CatalogSwatchTile } from "./CatalogSwatchTile";
+import { UserBackgroundGrid } from "./UserBackgroundGrid";
 
 type EditorBackgroundTabProps = {
   initialBackgrounds: CatalogPage<BackgroundItem> | null;
@@ -18,6 +19,13 @@ type EditorBackgroundTabProps = {
 };
 
 const MAX_CUSTOM_BG_BYTES = 4 * 1024 * 1024;
+
+/** Why a file can't be a custom background, or null when it can. */
+function customBackgroundFileError(file: File): string | null {
+  if (!file.type.startsWith("image/")) return "Please choose a PNG or JPEG image.";
+  if (file.size > MAX_CUSTOM_BG_BYTES) return "Image must be 4 MB or smaller.";
+  return null;
+}
 
 export function EditorBackgroundTab({
   initialBackgrounds,
@@ -68,15 +76,9 @@ export function EditorBackgroundTab({
   };
 
   const handleUpload = async (file: File) => {
-    setUploadError(null);
-    if (!file.type.startsWith("image/")) {
-      setUploadError("Please choose a PNG or JPEG image.");
-      return;
-    }
-    if (file.size > MAX_CUSTOM_BG_BYTES) {
-      setUploadError("Image must be 4 MB or smaller.");
-      return;
-    }
+    const fileError = customBackgroundFileError(file);
+    setUploadError(fileError);
+    if (fileError) return;
 
     setUploading(true);
     try {
@@ -97,11 +99,6 @@ export function EditorBackgroundTab({
     if (url && customBackground === url) {
       setCustomBackground(null);
     }
-  };
-
-  const isUserAssetSelected = (asset: UserAssetItem) => {
-    const url = asset.preview_url ?? asset.url;
-    return Boolean(url && customBackground === url);
   };
 
   return (
@@ -189,58 +186,12 @@ export function EditorBackgroundTab({
             <span className="text-[10px] text-muted-foreground">{userAssetsStatusLabel}</span>
           </div>
           {userAssetsError ? <p className="mb-3 text-xs text-destructive">{userAssetsError}</p> : null}
-          {filteredUserAssets.length === 0 ? (
-            <p className="rounded-lg border border-dashed border-border/70 bg-muted/20 px-3 py-3 text-[11px] leading-relaxed text-muted-foreground">
-              Uploaded backgrounds are saved to your library and reusable across models.
-            </p>
-          ) : (
-            <div className="grid grid-cols-4 gap-2">
-              {filteredUserAssets.map((asset) => {
-                const preview = asset.preview_url ?? asset.url;
-                const selected = isUserAssetSelected(asset);
-                return (
-                  <div key={asset.id} className="relative">
-                    <button
-                      type="button"
-                      onClick={() => applyUserAsset(asset)}
-                      className={`group flex w-full flex-col items-center gap-1.5 rounded-xl border px-1.5 py-2 text-center transition-colors ${
-                        selected
-                          ? "border-foreground/45 bg-card shadow-sm"
-                          : "border-border/60 bg-card/50 hover:border-foreground/30 hover:bg-card"
-                      }`}
-                      title={asset.label}
-                    >
-                      <span
-                        className={`relative size-10 overflow-hidden rounded-md ${
-                          selected ? "ring-2 ring-foreground/40 ring-offset-2 ring-offset-card" : ""
-                        }`}
-                      >
-                        {preview ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={preview} alt="" className="size-full object-cover" loading="lazy" />
-                        ) : (
-                          <span className="grid size-full place-items-center bg-muted text-[10px] text-muted-foreground">
-                            ?
-                          </span>
-                        )}
-                      </span>
-                      <span className="line-clamp-2 max-w-full text-[10px] font-medium leading-tight text-foreground/75">
-                        {asset.label}
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      className="absolute right-0 top-0 grid size-5 place-items-center rounded-full border border-border bg-card text-muted-foreground shadow-sm hover:text-destructive"
-                      aria-label={`Delete ${asset.label}`}
-                      onClick={() => void handleDeleteAsset(asset)}
-                    >
-                      <Trash2 className="size-2.5" aria-hidden />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+          <UserBackgroundGrid
+            items={filteredUserAssets}
+            selectedUrl={customBackground}
+            onSelect={applyUserAsset}
+            onDelete={(asset) => void handleDeleteAsset(asset)}
+          />
         </section>
 
         <section>

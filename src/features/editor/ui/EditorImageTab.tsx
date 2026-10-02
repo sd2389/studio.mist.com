@@ -1,9 +1,13 @@
 "use client";
 
 import { AlertTriangle, Download, Loader2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { UpgradePrompt } from "@/components/billing/UpgradePrompt";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import {
+  useBatchExport,
+  type BatchExportTabProps,
+  type BatchTileResult,
+} from "@/features/editor/hooks/useBatchExport";
 import {
   CampaignPackLauncher,
   DEFAULT_STILL_EXPORT,
@@ -16,86 +20,21 @@ import { ModelMultiSelect, VariantMultiSelect } from "@/features/variants";
 import {
   IMAGE_RESOLUTIONS,
 } from "@/lib/export-presets";
-import {
-  batchFilenamePrefix,
-  buildBatchExportJobs,
-  estimateBatchJobCount,
-  runBatchExportJobs,
-  type BatchExportContext,
-} from "@/lib/variants/batch-export";
-import type { ModelVariant, SceneVariantsState } from "@/lib/variants/types";
-import type { PersistedModelConfig } from "@/lib/slot-materials/model-config";
-import { fetchBillingAccount } from "@/lib/billing/client";
-import type { PlanFeatures } from "@/lib/billing/types";
+import { batchFilenamePrefix, runBatchExportJobs } from "@/lib/variants/batch-export";
 import { cn } from "@/lib/utils";
 import { getHiresRefs } from "@/stores/hires-export-store";
+import { BatchJobEstimate } from "./BatchJobEstimate";
 
 type ExportMode = "single" | "multiple";
 
-type BatchTileResult =
-  | { ok: true; label: string }
-  | { ok: false; label: string; message: string };
-
-type EditorImageTabProps = {
-  sceneId: number;
-  viewerId: string;
-  modelUrl: string;
-  modelConfig: PersistedModelConfig;
-  variantsState: SceneVariantsState;
-  variantItems: ModelVariant[];
-  onModelConfigChange: (config: PersistedModelConfig) => void;
-  setBatchModelUrl: (url: string | null) => void;
-};
-
-export function EditorImageTab({
-  sceneId,
-  viewerId,
-  modelUrl,
-  modelConfig,
-  variantsState,
-  variantItems,
-  onModelConfigChange,
-  setBatchModelUrl,
-}: EditorImageTabProps) {
+export function EditorImageTab(props: BatchExportTabProps) {
+  const { sceneId, viewerId, modelConfig, variantItems } = props;
   const [mode, setMode] = useState<ExportMode>("single");
   const [options, setOptions] = useState<StillExportOptions>(DEFAULT_STILL_EXPORT);
-  const [selectedVariantIds, setSelectedVariantIds] = useState<string[]>([]);
-  const [selectedSceneIds, setSelectedSceneIds] = useState<number[]>([]);
+  const batch = useBatchExport(props);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
-  const [planFeatures, setPlanFeatures] = useState<PlanFeatures | null>(null);
-
-  useEffect(() => {
-    fetchBillingAccount()
-      .then((account) => setPlanFeatures(account.features))
-      .catch(() => {});
-  }, []);
-
-  const batchExportEnabled = planFeatures?.batch_export_enabled !== false;
-
-  const estimatedJobCount = useMemo(
-    () =>
-      estimateBatchJobCount({
-        selectedVariantCount: selectedVariantIds.length,
-        variantsStateItemCount: variantItems.length,
-        extraSelectedSceneCount: selectedSceneIds.length,
-      }),
-    [selectedSceneIds.length, selectedVariantIds.length, variantItems.length],
-  );
-
-  const batchContext: BatchExportContext = useMemo(
-    () => ({
-      sceneId,
-      viewerId,
-      modelUrl,
-      modelConfig,
-      variantsState,
-      onModelConfigChange,
-      setBatchModelUrl,
-    }),
-    [modelConfig, modelUrl, onModelConfigChange, sceneId, setBatchModelUrl, variantsState, viewerId],
-  );
 
   async function handleExport() {
     setError(null);
@@ -114,20 +53,12 @@ export function EditorImageTab({
         return;
       }
 
-      if (!batchExportEnabled) {
+      if (!batch.batchExportEnabled) {
         setError("Batch export requires a plan upgrade.");
         return;
       }
 
-      const jobs = await buildBatchExportJobs({
-        currentSceneId: sceneId,
-        currentViewerId: viewerId,
-        currentModelUrl: modelUrl,
-        currentModelConfig: modelConfig,
-        variantsState,
-        selectedVariantIds,
-        selectedSceneIds,
-      });
+      const jobs = await batch.buildJobs();
 
       if (jobs.length === 0) {
         setError("Select at least one variant or save variants in Settings.");
@@ -137,7 +68,7 @@ export function EditorImageTab({
       const tileResults: BatchTileResult[] = [];
       let completed = 0;
 
-      await runBatchExportJobs(jobs, batchContext, async (job) => {
+      await runBatchExportJobs(jobs, batch.batchContext, async (job) => {
         const label = batchFilenamePrefix(job);
         try {
           await exportStill(options, `${label}-${IMAGE_RESOLUTIONS[options.resolution].label}`);
@@ -216,14 +147,14 @@ export function EditorImageTab({
           <>
             <VariantMultiSelect
               items={variantItems}
-              selectedIds={selectedVariantIds}
-              onChange={setSelectedVariantIds}
+              selectedIds={batch.selectedVariantIds}
+              onChange={batch.setSelectedVariantIds}
               disabled={busy}
             />
             <ModelMultiSelect
               currentSceneId={sceneId}
-              selectedIds={selectedSceneIds}
-              onChange={setSelectedSceneIds}
+              selectedIds={batch.selectedSceneIds}
+              onChange={batch.setSelectedSceneIds}
               disabled={busy}
             />
           </>
@@ -244,21 +175,13 @@ export function EditorImageTab({
         ) : null}
 
         {mode === "multiple" ? (
-          <div className="space-y-1 text-xs text-muted-foreground">
-            <p>
-              Estimated jobs:{" "}
-              <span className="font-medium text-foreground">{estimatedJobCount}</span>
-            </p>
-            {!batchExportEnabled ? (
-              <UpgradePrompt className="text-destructive">Batch export requires a plan upgrade.</UpgradePrompt>
-            ) : null}
-          </div>
+          <BatchJobEstimate count={batch.estimatedJobCount} enabled={batch.batchExportEnabled} />
         ) : null}
 
         <Button
           type="button"
           className="w-full gap-2"
-          disabled={busy || (mode === "multiple" && !batchExportEnabled)}
+          disabled={busy || (mode === "multiple" && !batch.batchExportEnabled)}
           onClick={() => void handleExport()}
         >
           {busy ? (
@@ -269,7 +192,7 @@ export function EditorImageTab({
           ) : (
             <>
               <Download className="size-4" aria-hidden />
-              {mode === "single" ? "Render & download" : `Render ${estimatedJobCount} images`}
+              {mode === "single" ? "Render & download" : `Render ${batch.estimatedJobCount} images`}
             </>
           )}
         </Button>

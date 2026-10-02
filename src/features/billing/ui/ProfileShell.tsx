@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { formatCredits, formatStorageGb, storagePercent } from "@/lib/billing/format";
 import { openBillingPortal, startSubscriptionCheckout } from "@/lib/billing/client";
-import type { UserBillingSnapshot } from "@/lib/billing/types";
+import type { PlanFeatures, QuotaBalances, UserBillingSnapshot } from "@/lib/billing/types";
 import { BuyCreditsCard } from "./BuyCreditsCard";
 import { logOut } from "@/lib/auth/client";
 import type { AuthUser } from "@/lib/auth/types";
@@ -37,7 +37,6 @@ export function ProfileShell({ initialUser, initialBilling }: ProfileShellProps)
   const [busy, setBusy] = useState<string | null>(null);
 
   const { balances, allotments, features } = billing;
-  const storagePct = storagePercent(balances.storage_bytes_used, balances.storage_bytes_limit);
 
   async function saveProfile() {
     setBusy("profile");
@@ -132,119 +131,19 @@ export function ProfileShell({ initialUser, initialBilling }: ProfileShellProps)
         ) : null}
 
         <div className="grid gap-6">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between gap-4">
-              <div>
-                <CardTitle className="text-lg">Plan details</CardTitle>
-                <p className="text-sm text-muted-foreground">{user.email}</p>
-              </div>
-              <Badge variant="outline" className="rounded-full px-3 py-1">
-                {billing.plan_label}
-              </Badge>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {billing.period_start && billing.period_end ? (
-                <p className="text-sm text-muted-foreground">
-                  Billing period: {new Date(billing.period_start).toLocaleDateString()} –{" "}
-                  {new Date(billing.period_end).toLocaleDateString()}
-                </p>
-              ) : (
-                <p className="text-sm text-muted-foreground">Free tier — upgrade for 8K exports and more credits.</p>
-              )}
-              <div className="flex flex-wrap gap-3">
-                {billing.plan_tier === "free" ? (
-                  <Button onClick={handleUpgrade} disabled={busy === "upgrade"}>
-                    {busy === "upgrade" ? <Loader2 className="size-4 animate-spin" /> : null}
-                    Upgrade to Grow
-                  </Button>
-                ) : null}
-                {billing.has_active_subscription ? (
-                  <Button variant="outline" onClick={handlePortal} disabled={busy === "portal"}>
-                    <CreditCard className="size-4" />
-                    Manage billing
-                  </Button>
-                ) : null}
-                <Link
-                  href="/pricing"
-                  className={buttonVariants({ variant: "outline" })}
-                >
-                  View all plans
-                </Link>
-              </div>
-            </CardContent>
-          </Card>
+          <PlanDetailsCard
+            email={user.email}
+            billing={billing}
+            busy={busy}
+            onUpgrade={handleUpgrade}
+            onManageBilling={handlePortal}
+          />
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Available credits</CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-5 sm:grid-cols-2">
-              {[
-                {
-                  label: "Model credits",
-                  remaining: balances.model_credits,
-                  total: allotments.model_credits,
-                },
-                {
-                  label: "AI image credits",
-                  remaining: balances.ai_image_credits,
-                  total: allotments.ai_image_credits,
-                },
-                {
-                  label: "Custom materials",
-                  remaining: balances.custom_material_credits,
-                  total: allotments.custom_material_credits,
-                },
-                {
-                  label: "Custom assets",
-                  remaining: balances.custom_asset_credits,
-                  total: allotments.custom_asset_credits,
-                },
-              ].map((item) => (
-                <div key={item.label} className="space-y-2">
-                  <p className="text-sm font-medium text-foreground">{item.label}</p>
-                  <p className="text-2xl font-semibold tabular-nums">
-                    {formatCredits(item.remaining, item.total)}
-                  </p>
-                  <Progress
-                    value={Math.min(
-                      100,
-                      Math.round(
-                        ((item.total - item.remaining) / Math.max(item.total, 1)) * 100,
-                      ),
-                    )}
-                  />
-                </div>
-              ))}
-              <div className="space-y-2 sm:col-span-2">
-                <p className="text-sm font-medium text-foreground">Storage</p>
-                <p className="text-2xl font-semibold tabular-nums">
-                  {formatStorageGb(balances.storage_bytes_used)} /{" "}
-                  {formatStorageGb(balances.storage_bytes_limit)}
-                </p>
-                <Progress value={storagePct} />
-              </div>
-            </CardContent>
-          </Card>
+          <CreditBalancesCard balances={balances} allotments={allotments} />
 
           <BuyCreditsCard />
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Plan features</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ul className="grid gap-2 text-sm text-muted-foreground sm:grid-cols-2">
-                <li>Max variants per model: {features.max_variants_per_model}</li>
-                <li>Max polygons per model: {features.max_polygons.toLocaleString()}</li>
-                <li>Max image resolution: {features.max_image_resolution}px</li>
-                <li>Watermark exports: {features.watermark_exports ? "Yes" : "No"}</li>
-                <li>Batch export: {features.batch_export_enabled ? "Yes" : "Upgrade required"}</li>
-                <li>8K video: {features.video_8k_enabled ? "Yes" : "Upgrade required"}</li>
-                <li>3D embed: {features.embed_enabled ? "Yes" : "No"}</li>
-              </ul>
-            </CardContent>
-          </Card>
+          <PlanFeaturesCard features={features} />
 
           <Card>
             <CardHeader>
@@ -313,5 +212,138 @@ export function ProfileShell({ initialUser, initialBilling }: ProfileShellProps)
         </div>
       </main>
     </div>
+  );
+}
+
+type PlanDetailsCardProps = {
+  email: string;
+  billing: UserBillingSnapshot;
+  busy: string | null;
+  onUpgrade: () => void;
+  onManageBilling: () => void;
+};
+
+function PlanDetailsCard({ email, billing, busy, onUpgrade, onManageBilling }: PlanDetailsCardProps) {
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between gap-4">
+        <div>
+          <CardTitle className="text-lg">Plan details</CardTitle>
+          <p className="text-sm text-muted-foreground">{email}</p>
+        </div>
+        <Badge variant="outline" className="rounded-full px-3 py-1">
+          {billing.plan_label}
+        </Badge>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {billing.period_start && billing.period_end ? (
+          <p className="text-sm text-muted-foreground">
+            Billing period: {new Date(billing.period_start).toLocaleDateString()} –{" "}
+            {new Date(billing.period_end).toLocaleDateString()}
+          </p>
+        ) : (
+          <p className="text-sm text-muted-foreground">Free tier — upgrade for 8K exports and more credits.</p>
+        )}
+        <div className="flex flex-wrap gap-3">
+          {billing.plan_tier === "free" ? (
+            <Button onClick={onUpgrade} disabled={busy === "upgrade"}>
+              {busy === "upgrade" ? <Loader2 className="size-4 animate-spin" /> : null}
+              Upgrade to Grow
+            </Button>
+          ) : null}
+          {billing.has_active_subscription ? (
+            <Button variant="outline" onClick={onManageBilling} disabled={busy === "portal"}>
+              <CreditCard className="size-4" />
+              Manage billing
+            </Button>
+          ) : null}
+          <Link
+            href="/pricing"
+            className={buttonVariants({ variant: "outline" })}
+          >
+            View all plans
+          </Link>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function CreditBalancesCard({ balances, allotments }: { balances: QuotaBalances; allotments: QuotaBalances }) {
+  const storagePct = storagePercent(balances.storage_bytes_used, balances.storage_bytes_limit);
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg">Available credits</CardTitle>
+      </CardHeader>
+      <CardContent className="grid gap-5 sm:grid-cols-2">
+        {[
+          {
+            label: "Model credits",
+            remaining: balances.model_credits,
+            total: allotments.model_credits,
+          },
+          {
+            label: "AI image credits",
+            remaining: balances.ai_image_credits,
+            total: allotments.ai_image_credits,
+          },
+          {
+            label: "Custom materials",
+            remaining: balances.custom_material_credits,
+            total: allotments.custom_material_credits,
+          },
+          {
+            label: "Custom assets",
+            remaining: balances.custom_asset_credits,
+            total: allotments.custom_asset_credits,
+          },
+        ].map((item) => (
+          <div key={item.label} className="space-y-2">
+            <p className="text-sm font-medium text-foreground">{item.label}</p>
+            <p className="text-2xl font-semibold tabular-nums">
+              {formatCredits(item.remaining, item.total)}
+            </p>
+            <Progress
+              value={Math.min(
+                100,
+                Math.round(
+                  ((item.total - item.remaining) / Math.max(item.total, 1)) * 100,
+                ),
+              )}
+            />
+          </div>
+        ))}
+        <div className="space-y-2 sm:col-span-2">
+          <p className="text-sm font-medium text-foreground">Storage</p>
+          <p className="text-2xl font-semibold tabular-nums">
+            {formatStorageGb(balances.storage_bytes_used)} /{" "}
+            {formatStorageGb(balances.storage_bytes_limit)}
+          </p>
+          <Progress value={storagePct} />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function PlanFeaturesCard({ features }: { features: PlanFeatures }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg">Plan features</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <ul className="grid gap-2 text-sm text-muted-foreground sm:grid-cols-2">
+          <li>Max variants per model: {features.max_variants_per_model}</li>
+          <li>Max polygons per model: {features.max_polygons.toLocaleString()}</li>
+          <li>Max image resolution: {features.max_image_resolution}px</li>
+          <li>Watermark exports: {features.watermark_exports ? "Yes" : "No"}</li>
+          <li>Batch export: {features.batch_export_enabled ? "Yes" : "Upgrade required"}</li>
+          <li>8K video: {features.video_8k_enabled ? "Yes" : "Upgrade required"}</li>
+          <li>3D embed: {features.embed_enabled ? "Yes" : "No"}</li>
+        </ul>
+      </CardContent>
+    </Card>
   );
 }

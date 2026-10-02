@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertTriangle, Loader2, Video, X } from "lucide-react";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -10,13 +10,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { CaptureNotice, turntableCaptureOptions, VideoResolutionField, videoSizeLabel } from "@/features/render";
+import {
+  CaptureNotice,
+  turntableCaptureOptions,
+  useCaptureRun,
+  VideoResolutionField,
+  videoSizeLabel,
+} from "@/features/render";
 import { downloadBlob, VIDEO_RESOLUTIONS, type VideoResolutionId } from "@/lib/export-presets";
 import { isWebCodecsSupported, recordTurntable } from "@/lib/video-capture";
 import { withLiveRenderingPaused } from "@/stores/hires-export-store";
 import { getVideoCaptureRefs } from "@/stores/video-capture-store";
-import { Chip } from "@/components/ui/chip";
+import { ChipField } from "@/components/ui/chip";
 
 type Video360ModalProps = {
   open: boolean;
@@ -46,30 +51,19 @@ export function Video360Modal({ open, onOpenChange, modelId }: Video360ModalProp
   const [frames, setFrames] = useState<FrameCount>(120);
   const [fps, setFps] = useState<FpsOption>(30);
   const [bitrateId, setBitrateId] = useState<BitrateId>("med");
-  const [busy, setBusy] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [error, setError] = useState<string | null>(null);
-  const [status, setStatus] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const run = useCaptureRun();
+  const { busy, progress, error, status, notice, etaLabel, reset, cancel } = run;
   const [hasWebCodecs] = useState(() => isWebCodecsSupported());
-  const [etaLabel, setEtaLabel] = useState<string | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
-  const startedAtRef = useRef<number>(0);
 
   const handleDialogOpenChange = useCallback(
     (next: boolean) => {
       if (!next) {
-        setProgress(0);
-        setError(null);
-        setStatus(null);
-        setNotice(null);
-        setEtaLabel(null);
-        abortRef.current?.abort();
-        abortRef.current = null;
+        reset();
+        cancel();
       }
       onOpenChange(next);
     },
-    [onOpenChange],
+    [cancel, onOpenChange, reset],
   );
 
   const resolution = VIDEO_RESOLUTIONS.find((r) => r.id === resId) ?? VIDEO_RESOLUTIONS[1];
@@ -80,60 +74,28 @@ export function Video360Modal({ open, onOpenChange, modelId }: Video360ModalProp
   const fileSizeStr = videoSizeLabel(bps, durationSec);
 
   async function handleRender() {
-    setError(null);
-    setStatus(null);
-    setNotice(null);
-    setProgress(0);
-    setEtaLabel(null);
+    reset();
 
     const refs = getVideoCaptureRefs();
     if (!refs) {
-      setError("3D view not ready — wait for the model to load, then try again.");
+      run.setError("3D view not ready — wait for the model to load, then try again.");
       return;
     }
 
-    const controller = new AbortController();
-    abortRef.current = controller;
-    startedAtRef.current = performance.now();
-    setBusy(true);
-
-    try {
+    await run.capture(async (signal, onProgress) => {
       const settings = { width: resolution.width, height: resolution.height, frameCount: frames, fps, bitrate: bps };
-      const options = await turntableCaptureOptions(settings, controller.signal, (p) => {
-        setProgress(p);
-        const start = startedAtRef.current;
-        if (p > 0.01 && start > 0) {
-          const elapsed = (performance.now() - start) / 1000;
-          const total = elapsed / p;
-          const remaining = Math.max(0, total - elapsed);
-          setEtaLabel(`~${Math.round(remaining)}s remaining`);
-        }
-      });
+      const options = await turntableCaptureOptions(settings, signal, onProgress);
       const result = await withLiveRenderingPaused(() => recordTurntable(options));
 
       const isZip = result.kind === "png-zip";
       downloadBlob(result.blob, `${modelId}-360.${isZip ? "zip" : "mp4"}`);
-      setNotice(result.notice);
-      setStatus(
+      run.setNotice(result.notice);
+      run.setStatus(
         isZip
           ? `Downloaded ZIP of ${frames} PNG frames`
           : `Downloaded MP4 (${(result.blob.size / 1024 / 1024).toFixed(1)} MB · ${result.codec})`,
       );
-    } catch (e) {
-      if ((e as { name?: string })?.name === "AbortError") {
-        setStatus("Cancelled");
-      } else {
-        setError(e instanceof Error ? e.message : "Render failed");
-      }
-    } finally {
-      setBusy(false);
-      setEtaLabel(null);
-      abortRef.current = null;
-    }
-  }
-
-  function handleCancel() {
-    abortRef.current?.abort();
+    });
   }
 
   return (
@@ -163,53 +125,29 @@ export function Video360Modal({ open, onOpenChange, modelId }: Video360ModalProp
         <div className="space-y-4">
           <VideoResolutionField value={resId} onChange={setResId} disabled={busy} showSize />
 
-          <div className="space-y-2">
-            <Label className="text-muted-foreground">Frames</Label>
-            <div className="flex flex-wrap gap-2">
-              {FRAME_COUNTS.map((f) => (
-                <Chip
-                  key={f}
-                  selected={frames === f}
-                  onClick={() => setFrames(f)}
-                  disabled={busy}
-                >
-                  {`${f} frames`}
-                </Chip>
-              ))}
-            </div>
-          </div>
+          <ChipField
+            label="Frames"
+            options={FRAME_COUNTS.map((f) => ({ value: f, label: `${f} frames` }))}
+            value={frames}
+            onChange={setFrames}
+            disabled={busy}
+          />
 
-          <div className="space-y-2">
-            <Label className="text-muted-foreground">FPS</Label>
-            <div className="flex flex-wrap gap-2">
-              {FPS_OPTIONS.map((f) => (
-                <Chip
-                  key={f}
-                  selected={fps === f}
-                  onClick={() => setFps(f)}
-                  disabled={busy}
-                >
-                  {`${f} fps`}
-                </Chip>
-              ))}
-            </div>
-          </div>
+          <ChipField
+            label="FPS"
+            options={FPS_OPTIONS.map((f) => ({ value: f, label: `${f} fps` }))}
+            value={fps}
+            onChange={setFps}
+            disabled={busy}
+          />
 
-          <div className="space-y-2">
-            <Label className="text-muted-foreground">Bitrate</Label>
-            <div className="flex flex-wrap gap-2">
-              {BITRATES.map((b) => (
-                <Chip
-                  key={b.id}
-                  selected={bitrateId === b.id}
-                  onClick={() => setBitrateId(b.id)}
-                  disabled={busy}
-                >
-                  {b.label}
-                </Chip>
-              ))}
-            </div>
-          </div>
+          <ChipField
+            label="Bitrate"
+            options={BITRATES.map((b) => ({ value: b.id, label: b.label }))}
+            value={bitrateId}
+            onChange={setBitrateId}
+            disabled={busy}
+          />
 
           <div className="grid grid-cols-2 gap-3 rounded-lg border border-border bg-muted/40 p-3 text-xs">
             <div>
@@ -248,7 +186,7 @@ export function Video360Modal({ open, onOpenChange, modelId }: Video360ModalProp
                   variant="outline"
                   className="gap-2 border-border"
                   onClick={() => {
-                    setError(null);
+                    run.setError(null);
                     void handleRender();
                   }}
                 >
@@ -270,7 +208,7 @@ export function Video360Modal({ open, onOpenChange, modelId }: Video360ModalProp
               <Button
                 type="button"
                 variant="outline"
-                onClick={handleCancel}
+                onClick={cancel}
                 className="border-border"
               >
                 <X className="size-4" aria-hidden />

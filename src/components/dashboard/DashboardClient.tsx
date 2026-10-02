@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { DashboardSceneSettingsDialog } from "@/components/dashboard/DashboardSceneSettingsDialog";
 import { DashboardScenesPanel } from "@/components/dashboard/DashboardScenesPanel";
 import { DashboardToolbar } from "@/components/dashboard/DashboardToolbar";

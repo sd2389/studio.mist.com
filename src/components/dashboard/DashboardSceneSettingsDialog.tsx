@@ -1,7 +1,7 @@
 "use client";
 
 import { Loader2, Settings2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { metadataFromScene } from "@/features/editor/ui/EditorSettingsTab";
 import { updateScene, type Scene } from "@/features/scene";
 import { UploadMetadataForm, type UploadMetadata } from "@/features/upload/ui/UploadMetadataForm";

@@ -660,3 +660,30 @@ class TestFailJob:
         # No credit consumed on failure
         db.refresh(billing)
         assert billing.render_credits_balance == balance_before
+
+
+@pytest.mark.parametrize("call", ["complete", "fail"])
+def test_complete_and_fail_lock_the_job_row_on_postgres(call):
+    """A claim can't issue a new token between their token check and their update."""
+    from sqlalchemy.dialects import postgresql
+
+    from app.features.render_jobs import service
+
+    statements = []
+
+    class _Postgres:
+        def get_bind(self):
+            return SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
+
+        def execute(self, stmt):
+            statements.append(stmt)
+            return SimpleNamespace(scalars=lambda: SimpleNamespace(first=lambda: None))
+
+    with pytest.raises(HTTPException) as exc:
+        if call == "complete":
+            service.complete_job(_Postgres(), 1, token="t", data=b"png")
+        else:
+            service.fail_job(_Postgres(), 1, token="t", error="boom")
+
+    assert exc.value.status_code == 404
+    assert "FOR UPDATE" in str(statements[0].compile(dialect=postgresql.dialect()))

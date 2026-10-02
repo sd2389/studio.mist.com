@@ -210,6 +210,19 @@ def get_job_payload(db: Session, job_id: int, token: str) -> RenderJobPayload:
     )
 
 
+def _lock_job(db: Session, job_id: int) -> RenderJob | None:
+    """The job, its row locked until this transaction ends (Postgres).
+
+    complete and fail check the token and then update the job; the lock keeps a claim from
+    issuing a new token in between. Either they finish first and the claim's SKIP LOCKED
+    passes the row by, or they wait for the claim and then see its token and refuse.
+    """
+    stmt = select(RenderJob).where(RenderJob.id == job_id).execution_options(populate_existing=True)
+    if db.get_bind().dialect.name != "sqlite":
+        stmt = stmt.with_for_update()
+    return db.execute(stmt).scalars().first()
+
+
 def complete_job(db: Session, job_id: int, token: str, data: bytes) -> RenderJob:
     """Mark a running job completed; store PNG; consume 1 render credit.
 
@@ -217,9 +230,7 @@ def complete_job(db: Session, job_id: int, token: str, data: bytes) -> RenderJob
         401 – wrong token, including one from a claim that lost its lease.
         409 – job is not in 'running' state (idempotency guard).
     """
-    job = db.execute(
-        select(RenderJob).where(RenderJob.id == job_id)
-    ).scalars().first()
+    job = _lock_job(db, job_id)
 
     if job is None:
         raise HTTPException(status_code=404, detail="Render job not found")
@@ -275,9 +286,7 @@ def fail_job(db: Session, job_id: int, token: str, error: str) -> RenderJob:
 
     Never touches billing credits.
     """
-    job = db.execute(
-        select(RenderJob).where(RenderJob.id == job_id)
-    ).scalars().first()
+    job = _lock_job(db, job_id)
 
     if job is None:
         raise HTTPException(status_code=404, detail="Render job not found")

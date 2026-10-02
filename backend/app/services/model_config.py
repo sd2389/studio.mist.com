@@ -1,9 +1,11 @@
 import json
 import re
-import struct
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Literal
+
+from app.services.glb import BrokenGlbError, NotGlbError, read_glb_json
+from app.services.glb import count_glb_triangles as glb_triangles
 
 
 SceneSettingBucket = Literal[
@@ -142,70 +144,20 @@ def _extract_gltf_bytes(filename: str, payload: bytes) -> dict | None:
         except (UnicodeDecodeError, json.JSONDecodeError):
             return None
 
-    if not lower.endswith(".glb") or len(payload) < 20:
+    if not lower.endswith(".glb"):
         return None
-
-    magic, _version, _length = struct.unpack_from("<4sII", payload, 0)
-    if magic != b"glTF":
+    try:
+        return read_glb_json(payload)
+    except (NotGlbError, BrokenGlbError):
         return None
-
-    offset = 12
-    while offset + 8 <= len(payload):
-        chunk_length, chunk_type = struct.unpack_from("<II", payload, offset)
-        offset += 8
-        if offset + chunk_length > len(payload):
-            return None
-        chunk = payload[offset : offset + chunk_length]
-        offset += chunk_length
-        # JSON chunk type ("JSON") in little-endian int.
-        if chunk_type == 0x4E4F534A:
-            try:
-                return json.loads(chunk.decode("utf-8").rstrip("\x00").strip())
-            except (UnicodeDecodeError, json.JSONDecodeError):
-                return None
-
-    return None
 
 
 def count_glb_triangles(payload: bytes) -> int:
-    """Triangles a GLB draws, read from its own JSON: each mesh once per node that places it
-    (meshes no node places count once). 0 when the bytes are not a readable GLB. Accessor
-    counts are in the JSON even for Draco or meshopt compressed buffers."""
-    doc = _extract_gltf_bytes("model.glb", payload)
-    if not isinstance(doc, dict):
+    """Triangles a GLB draws (see app.services.glb); 0 when the bytes are not a readable GLB."""
+    try:
+        return glb_triangles(payload)
+    except (NotGlbError, BrokenGlbError):
         return 0
-    accessors = doc.get("accessors") if isinstance(doc.get("accessors"), list) else []
-
-    def accessor_count(index: object) -> int:
-        if isinstance(index, int) and 0 <= index < len(accessors) and isinstance(accessors[index], dict):
-            count = accessors[index].get("count")
-            return count if isinstance(count, int) and count > 0 else 0
-        return 0
-
-    def mesh_triangles(mesh: object) -> int:
-        primitives = mesh.get("primitives") if isinstance(mesh, dict) else None
-        total = 0
-        for primitive in primitives if isinstance(primitives, list) else []:
-            if not isinstance(primitive, dict):
-                continue
-            attributes = primitive.get("attributes") if isinstance(primitive.get("attributes"), dict) else {}
-            count = accessor_count(primitive["indices"]) if "indices" in primitive else accessor_count(attributes.get("POSITION"))
-            mode = primitive.get("mode", 4)
-            if mode == 4:
-                total += count // 3
-            elif mode in (5, 6):  # strips and fans
-                total += max(count - 2, 0)
-        return total
-
-    meshes = doc.get("meshes") if isinstance(doc.get("meshes"), list) else []
-    per_mesh = [mesh_triangles(mesh) for mesh in meshes]
-    nodes = doc.get("nodes") if isinstance(doc.get("nodes"), list) else []
-    placed = [
-        node["mesh"]
-        for node in nodes
-        if isinstance(node, dict) and isinstance(node.get("mesh"), int) and 0 <= node["mesh"] < len(per_mesh)
-    ]
-    return sum(per_mesh[i] for i in placed) if placed else sum(per_mesh)
 
 
 def _slot_signals_from_gltf_doc(doc: dict) -> list[SlotSignal]:

@@ -1,7 +1,7 @@
 import {
   buildSceneCatalogIndex,
   type SceneCatalogIndex,
-} from "@/features/editor/hooks/useSceneCatalogIndex";
+} from "@/lib/catalog/scene-catalog-index";
 import type { SceneDetail, SceneLook } from "@/lib/api/scenes";
 import type { EditCatalogs } from "@/lib/catalog/edit-catalogs";
 import type { CatalogItem, CatalogPage } from "@/lib/catalog/types";

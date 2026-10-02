@@ -13,7 +13,7 @@ import {
   lookupBackground,
   lookupEnvironment,
   lookupGround,
-} from "@/features/editor/hooks/useSceneCatalogIndex";
+} from "@/lib/catalog/scene-catalog-index";
 import type { EditCatalogs } from "@/lib/catalog/edit-catalogs";
 import { StudioTopBar } from "./StudioTopBar";
 import { ZoomControls } from "./ZoomControls";

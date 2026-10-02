@@ -1,6 +1,3 @@
-"use client";
-
-import { useMemo } from "react";
 import type {
   BackgroundItem,
   CatalogPage,
@@ -9,6 +6,7 @@ import type {
   ScenePresetItem,
 } from "@/lib/catalog/types";
 
+/** Catalogue items by slug: what a scene's saved environments, backdrop and ground resolve against. */
 export type SceneCatalogIndex = {
   environments: Map<string, EnvironmentItem>;
   backgrounds: Map<string, BackgroundItem>;
@@ -36,10 +34,6 @@ export function buildSceneCatalogIndex(initial: SceneCatalogInitial): SceneCatal
   };
 }
 
-export function useSceneCatalogIndex(initial: SceneCatalogInitial): SceneCatalogIndex {
-  return useMemo(() => buildSceneCatalogIndex(initial), [initial]);
-}
-
 export function lookupEnvironment(
   index: SceneCatalogIndex,
   slug: string | null | undefined,
@@ -62,12 +56,4 @@ export function lookupGround(
 ): GroundItem | null {
   if (!slug) return null;
   return index.grounds.get(slug) ?? null;
-}
-
-export function lookupScenePreset(
-  index: SceneCatalogIndex,
-  slug: string | null | undefined,
-): ScenePresetItem | null {
-  if (!slug) return null;
-  return index.presets.get(slug) ?? null;
 }

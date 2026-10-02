@@ -4,7 +4,7 @@ import {
   lookupBackground,
   lookupEnvironment,
   lookupGround,
-} from "@/features/editor/hooks/useSceneCatalogIndex";
+} from "@/lib/catalog/scene-catalog-index";
 import type { SceneDetail, SceneLook } from "@/lib/api/scenes";
 import { applyMaterialPresetBySlot } from "@/lib/apply-material-preset";
 import type { EditCatalogs } from "@/lib/catalog/edit-catalogs";

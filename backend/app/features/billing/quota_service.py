@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.features.billing.plans import PLAN_LABELS, PLAN_QUOTAS, PlanTier, get_quotas, normalize_tier
@@ -179,12 +179,23 @@ def assert_model_credit(db: Session, user: User) -> UserBilling:
     return billing
 
 
-def consume_model_credit(db: Session, billing: UserBilling) -> None:
-    if billing.model_credits_balance <= 0:
+def consume_model_credit(db: Session, billing: UserBilling, upload_bytes: int = 0) -> None:
+    """Spend one model credit and count the model's `upload_bytes` of storage.
+
+    One conditional UPDATE, so two saves racing for the last credit cannot both have it.
+    Not committed: the caller commits it with the scene it pays for, or rolls both back.
+    """
+    spent = db.execute(
+        update(UserBilling)
+        .where(UserBilling.id == billing.id, UserBilling.model_credits_balance > 0)
+        .values(
+            model_credits_balance=UserBilling.model_credits_balance - 1,
+            storage_bytes_used=UserBilling.storage_bytes_used + upload_bytes,
+            updated_at=datetime.utcnow(),
+        )
+    )
+    if spent.rowcount != 1:
         raise HTTPException(status_code=402, detail="No model credits remaining.")
-    billing.model_credits_balance -= 1
-    billing.updated_at = datetime.utcnow()
-    db.commit()
 
 
 def assert_ai_image_credit(db: Session, user: User) -> UserBilling:
@@ -281,12 +292,6 @@ def assert_storage_for_upload(db: Session, user: User, byte_size: int) -> UserBi
             detail="Storage limit reached. Upgrade your plan or delete unused models.",
         )
     return billing
-
-
-def add_storage_bytes(db: Session, billing: UserBilling, byte_size: int) -> None:
-    billing.storage_bytes_used += byte_size
-    billing.updated_at = datetime.utcnow()
-    db.commit()
 
 
 def release_storage_bytes(db: Session, billing: UserBilling, byte_size: int) -> None:

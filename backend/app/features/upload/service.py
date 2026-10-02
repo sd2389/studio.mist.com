@@ -15,12 +15,12 @@ from app.core import storage
 from app.core import storage_keys as keys
 from app.features.publish import service as publish_service
 from app.features.billing.quota_service import (
-    add_storage_bytes,
     assert_model_credit,
     assert_polygon_limit,
     assert_storage_for_upload,
     consume_model_credit,
 )
+from app.models.billing import UserBilling
 from app.models.scene import Scene
 from app.models.user import User
 from app.services.model_config import (
@@ -112,6 +112,19 @@ def build_ingest_configs(filename: str, payload: bytes) -> tuple[dict, dict]:
     return slot_config, scene_config
 
 
+def save_scene_and_charge(db: Session, scene: Scene, billing: UserBilling, upload_bytes: int) -> None:
+    """Save the scene, its model credit and its storage in one commit: a refused charge
+    leaves no scene behind, and a save that fails takes no credit."""
+    db.add(scene)
+    try:
+        consume_model_credit(db, billing, upload_bytes)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    db.refresh(scene)
+
+
 def _total_upload_bytes(model_bytes: int, thumbnail_key: str | None) -> int:
     total = len(model_bytes)
     if thumbnail_key:
@@ -187,11 +200,7 @@ def register_after_presign(
         created_at=now,
         updated_at=now,
     )
-    db.add(scene)
-    db.commit()
-    db.refresh(scene)
-    consume_model_credit(db, billing)
-    add_storage_bytes(db, billing, upload_bytes)
+    save_scene_and_charge(db, scene, billing, upload_bytes)
     publish_service.publish_scene_to_public(scene)
     return {"scene_id": scene.id, "model_key": key}
 
@@ -255,11 +264,7 @@ def save_direct_multipart(
         created_at=now,
         updated_at=now,
     )
-    db.add(scene)
-    db.commit()
-    db.refresh(scene)
-    consume_model_credit(db, billing)
-    add_storage_bytes(db, billing, len(body))
+    save_scene_and_charge(db, scene, billing, len(body))
     publish_service.publish_scene_to_public(scene)
     return {"scene_id": scene.id, "model_key": key}
 

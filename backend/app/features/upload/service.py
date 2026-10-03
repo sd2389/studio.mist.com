@@ -202,18 +202,9 @@ def store_model_scene(
         save_scene_and_charge(db, scene, billing, upload_bytes)
     except Exception:
         for key in written:
-            delete_quietly(key)
+            storage.delete_quietly(key)
         raise
     publish_service.publish_scene_to_public(scene)
-
-
-def delete_quietly(key: str) -> None:
-    """Remove an object the server will not keep. A failure is logged, not raised over the
-    error that led here."""
-    try:
-        storage.delete(key)
-    except Exception as exc:  # noqa: BLE001 - cleanup must not mask the original error
-        log_event(logger, "upload.cleanup_failed", key=key, error=str(exc))
 
 
 def read_stored_upload(key: str) -> bytes:
@@ -300,9 +291,9 @@ def register_after_presign(
             scene_settings=scene_settings,
         )
     finally:
-        delete_quietly(key)
+        storage.delete_quietly(key)
         if thumbnail_key:
-            delete_quietly(thumbnail_key)
+            storage.delete_quietly(thumbnail_key)
 
 
 def _register_checked_upload(

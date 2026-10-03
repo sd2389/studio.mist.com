@@ -108,6 +108,12 @@ class R2Backend:
         except ClientError:
             return False
 
+    def size(self, key: str) -> int | None:
+        try:
+            return int(self._client.head_object(Bucket=self._private_bucket, Key=key)["ContentLength"])
+        except ClientError:
+            return None
+
     def stream(self, key: str) -> tuple[Any, str, str | None]:
         try:
             obj = self._client.get_object(Bucket=self._private_bucket, Key=key)
@@ -139,6 +145,15 @@ class R2Backend:
             )
         except (BotoCoreError, ClientError) as exc:
             raise StorageAdapterError(f"Copy to public bucket failed: {exc}", cause=exc) from exc
+
+    def delete_public(self, key: str) -> None:
+        bucket = self.public_bucket
+        if not bucket:
+            return
+        try:
+            self._client.delete_object(Bucket=bucket, Key=key)
+        except (BotoCoreError, ClientError) as exc:
+            raise StorageAdapterError(f"Delete from public bucket failed: {exc}", cause=exc) from exc
 
     def public_exists(self, key: str) -> bool:
         bucket = self.public_bucket

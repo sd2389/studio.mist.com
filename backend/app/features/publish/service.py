@@ -84,6 +84,20 @@ def republish_if_changed(db: Session, scene: Scene, before: PublishedInputs) -> 
         publish_scene(db, scene)
 
 
+def delete_published_copies(user_id: int, sku: str) -> None:
+    """Remove the public model and thumbnail published under `sku`. Best effort: a copy that
+    can't be deleted is logged and left."""
+    public_backend = storage.get_public_storage()
+    for key in (keys.public_model_key(user_id, sku), keys.public_thumbnail_key(user_id, sku)):
+        try:
+            if public_backend is not None:
+                public_backend.delete_public(key)
+            else:
+                storage.delete(key)
+        except Exception as exc:  # noqa: BLE001 - the scene is gone; a leftover copy is only logged
+            log_event(_logger, "publish.delete_failed", user_id=user_id, sku=sku, key=key, error=str(exc))
+
+
 def published_copies_exist(scene: Scene) -> bool:
     """Whether the scene's public model, and its thumbnail if it has one, are where publishing
     puts them."""

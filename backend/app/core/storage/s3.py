@@ -85,6 +85,12 @@ class S3Backend:
         except ClientError:
             return False
 
+    def size(self, key: str) -> int | None:
+        try:
+            return int(self._client.head_object(Bucket=self._bucket, Key=key)["ContentLength"])
+        except ClientError:
+            return None
+
     def stream(self, key: str) -> tuple[Any, str, str | None]:
         try:
             obj = self._client.get_object(Bucket=self._bucket, Key=key)

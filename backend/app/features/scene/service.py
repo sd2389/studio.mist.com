@@ -15,7 +15,9 @@ from app.core.public_urls import (
 )
 from app.features.billing.quota_service import assert_variant_limit
 from app.features.publish import service as publish_service
+from app.features.scene.deletion import delete_scene
 from app.features.scene.look import scene_look
+from app.features.scene.skus import assert_sku_available, commit_new_sku
 from app.models import Render, Scene
 from app.schemas.scene import (
     RenderItem,
@@ -184,9 +186,15 @@ def first_scene_for_sku(db: Session, sku: str) -> Scene | None:
 
 def commit_patch(db: Session, scene: Scene, body: ScenePatch) -> SceneListItem:
     assert_variants_fit_plan(db, scene, body)
+    takes_new_sku = bool(body.sku) and body.sku != scene.sku
+    if takes_new_sku:
+        assert_sku_available(db, body.sku)
     published_before = publish_service.published_inputs(scene)
     apply_patch(scene, body)
-    db.commit()
+    if takes_new_sku:
+        commit_new_sku(db)
+    else:
+        db.commit()
     db.refresh(scene)
     # The studio saves about 350 ms after every change; most saves change nothing published.
     publish_service.republish_if_changed(db, scene, published_before)
@@ -282,7 +290,5 @@ def patch_scene_for_model(
 
 
 def delete_scene_by_id(db: Session, scene_id: int, user_id: int) -> dict[str, bool | int]:
-    scene = require_owned_scene(db.get(Scene, scene_id), user_id)
-    db.delete(scene)
-    db.commit()
+    delete_scene(db, require_owned_scene(db.get(Scene, scene_id), user_id))
     return {"ok": True, "id": scene_id}

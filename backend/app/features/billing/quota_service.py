@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from fastapi import HTTPException
-from sqlalchemy import select, update
+from sqlalchemy import case, select, update
 from sqlalchemy.orm import Session
 
 from app.features.billing.plans import PLAN_LABELS, PLAN_QUOTAS, PlanTier, get_quotas, normalize_tier
@@ -328,9 +328,17 @@ def assert_storage_for_upload(db: Session, user: User, byte_size: int) -> UserBi
 
 
 def release_storage_bytes(db: Session, billing: UserBilling, byte_size: int) -> None:
-    billing.storage_bytes_used = max(0, billing.storage_bytes_used - byte_size)
-    billing.updated_at = datetime.utcnow()
-    db.commit()
+    """Give back `byte_size` of storage, never below zero, in one UPDATE, so two deletes at once
+    both count. Not committed: the caller commits it with what it deleted."""
+    used = UserBilling.storage_bytes_used
+    db.execute(
+        update(UserBilling)
+        .where(UserBilling.id == billing.id)
+        .values(
+            storage_bytes_used=case((used > byte_size, used - byte_size), else_=0),
+            updated_at=datetime.utcnow(),
+        )
+    )
 
 
 CreditKind = str  # model | ai | render | custom_material | custom_asset | storage

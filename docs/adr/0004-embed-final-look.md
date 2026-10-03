@@ -17,7 +17,11 @@ The embed (`/embed/<SKU>`) puts a piece on a store's product page. It carried a 
 
 ## Publishing
 
-There is no separate publish step. A scene with a SKU is published: its upload and every save copy the GLB and thumbnail to the public bucket (`publish_scene_to_public`), and the studio saves each change about 350 ms after it is made. The embed page reads the scene from the API on every load, uncached, so a later save shows up in every pasted snippet on its next load. A scene without a SKU has no embed link, and its model stays private.
+There is no separate publish step. A scene with a SKU is published: its upload copies the GLB and thumbnail to the public bucket at `published/<user>/<sku>/` (`publish_scene`), and so does any later save that changes what those copies are made of, the SKU, the model or the thumbnail. A still or hires render becomes the thumbnail, so it publishes too. Other saves copy nothing, although the studio saves each change about 350 ms after it is made.
+
+`scenes.published_at` records when the copies were last made. It is cleared when publishing fails or the SKU is removed, and a scene with a SKU but no copies is published again on its next save. Scene URLs come from it, with no storage call: a published scene's model and thumbnail URLs point at its public copies, any other scene's at its private files.
+
+The look is not copied. The embed page reads the scene from the API on every load, uncached, so a later save shows up in every pasted snippet on its next load. A scene without a SKU has no embed link, and its model stays private.
 
 ## Consequences
 
@@ -26,6 +30,7 @@ There is no separate publish step. A scene with a SKU is published: its upload a
 - The studio now resolves saved catalogue items beyond the Edit tab's first page, and gradient backdrops show behind the piece in both views (they were hidden under the stage's paper).
 - Uploaded backdrop images are private files, so they still show in neither view.
 - Published GLBs sit at a fixed path per SKU with a one-year immutable cache: a SKU reused for a different model can keep serving the old file until caches expire.
+- Deleting a scene deletes its public copies. Copies made under a SKU the scene no longer has stay where they are.
 
 ## Rollback
 

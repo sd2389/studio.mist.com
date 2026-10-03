@@ -73,13 +73,18 @@ def create_material(
         family=body.family,
         gem_family=body.gem_family,
     )
+    # The material and its credit are committed together, or neither is.
     db.add(row)
-    db.commit()
+    try:
+        consume_custom_material_credit(db, billing)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     db.refresh(row)
 
     swatch_service.generate_material_swatch(db, row)
     db.refresh(row)
-    consume_custom_material_credit(db, billing)
     return serializers.material_to_item(row)
 
 

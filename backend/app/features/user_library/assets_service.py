@@ -107,11 +107,8 @@ def upload_asset(
 
     token = uuid4().hex[:12]
     storage_key = f"{keys.customer_assets_prefix(user_id)}/{asset_type}/{token}{image.extension}"
-    storage.write_bytes(storage_key, body, content_type=image.content_type)
-
     display_label = (label or file.filename or "Custom asset").strip()
     display_label = re.sub(r"\.[^.]+$", "", display_label)[:128] or "Custom asset"
-
     row = UserAsset(
         user_id=user_id,
         asset_type=asset_type,
@@ -122,10 +119,19 @@ def upload_asset(
         byte_size=len(body),
         meta={},
     )
-    db.add(row)
-    db.commit()
+
+    # The asset, its credit and its storage are committed together; if that fails, the
+    # written file is removed again.
+    storage.write_bytes(storage_key, body, content_type=image.content_type)
+    try:
+        db.add(row)
+        consume_custom_asset_credit(db, billing, len(body))
+        db.commit()
+    except Exception:
+        db.rollback()
+        storage.delete_quietly(storage_key)
+        raise
     db.refresh(row)
-    consume_custom_asset_credit(db, billing, len(body))
     return serializers.asset_to_item(row)
 
 

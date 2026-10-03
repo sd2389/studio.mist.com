@@ -51,3 +51,25 @@ def test_private_assets_use_authenticated_app_proxy(monkeypatch):
     get_settings.cache_clear()
     assert public_file_url("customers/2/models/ring.glb") == "https://studio.example.com/api/files/customers/2/models/ring.glb"
     get_settings.cache_clear()
+
+
+def test_a_private_file_link_gives_back_its_key_only_from_the_app(monkeypatch):
+    from app.config import get_settings
+    from app.core.public_urls import private_file_key
+
+    monkeypatch.setenv("APP_PUBLIC_URL", "https://studio.example.com")
+    get_settings.cache_clear()
+    key = "customers/2/assets/My backdrop.png"
+    link = public_file_url(key)
+
+    assert private_file_key(link) == key
+    assert private_file_key("/api/files/customers/2/assets/My%20backdrop.png") == key
+    for other in (
+        link.replace("studio.example.com", "evil.example.com"),
+        f"{link}?download=1",
+        "https://studio.example.com/api/files/customers/2/../3/assets/x.png",
+        "https://studio.example.com/api/files/catalog/backgrounds/paper.png",
+        "data:image/png;base64,iVBORw0KGgo=",
+    ):
+        assert private_file_key(other) is None
+    get_settings.cache_clear()

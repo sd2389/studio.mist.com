@@ -80,13 +80,27 @@ def test_payload_takes_the_token_from_the_header(client, job):
 
 
 @pytest.mark.parametrize(("tier", "watermark"), [("free", True), ("grow", False), ("studio", False)])
-def test_payload_says_whether_the_owner_plan_watermarks(client, db, sample_user, job, tier, watermark):
+def test_payload_carries_the_watermark_the_plan_gave_the_job(client, db, sample_user, tier, watermark):
+    """The owner's plan decides the mark when the job is created; a plan change later doesn't move it."""
+    from app.features.render_jobs.service import create_job
+    from app.models.scene import Scene
+    from app.schemas.render_job import RenderJobCreate
+
+    scene = Scene(user_id=sample_user.id, model_key="customers/1/models/ring.glb", created_at=datetime.utcnow())
+    db.add(scene)
     billing = get_or_create_billing(db, sample_user)
     billing.plan_tier = tier
     db.commit()
+    body = RenderJobCreate(
+        kind="still", scene_id=scene.id, spec={"camera": {"pose": "pose-default"}, "width": 512, "height": 512}
+    )
+    job, _ = create_job(db, sample_user, body)
+    billing.plan_tier = "studio" if tier == "free" else "free"
+    db.commit()
     claimed = _claim(client)
 
-    res = client.get(f"/render-jobs/{job.id}/payload", headers={"X-Job-Token": claimed["page_token"]})
+    with patch("app.features.render_jobs.worker.presign_get", return_value="https://r2.example.com/ring.glb"):
+        res = client.get(f"/render-jobs/{job.id}/payload", headers={"X-Job-Token": claimed["page_token"]})
 
     assert res.json()["watermark"] is watermark
 
@@ -118,7 +132,7 @@ def test_job_endpoints_refuse_a_missing_token(client, job, method, path, kwargs)
 def test_complete_takes_the_token_from_the_header(client, job):
     claimed = _claim(client)
 
-    with patch("app.features.render_jobs.service.write_bytes"):
+    with patch("app.features.render_jobs.worker.write_bytes"):
         res = client.post(
             f"/render-jobs/{job.id}/complete",
             headers={"X-Job-Token": claimed["page_token"]},

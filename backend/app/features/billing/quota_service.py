@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.features.billing.plans import PLAN_LABELS, PLAN_QUOTAS, PlanTier, get_quotas, normalize_tier
 from app.models.billing import UserBilling
+from app.models.render_job import RenderJob
 from app.models.user import User
 from app.schemas.billing import PlanFeatures, QuotaBalances, UserBillingSnapshot
 
@@ -60,8 +61,9 @@ def _features_for_tier(tier: PlanTier) -> PlanFeatures:
         max_polygons=quotas.max_polygons,
         watermark_exports=quotas.watermark_exports,
         embed_enabled=True,
-        batch_export_enabled=tier != "free",
-        video_8k_enabled=tier != "free",
+        batch_export_enabled=quotas.batch_export,
+        video_8k_enabled=quotas.max_8k_video_seconds > 0,
+        campaign_pack_enabled=quotas.campaign_pack,
     )
 
 
@@ -228,22 +230,72 @@ def consume_ai_image_credit(db: Session, billing: UserBilling) -> None:
     db.commit()
 
 
-def assert_render_credit(db: Session, user: User) -> UserBilling:
-    billing = get_or_create_billing(db, user)
-    if billing.render_credits_balance <= 0:
+def hold_render_credits(db: Session, user_id: int, credits: int) -> datetime | None:
+    """Take `credits` out of the render balance for jobs about to queue, or 402 when it is short.
+
+    One conditional UPDATE, so two requests at once can't both spend the same credits; it also
+    locks the billing row until the caller commits. Returns the billing period the credits were
+    held in, which a refund checks. Not committed: the caller commits the hold with the jobs it
+    pays for, or rolls both back.
+    """
+    held = db.execute(
+        update(UserBilling)
+        .where(UserBilling.user_id == user_id, UserBilling.render_credits_balance >= credits)
+        .values(
+            render_credits_balance=UserBilling.render_credits_balance - credits,
+            updated_at=datetime.utcnow(),
+        )
+        .returning(UserBilling.period_start)
+        .execution_options(synchronize_session=False)
+    ).first()
+    if held is None:
         raise HTTPException(
             status_code=402,
-            detail="No render credits remaining. Upgrade your plan or buy a top-up.",
+            detail=f"Not enough render credits ({credits} needed). Upgrade your plan or buy a top-up.",
         )
-    return billing
+    return held.period_start
 
 
-def consume_render_credit(db: Session, billing: UserBilling) -> None:
-    if billing.render_credits_balance <= 0:
-        raise HTTPException(status_code=402, detail="No render credits remaining.")
-    billing.render_credits_balance -= 1
-    billing.updated_at = datetime.utcnow()
-    db.commit()
+def charge_render_job(db: Session, job: RenderJob) -> None:
+    """Keep a completed job's held credits; the balance doesn't move again.
+
+    One conditional UPDATE from held to charged, so a job is charged once. Not committed.
+    """
+    db.execute(
+        update(RenderJob)
+        .where(RenderJob.id == job.id, RenderJob.credit_state == "held")
+        .values(credit_state="charged")
+        .execution_options(synchronize_session=False)
+    )
+
+
+def refund_render_job(db: Session, job: RenderJob) -> None:
+    """Give a failed or canceled job's held credits back, once.
+
+    One conditional UPDATE moves the job from held to refunded, so only one caller refunds it;
+    another adds the credits back to the balance, unless the billing period has rolled over
+    since the hold: the new period's allotment has replaced the balance they came out of, and
+    adding them would give it extra. Not committed.
+    """
+    released = db.execute(
+        update(RenderJob)
+        .where(RenderJob.id == job.id, RenderJob.credit_state == "held")
+        .values(credit_state="refunded")
+        .execution_options(synchronize_session=False)
+    ).rowcount
+    if released:
+        db.execute(
+            update(UserBilling)
+            .where(
+                UserBilling.user_id == job.user_id,
+                UserBilling.period_start.is_not_distinct_from(job.billing_period_start),
+            )
+            .values(
+                render_credits_balance=UserBilling.render_credits_balance + job.credits,
+                updated_at=datetime.utcnow(),
+            )
+            .execution_options(synchronize_session=False)
+        )
 
 
 def assert_custom_material_credit(db: Session, user: User) -> UserBilling:

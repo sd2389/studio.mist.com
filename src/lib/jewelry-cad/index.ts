@@ -1,6 +1,7 @@
 /**
  * Procedural jewelry CAD: parametric rings, studs and pendants generated in millimetres,
- * with generated stones (never the CC-BY-SA OBJ), specs and print/interchange exports.
+ * with stones cut procedurally from facet planes (`@/lib/stones/cad-cuts`), specs and
+ * print/interchange exports.
  */
 
 export { buildJewelry } from "@/lib/jewelry-cad/build";

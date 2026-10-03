@@ -14,9 +14,6 @@ export function resolveModelUrlFromKey(modelKey: string): string {
 /** Resolve loader URL from viewer id or full model key. */
 export function resolveModelUrl(id: string): string {
   if (id === "mist-solitaire") return "/models/mist-solitaire/ring.glb";
-  if (id === "clearcoat") {
-    return "/models/clearcoat/ClearcoatRing.gltf";
-  }
 
   const trimmed = id.replace(/^\/+/, "");
   if (trimmed.startsWith("models/")) {

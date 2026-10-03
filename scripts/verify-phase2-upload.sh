@@ -3,7 +3,7 @@
 set -euo pipefail
 
 API="${API_URL:-http://localhost:8765}"
-FIXTURE="${1:-public/models/clearcoat/ClearcoatRing.gltf}"
+FIXTURE="${1:-public/models/mist-solitaire/ring.glb}"
 
 if [[ ! -f "$FIXTURE" ]]; then
   echo "Fixture not found: $FIXTURE" >&2

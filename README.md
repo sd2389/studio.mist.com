@@ -19,7 +19,7 @@ MIST Studio is a jewelry studio that runs in the browser. Upload a CAD file and 
 |---|---|
 | Web app | Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS v4, shadcn/ui on Base UI, Zustand |
 | 3D | Three.js r184 with React Three Fiber and drei; `WebGPURenderer` with a TSL post-processing pipeline and a TSL gem ray tracer |
-| CAD import | rhino3dm (3DM), occt-import-js (STEP, IGES; fetched from jsDelivr when first needed), three.js loaders for mesh formats |
+| CAD import | rhino3dm (3DM) and occt-import-js (STEP, IGES), both fetched from jsDelivr when first needed; three.js loaders for mesh formats |
 | Media | Mediabunny (MP4 muxing), fflate (ZIP) |
 | API | FastAPI, SQLAlchemy 2, Alembic, PostgreSQL 16, Python 3.12 |
 | Storage | Local disk, Cloudflare R2 or Amazon S3 |
@@ -27,6 +27,8 @@ MIST Studio is a jewelry studio that runs in the browser. Upload a CAD file and 
 | Tests | Vitest, pytest, Playwright render goldens |
 
 Viewing needs a browser with WebGPU or WebGL 2.
+
+Third-party assets and libraries, with their licences and where they are used, are listed in [docs/THIRD-PARTY.md](docs/THIRD-PARTY.md).
 
 ## Quick start (Docker)
 
@@ -172,7 +174,7 @@ Known v1 limits:
 | `backend/alembic/` | Database migrations |
 | `backend/scripts/` | Seed and maintenance commands (catalogue, HDRIs, demo embed, render smoke job, R2 setup) |
 | `backend/tests/` | pytest suite |
-| `public/` | Static assets: bundled models, HDRIs, textures, rhino3dm WASM, test fixtures |
+| `public/` | Static assets: bundled models, HDRIs, feature-page images, test fixtures |
 | `scripts/` | Import-boundary check, golden capture and check, render worker |
 | `tests/goldens/` | Baseline renders for the golden check |
 | `samples/` | Local CAD test files (git-ignored) |

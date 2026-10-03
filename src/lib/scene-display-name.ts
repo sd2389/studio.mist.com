@@ -1,7 +1,6 @@
 /** Human-readable scene title from route id. */
 export function sceneDisplayName(modelId: string): string {
   if (modelId === "mist-solitaire") return "MIST Solitaire";
-  if (modelId === "clearcoat") return "Clearcoat Ring";
   try {
     const decoded = decodeURIComponent(modelId);
     return decoded

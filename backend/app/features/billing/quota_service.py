@@ -182,12 +182,18 @@ def assert_model_credit(db: Session, user: User) -> UserBilling:
 def consume_model_credit(db: Session, billing: UserBilling, upload_bytes: int = 0) -> None:
     """Spend one model credit and count the model's `upload_bytes` of storage.
 
-    One conditional UPDATE, so two saves racing for the last credit cannot both have it.
-    Not committed: the caller commits it with the scene it pays for, or rolls both back.
+    One conditional UPDATE that also holds the plan's storage limit, so two saves racing for
+    the last credit or the last bytes cannot both have them. Not committed: the caller
+    commits it with the scene it pays for, or rolls both back.
     """
+    storage_limit = get_quotas(normalize_tier(billing.plan_tier)).storage_bytes
     spent = db.execute(
         update(UserBilling)
-        .where(UserBilling.id == billing.id, UserBilling.model_credits_balance > 0)
+        .where(
+            UserBilling.id == billing.id,
+            UserBilling.model_credits_balance > 0,
+            UserBilling.storage_bytes_used <= storage_limit - upload_bytes,
+        )
         .values(
             model_credits_balance=UserBilling.model_credits_balance - 1,
             storage_bytes_used=UserBilling.storage_bytes_used + upload_bytes,
@@ -195,7 +201,13 @@ def consume_model_credit(db: Session, billing: UserBilling, upload_bytes: int = 
         )
     )
     if spent.rowcount != 1:
-        raise HTTPException(status_code=402, detail="No model credits remaining.")
+        db.refresh(billing)  # which limit the other save took
+        if billing.model_credits_balance <= 0:
+            raise HTTPException(status_code=402, detail="No model credits remaining.")
+        raise HTTPException(
+            status_code=402,
+            detail="Storage limit reached. Upgrade your plan or delete unused models.",
+        )
 
 
 def assert_ai_image_credit(db: Session, user: User) -> UserBilling:

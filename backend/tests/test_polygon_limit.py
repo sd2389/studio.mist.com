@@ -54,31 +54,6 @@ def test_register_request_accepts_polygon_count():
     assert body.polygon_count == 50_000
 
 
-def test_register_rejects_over_cap_before_consuming_model_credit(db, sample_user):
-    """Over-cap saves must 402 without burning a model credit or reading storage."""
-    from app.core import storage_keys as keys
-    from app.features.upload import service as upload_service
-
-    billing = get_or_create_billing(db, sample_user)
-    before = billing.model_credits_balance
-
-    with pytest.raises(HTTPException) as exc:
-        upload_service.register_after_presign(
-            db,
-            user=sample_user,
-            key=f"{keys.customer_models_prefix(sample_user.id)}/abc-model.glb",
-            material="original",
-            model_config_data=None,
-            slot_selections=None,
-            scene_settings=None,
-            polygon_count=100_001,
-        )
-
-    assert exc.value.status_code == 402
-    db.refresh(billing)
-    assert billing.model_credits_balance == before
-
-
 def test_direct_save_rejects_over_cap_before_consuming_model_credit(db, sample_user):
     from model_samples import glb_with_triangles
 

@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from typing import Literal
 
 from app.services.glb import BrokenGlbError, NotGlbError, read_glb_json
-from app.services.glb import count_glb_triangles as glb_triangles
 
 
 SceneSettingBucket = Literal[
@@ -150,14 +149,6 @@ def _extract_gltf_bytes(filename: str, payload: bytes) -> dict | None:
         return read_glb_json(payload)
     except (NotGlbError, BrokenGlbError):
         return None
-
-
-def count_glb_triangles(payload: bytes) -> int:
-    """Triangles a GLB draws (see app.services.glb); 0 when the bytes are not a readable GLB."""
-    try:
-        return glb_triangles(payload)
-    except (NotGlbError, BrokenGlbError):
-        return 0
 
 
 def _slot_signals_from_gltf_doc(doc: dict) -> list[SlotSignal]:

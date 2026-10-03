@@ -52,7 +52,7 @@ async def presign_upload(
 
 
 @router.post("/register")
-async def register_upload(
+def register_upload(
     body: RegisterRequest,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -65,6 +65,7 @@ async def register_upload(
         key=body.key,
         sku=body.sku,
         has_thumbnail=bool(body.thumbnail_key),
+        polygon_count=body.polygon_count,
     )
     result = upload_service.register_after_presign(
         db,
@@ -79,7 +80,6 @@ async def register_upload(
         model_config_data=body.model_config_data or None,
         slot_selections=body.slot_selections or None,
         scene_settings=body.scene_settings or None,
-        polygon_count=body.polygon_count,
     )
     log_event(logger, "upload.register.done", user_id=user.id, scene_id=result.get("scene_id"))
     return result

@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.core import storage
 from app.core import storage_keys as keys
+from app.core.adapters.errors import StorageObjectTooLargeError
 from app.core.observability import get_logger, log_event
 from app.features.publish import service as publish_service
 from app.features.billing.quota_service import (
@@ -33,7 +34,6 @@ from app.services import glb
 from app.services.model_config import (
     build_scene_settings_config,
     build_slot_material_config,
-    count_glb_triangles,
     merge_scene_settings,
     merge_slot_material_config,
 )
@@ -124,13 +124,17 @@ def build_ingest_configs(filename: str, payload: bytes) -> tuple[dict, dict]:
     return slot_config, scene_config
 
 
+def _upload_too_large(max_bytes: int) -> HTTPException:
+    return HTTPException(
+        status_code=413,
+        detail=f"File exceeds maximum upload size ({max_bytes // (1024 * 1024)} MB)",
+    )
+
+
 def require_upload_size(byte_count: int) -> None:
     max_bytes = get_settings().max_upload_bytes
     if byte_count > max_bytes:
-        raise HTTPException(
-            status_code=413,
-            detail=f"File exceeds maximum upload size ({max_bytes // (1024 * 1024)} MB)",
-        )
+        raise _upload_too_large(max_bytes)
 
 
 def count_model_triangles(payload: bytes) -> int:
@@ -201,14 +205,48 @@ def delete_quietly(key: str) -> None:
         log_event(logger, "upload.cleanup_failed", key=key, error=str(exc))
 
 
-def _total_upload_bytes(model_bytes: int, thumbnail_key: str | None) -> int:
-    total = len(model_bytes)
-    if thumbnail_key:
-        try:
-            total += len(storage.read_bytes(thumbnail_key))
-        except OSError:
-            pass
-    return total
+def read_stored_upload(key: str) -> bytes:
+    """A presigned upload's bytes. One over the upload cap is refused (413) without reading it."""
+    max_bytes = get_settings().max_upload_bytes
+    try:
+        return storage.read_bytes(key, max_bytes=max_bytes)
+    except StorageObjectTooLargeError as exc:
+        raise _upload_too_large(max_bytes) from exc
+
+
+def _thumbnail_bytes(thumbnail_key: str | None) -> int:
+    """Storage a presigned thumbnail takes; it counts toward the plan along with the model."""
+    if not thumbnail_key:
+        return 0
+    try:
+        return len(read_stored_upload(thumbnail_key))
+    except OSError:
+        return 0
+
+
+def _require_own_upload_keys(user_id: int, key: str, thumbnail_key: str | None) -> None:
+    try:
+        keys.reject_unsafe_key(key)
+        if thumbnail_key is not None:
+            keys.reject_unsafe_key(thumbnail_key)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid storage key") from exc
+    if not keys.key_belongs_to_user(key, user_id) or not key.startswith(
+        f"{keys.customer_models_prefix(user_id)}/"
+    ):
+        raise HTTPException(status_code=400, detail="key must be under your customer models prefix")
+    if not key.lower().endswith(CANONICAL_MODEL_SUFFIX):
+        raise HTTPException(status_code=400, detail="model key must end with .glb")
+    if thumbnail_key is not None and not keys.key_belongs_to_user(thumbnail_key, user_id):
+        raise HTTPException(status_code=400, detail="thumbnail_key must be under your customer prefix")
+
+
+_UPLOAD_KEY_PREFIX = re.compile(r"^[0-9a-f]{32}-")
+
+
+def _key_for_checked_model(user_id: int, upload_key: str) -> str:
+    """A new key, with the same file name, for a presigned upload's checked bytes."""
+    return keys.model_key(user_id, _UPLOAD_KEY_PREFIX.sub("", Path(upload_key).name))
 
 
 def register_after_presign(
@@ -225,35 +263,56 @@ def register_after_presign(
     model_config_data: dict | None,
     slot_selections: dict[str, str] | None,
     scene_settings: dict[str, Any] | None,
-    polygon_count: int,
 ) -> dict[str, int | str]:
-    try:
-        keys.reject_unsafe_key(key)
-        if thumbnail_key is not None:
-            keys.reject_unsafe_key(thumbnail_key)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail="Invalid storage key") from exc
-    if not keys.key_belongs_to_user(key, user.id) or not key.startswith(
-        f"{keys.customer_models_prefix(user.id)}/"
-    ):
-        raise HTTPException(status_code=400, detail="key must be under your customer models prefix")
-    if not key.lower().endswith(CANONICAL_MODEL_SUFFIX):
-        raise HTTPException(status_code=400, detail="model key must end with .glb")
-    if thumbnail_key is not None and not keys.key_belongs_to_user(thumbnail_key, user.id):
-        raise HTTPException(status_code=400, detail="thumbnail_key must be under your customer prefix")
-    if sku:
-        existing = db.execute(select(Scene).where(Scene.sku == sku)).scalars().first()
-        if existing is not None:
-            raise HTTPException(status_code=409, detail="SKU already exists")
+    """Save a model the browser uploaded through a presigned URL.
 
-    # A declared count over the cap fails before storage is read; the cap then also holds
-    # against what the GLB itself draws, since the declared count comes from the client.
-    assert_polygon_limit(db, user, polygon_count)
-    model_bytes = storage.read_bytes(key)
-    assert_polygon_limit(db, user, count_glb_triangles(model_bytes))
-    upload_bytes = _total_upload_bytes(model_bytes, thumbnail_key)
-    assert_storage_for_upload(db, user, upload_bytes)
-    billing = assert_model_credit(db, user)
+    The uploaded object is checked like a direct upload, from its own bytes, then deleted
+    whether the model is accepted or refused. An accepted model's checked bytes are written
+    under a fresh key: the presigned URL can overwrite the uploaded object until it expires,
+    so no scene may point at that object.
+    """
+    _require_own_upload_keys(user.id, key, thumbnail_key)
+    if db.execute(select(Scene.id).where(Scene.model_key == key)).first() is not None:
+        raise HTTPException(status_code=409, detail="This model is already saved.")
+    try:
+        return _register_checked_upload(
+            db,
+            user=user,
+            upload_key=key,
+            name=name,
+            sku=sku,
+            category=category,
+            note=note,
+            thumbnail_key=thumbnail_key,
+            material=material,
+            model_config_data=model_config_data,
+            slot_selections=slot_selections,
+            scene_settings=scene_settings,
+        )
+    finally:
+        delete_quietly(key)
+
+
+def _register_checked_upload(
+    db: Session,
+    *,
+    user: User,
+    upload_key: str,
+    name: str | None,
+    sku: str | None,
+    category: str | None,
+    note: str | None,
+    thumbnail_key: str | None,
+    material: str,
+    model_config_data: dict | None,
+    slot_selections: dict[str, str] | None,
+    scene_settings: dict[str, Any] | None,
+) -> dict[str, int | str]:
+    reject_taken_sku(db, sku)
+    model_bytes = read_stored_upload(upload_key)
+    upload_bytes = len(model_bytes) + _thumbnail_bytes(thumbnail_key)
+    billing = assert_model_fits_plan(db, user, model_bytes, upload_bytes)
+    key = _key_for_checked_model(user.id, upload_key)
     inferred_slots, inferred_scene = build_ingest_configs(key, model_bytes)
     model_config = merge_slot_material_config(inferred_slots, model_config_data)
     merged_scene = merge_scene_settings(inferred_scene, scene_settings)
@@ -276,8 +335,7 @@ def register_after_presign(
         created_at=now,
         updated_at=now,
     )
-    save_scene_and_charge(db, scene, billing, upload_bytes)
-    publish_service.publish_scene_to_public(scene)
+    store_model_scene(db, scene, model_bytes, billing, upload_bytes)
     return {"scene_id": scene.id, "model_key": key}
 
 

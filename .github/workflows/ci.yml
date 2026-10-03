@@ -21,9 +21,9 @@ defaults:
 env:
   NEXT_TELEMETRY_DISABLED: "1"
 
-# unit, frontend-quality, golden and dependency-audit are the required checks on main. A check
-# a change does not touch is skipped, which GitHub counts as passing; if `changes` itself
-# fails, every check runs in full instead.
+# unit, frontend-quality, public-build, golden and dependency-audit are the required checks on
+# main. A check a change does not touch is skipped, which GitHub counts as passing; if `changes`
+# itself fails, every check runs in full instead.
 jobs:
   changes:
     runs-on: ubuntu-latest
@@ -103,6 +103,30 @@ jobs:
         name: Backend tests (pytest)
         working-directory: backend
         run: python -m pytest -q
+
+  # The app as it ships: a production build without BUILD_TARGET=worker, which must have no
+  # render harness route and no harness code in any chunk (ADR 0005).
+  public-build:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.web == 'true') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-web
+      # Webpack's cache from the last public build on the same lockfile; a miss is only slower.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .next/cache
+          key: next-public-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ hashFiles('src/**', 'next.config.ts') }}
+          restore-keys: next-public-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
+      - run: npm run build
+      - name: No render harness in the public build
+        run: node scripts/ci/check-public-build.mjs
 
   # The render worker's build of the app, whose render harness is captured in headless Chromium
   # on the SwiftShader software renderer (WebGL 2 for the lighting goldens, WebGPU for the export

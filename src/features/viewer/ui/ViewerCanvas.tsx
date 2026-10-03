@@ -24,6 +24,7 @@ import { ViewerToastHost } from "./ViewerToastHost";
 import type { BackgroundItem, EnvironmentItem, GroundItem } from "@/lib/catalog/types";
 import { resolveCanvasLook } from "../domain/canvas-look";
 import { KEY_LIGHT_POSITION } from "@/lib/viewer-lighting";
+import { VIEWER_FOV_DEG, VIEWER_START_POSITION } from "@/lib/viewer-scene";
 import type { PersistedModelConfig, SceneSettingsBuckets } from "@/lib/slot-materials/model-config";
 import type { LightingPresetId, MaterialPresetId } from "@/stores/material-preset-store";
 import { useViewerQualityStore } from "@/stores/viewer-quality-store";
@@ -90,7 +91,7 @@ export function ViewerCanvas({
         frameloop={frameloop}
         shadows={{ type: THREE.PCFShadowMap }}
         dpr={[1, dprCap]}
-        camera={{ position: [0.62, 0.88, 2.25], fov: 42, near: 0.01, far: 200 }}
+        camera={{ position: VIEWER_START_POSITION, fov: VIEWER_FOV_DEG, near: 0.01, far: 200 }}
       >
         {look.background ? <color attach="background" args={[look.background]} /> : null}
         <ambientLight intensity={look.ambient} />

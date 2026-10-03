@@ -104,8 +104,9 @@ jobs:
         working-directory: backend
         run: python -m pytest -q
 
-  # The render harness captured in headless Chromium on the SwiftShader software renderer and
-  # compared with tests/goldens by SSIM. Read tests/goldens/README.md before regenerating them.
+  # The render worker's build of the app (BUILD_TARGET=worker), whose render harness is captured
+  # in headless Chromium on the SwiftShader software renderer and compared with tests/goldens by
+  # SSIM. Read tests/goldens/README.md before regenerating them.
   golden:
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.render == 'true') }}
@@ -141,11 +142,13 @@ jobs:
           path: .next/cache
           key: next-harness-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ hashFiles('src/**', 'next.config.ts') }}
           restore-keys: next-harness-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
-      - name: Build app (harness enabled)
+      - name: Build the worker app (with the render harness)
         env:
-          NEXT_PUBLIC_ENABLE_RENDER_HARNESS: "1"
+          BUILD_TARGET: worker
         run: npm run build
       - name: Start app
+        env:
+          BUILD_TARGET: worker
         run: |
           npm run start &
           for _ in $(seq 1 60); do

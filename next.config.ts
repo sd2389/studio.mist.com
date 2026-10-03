@@ -5,9 +5,19 @@ import type { NextConfig } from "next";
 
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
 
+/**
+ * `BUILD_TARGET=worker` builds the render worker's app: the public app plus the render harness,
+ * whose page is `src/app/render-harness/page.worker.tsx`. Every other build, dev servers
+ * included, leaves `*.worker.tsx` pages out, so the public app has no harness route at all
+ * (ADR 0005). Build and start a worker app with the same setting.
+ */
+const PAGE_EXTENSIONS = ["tsx", "ts", "jsx", "js"];
+const isWorkerBuild = process.env.BUILD_TARGET === "worker";
+
 const nextConfig: NextConfig = {
   output: "standalone",
   distDir: process.env.NEXT_BUILD_DIR || ".next",
+  pageExtensions: isWorkerBuild ? ["worker.tsx", ...PAGE_EXTENSIONS] : PAGE_EXTENSIONS,
   allowedDevOrigins: ["127.0.0.1", "localhost"],
   // The film previews became the home page.
   async redirects() {

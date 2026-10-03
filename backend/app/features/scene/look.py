@@ -16,11 +16,13 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core import storage_keys as keys
+from app.core.public_urls import private_file_key
 from app.core.validation import validation_detail
 from app.features.catalog import serializers as catalog_serializers
 from app.features.catalog.repository import active_by_slugs
 from app.features.user_library import serializers as library_serializers
-from app.features.user_library.repository import materials_by_ids
+from app.features.user_library.repository import asset_at_key, get_asset, materials_by_ids
 from app.models.catalog import (
     CatalogBackground,
     CatalogEnvironment,
@@ -52,9 +54,12 @@ Rotation = Annotated[float, Field(ge=-360, le=360)]
 CameraCoordinate = Annotated[float, Field(ge=-30, le=30)]
 EnvironmentIntensity = Annotated[float, Field(ge=0, le=400)]  # percent
 
-# A backdrop is a colour or a gradient of colours. Without quotes, colons or url(), it can't
-# make the worker fetch an address.
+# A backdrop is a colour or a gradient of colours, or one of the owner's background images.
+# Without quotes, colons or url(), a colour can't make the worker fetch an address.
 _CSS_BACKGROUND = re.compile(r"[A-Za-z0-9#.,%()\s/+-]{1,512}")
+# One value at the top: a hex colour, a colour keyword, or a function (rgb(), hsl(), a gradient).
+_CSS_ONE_VALUE = re.compile(r"\s*(#[0-9A-Fa-f]{3,8}|[A-Za-z]+|[A-Za-z-]+\(.*\))\s*", re.DOTALL)
+_NOT_A_BACKGROUND = "must be a colour, a gradient of colours or one of your background images"
 _CSS_FUNCTION = re.compile(r"([A-Za-z-]+)\s*\(")
 _CSS_FUNCTIONS = frozenset(
     {
@@ -67,8 +72,8 @@ _CSS_FUNCTIONS = frozenset(
 
 def check_css_background(value: str) -> str:
     functions = {name.lower() for name in _CSS_FUNCTION.findall(value)}
-    if not _CSS_BACKGROUND.fullmatch(value) or not functions <= _CSS_FUNCTIONS:
-        raise ValueError("must be a colour or a gradient of colours")
+    if not (_CSS_BACKGROUND.fullmatch(value) and _CSS_ONE_VALUE.fullmatch(value)) or not functions <= _CSS_FUNCTIONS:
+        raise ValueError(_NOT_A_BACKGROUND)
     return value
 
 
@@ -124,8 +129,19 @@ class EmbedSettings(LookPart):
     showStudioLink: bool | None = None
 
 
-class SceneSettings(LookPart):
-    """SceneSettingsBuckets in src/lib/slot-materials/model-config.ts."""
+class ImageBackground(LookPart):
+    """One of the owner's background images, as a job's look keeps it: by id, never by address.
+
+    The worker's payload turns the id into a short-lived URL (background_image_key)."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    type: Literal["image"]
+    asset_id: int = Field(ge=1)
+
+
+class SceneBuckets(LookPart):
+    """The catalogue selections and the quality mode: all a model config keeps of the settings."""
 
     environment_metal: str | None = Field(default=None, alias="ENVIRONMENT-METAL", pattern=SETTING_ID)
     environment_gem: str | None = Field(default=None, alias="ENVIRONMENT-GEM", pattern=SETTING_ID)
@@ -133,14 +149,6 @@ class SceneSettings(LookPart):
     background: str | None = Field(default=None, alias="BACKGROUND", pattern=SETTING_ID)
     vjson: str | None = Field(default=None, alias="VJSON", pattern=SETTING_ID)
     quality_mode: Literal["standard", "photometric"] | None = None
-    advanced: AdvancedSettings | None = None
-    modelTransform: ModelTransform | None = None
-    customBackground: str | None = None
-    poses: list[SavedPose] | None = Field(default=None, max_length=MAX_POSES)
-    activePoseId: str | None = Field(default=None, pattern=POSE_ID)
-    embed: EmbedSettings | None = None
-    sceneSetup: str | None = Field(default=None, pattern=PRESET_ID)
-    finish: Literal["polished", "brushed", "satin", "hammered", "sandblasted"] | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -150,10 +158,27 @@ class SceneSettings(LookPart):
             return {key: None if value == "" else value for key, value in data.items()}
         return data
 
+
+class SceneSettings(SceneBuckets):
+    """SceneSettingsBuckets in src/lib/slot-materials/model-config.ts."""
+
+    advanced: AdvancedSettings | None = None
+    modelTransform: ModelTransform | None = None
+    # The studio saves a background image as its /api/files/ link (public_file_url).
+    customBackground: Annotated[str, Field(max_length=2048)] | ImageBackground | None = None
+    poses: list[SavedPose] | None = Field(default=None, max_length=MAX_POSES)
+    activePoseId: str | None = Field(default=None, pattern=POSE_ID)
+    embed: EmbedSettings | None = None
+    sceneSetup: str | None = Field(default=None, pattern=PRESET_ID)
+    finish: Literal["polished", "brushed", "satin", "hammered", "sandblasted"] | None = None
+
     @field_validator("customBackground")
     @classmethod
-    def _colour_or_gradient(cls, value: str | None) -> str | None:
-        return value if value is None else check_css_background(value)
+    def _colour_gradient_or_image(cls, value: str | ImageBackground | None) -> str | ImageBackground | None:
+        """A link must be the app's own to a private file; whose file it is, validate_look checks."""
+        if isinstance(value, str) and private_file_key(value) is None:
+            check_css_background(value)
+        return value
 
 
 class MaterialOption(LookPart):
@@ -183,7 +208,7 @@ class ModelConfig(LookPart):
     slotTokens: dict[str, list[str]] | None = None
     slotRenames: dict[str, str] | None = None
     materialProps: dict[str, LayerProps] | None = None  # layer visibility
-    sceneSettings: SceneSettings | None = None
+    sceneSettings: SceneBuckets | None = None
 
 
 class Look(LookPart):
@@ -301,12 +326,43 @@ def _check_setting_slugs(db: Session, settings: Mapping[str, Any]) -> None:
             raise HTTPException(status_code=400, detail=f"look.scene_settings.{key}: '{slug}' is no longer in the catalogue")
 
 
+def background_image_key(db: Session, owner_id: int, asset_id: int) -> str | None:
+    """The file a look's image background draws, or None when it isn't the owner's any more.
+
+    It is the owner's background asset, as the studio shows it (its preview, else the image),
+    and only when that file is under the owner's own prefix. A render job's payload signs it.
+    """
+    asset = get_asset(db, owner_id, asset_id)
+    if asset is None or asset.asset_type != "background":
+        return None
+    key = asset.preview_key or asset.storage_key
+    return key if keys.key_belongs_to_user(key, owner_id) else None
+
+
+def _keep_background_image_by_id(db: Session, settings: dict[str, Any], owner_id: int) -> None:
+    """A background image becomes {"type": "image", "asset_id": id}, once it is one of the
+    owner's background assets; a link to anything else is 400."""
+    value = settings.get("customBackground")
+    if isinstance(value, dict):
+        asset_id = value["asset_id"]
+    elif isinstance(value, str) and (key := private_file_key(value)):
+        asset = asset_at_key(db, owner_id, "background", key)
+        asset_id = asset.id if asset else None
+    else:
+        return  # none, or a colour or a gradient
+    if asset_id is None or background_image_key(db, owner_id, asset_id) is None:
+        raise HTTPException(
+            status_code=400, detail="look.scene_settings.customBackground: not one of your background images"
+        )
+    settings["customBackground"] = {"type": "image", "asset_id": asset_id}
+
+
 def validate_look(db: Session, look: Mapping[str, Any], owner_id: int) -> dict[str, Any]:
     """The look a render job copies, or 400 naming the offending field.
 
     The look is at most 64 KB; its numbers are finite and in range; the items it names are
-    active in the catalogue or the owner's own. Unknown keys inside its settings and model
-    config are dropped.
+    active in the catalogue or the owner's own, and a background image is kept by its asset
+    id. Unknown keys inside its settings and model config are dropped.
     """
     if len(json.dumps(look, separators=(",", ":"), ensure_ascii=False).encode()) > MAX_LOOK_BYTES:
         raise HTTPException(status_code=400, detail=f"look: larger than {MAX_LOOK_BYTES // 1024} KB")
@@ -317,6 +373,7 @@ def validate_look(db: Session, look: Mapping[str, Any], owner_id: int) -> dict[s
     _check_slot_selections(db, parsed, owner_id)
     normalised = parsed.model_dump(mode="json", by_alias=True, exclude_unset=True)
     _check_setting_slugs(db, normalised["scene_settings"])
+    _keep_background_image_by_id(db, normalised["scene_settings"], owner_id)
     return normalised
 
 

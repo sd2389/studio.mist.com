@@ -3,13 +3,17 @@ and the checks a look passes before a render job copies it."""
 
 import json
 from datetime import datetime
+from urllib.parse import urlsplit
 
 import pytest
 from fastapi import HTTPException
 
+from app.config import get_settings
+from app.core.public_urls import public_file_url
 from app.core.storage.local import LocalBackend
 from app.features.scene.look import (
     MAX_LOOK_BYTES,
+    background_image_key,
     catalog_material_slugs,
     custom_material_ids,
     normalize_slot_id,
@@ -28,7 +32,7 @@ from app.models.catalog import (
 )
 from app.models.scene import Scene
 from app.models.user import User
-from app.models.user_library import UserMaterial
+from app.models.user_library import UserAsset, UserMaterial
 
 
 def _other_user(db) -> User:
@@ -261,10 +265,30 @@ def test_a_url_background_is_refused(db, sample_user):
 
 @pytest.mark.parametrize(
     "background",
-    ["https://cdn.example.com/bg.png", "URL(x)", "image-set(#fff 1x)", "var(--x)", "#fff;color:red"],
+    [
+        "https://cdn.example.com/bg.png",
+        "//evil.example/api/files/customers/1/assets/background/abc.png",
+        "https://evil.example/api/files/customers/1/assets/background/abc.png",
+        "{app}/api/files/customers/1/assets/background/abc.png?v=2",
+        "{app}/api/files/customers/2/../1/assets/background/abc.png",
+        "{app}/api/files/catalog/backgrounds/paper.png",
+        "evil.example/backdrop.png",
+        "data:image/png;base64,iVBORw0KGgo=",
+        "URL(x)",
+        "image-set(#fff 1x)",
+        "var(--x)",
+        "#fff;color:red",
+    ],
 )
-def test_only_colours_and_gradients_make_a_background(db, sample_user, background):
-    _refused(db, sample_user, _look(scene_settings=_settings(customBackground=background)))
+def test_a_background_is_a_colour_a_gradient_or_a_link_of_the_app(db, sample_user, background):
+    """Another host, a query, a path out of the owner's files, a data URL: refused naming the field."""
+    background = background.format(app=get_settings().app_public_url.rstrip("/"))
+
+    detail = _refused(db, sample_user, _look(scene_settings=_settings(customBackground=background)))
+
+    assert detail == (
+        "look.scene_settings.customBackground: must be a colour, a gradient of colours or one of your background images"
+    )
 
 
 @pytest.mark.parametrize(
@@ -275,6 +299,128 @@ def test_colours_and_gradients_are_kept(db, sample_user, background):
     kept = validate_look(db, _look(scene_settings=_settings(customBackground=background)), sample_user.id)
 
     assert kept["scene_settings"]["customBackground"] == background
+
+
+# ---------------------------------------------------------------------------
+# Background images from the owner's library
+# ---------------------------------------------------------------------------
+
+
+def _background_asset(db, user, key: str | None = None, *, preview_key: str | None = None, asset_type: str = "background") -> UserAsset:
+    """A library image as an upload stores it: the image is its own preview."""
+    key = key or f"customers/{user.id}/assets/{asset_type}/abc123def456.png"
+    asset = UserAsset(
+        user_id=user.id,
+        asset_type=asset_type,
+        label="Backdrop",
+        storage_key=key,
+        preview_key=preview_key or key,
+        mime_type="image/png",
+        byte_size=10,
+        meta={},
+    )
+    db.add(asset)
+    db.commit()
+    return asset
+
+
+def _with_background(value) -> dict:
+    return _look(scene_settings=_settings(customBackground=value))
+
+
+@pytest.mark.parametrize("form", ["link", "relative link", "kept"])
+def test_your_background_image_is_kept_by_its_asset_id(db, sample_user, form):
+    """The studio saves an uploaded backdrop as its /api/files/ link (the asset's preview_url)."""
+    asset = _background_asset(db, sample_user)
+    link = public_file_url(asset.preview_key)
+    value = {"link": link, "relative link": urlsplit(link).path, "kept": {"type": "image", "asset_id": asset.id}}[form]
+
+    kept = validate_look(db, _with_background(value), sample_user.id)
+
+    assert kept["scene_settings"]["customBackground"] == {"type": "image", "asset_id": asset.id}
+    assert background_image_key(db, sample_user.id, asset.id) == asset.preview_key
+
+
+def test_a_link_to_the_image_or_its_preview_names_the_asset(db, sample_user):
+    """Older library rows kept their own file names (escaped in the link) and a separate preview."""
+    asset = _background_asset(
+        db,
+        sample_user,
+        f"customers/{sample_user.id}/assets/My backdrop.png",
+        preview_key=f"customers/{sample_user.id}/assets/previews/My backdrop.webp",
+    )
+
+    for key in (asset.storage_key, asset.preview_key):
+        assert "%20" in public_file_url(key)
+        kept = validate_look(db, _with_background(public_file_url(key)), sample_user.id)
+        assert kept["scene_settings"]["customBackground"] == {"type": "image", "asset_id": asset.id}
+    # The worker draws what the studio shows: the preview.
+    assert background_image_key(db, sample_user.id, asset.id) == asset.preview_key
+
+
+def test_someone_elses_background_image_is_refused(db, sample_user):
+    theirs = _background_asset(db, _other_user(db))
+
+    for value in (public_file_url(theirs.storage_key), {"type": "image", "asset_id": theirs.id}):
+        detail = _refused(db, sample_user, _with_background(value))
+        assert detail == "look.scene_settings.customBackground: not one of your background images"
+
+
+def test_a_deleted_background_image_is_refused(db, sample_user):
+    asset = _background_asset(db, sample_user)
+    link, asset_id = public_file_url(asset.storage_key), asset.id
+    db.delete(asset)
+    db.commit()
+
+    assert _refused(db, sample_user, _with_background(link)).endswith("not one of your background images")
+    assert _refused(db, sample_user, _with_background({"type": "image", "asset_id": asset_id})).endswith(
+        "not one of your background images"
+    )
+    assert background_image_key(db, sample_user.id, asset_id) is None
+
+
+def test_only_background_assets_make_a_background(db, sample_user):
+    environment = _background_asset(db, sample_user, asset_type="metal_env")
+
+    assert _refused(db, sample_user, _with_background(public_file_url(environment.storage_key))).endswith(
+        "not one of your background images"
+    )
+
+
+def test_a_library_row_pointing_at_someone_elses_file_is_refused(db, sample_user):
+    """Rows registered before uploads were checked could name any preview key."""
+    other = _other_user(db)
+    asset = _background_asset(
+        db,
+        sample_user,
+        preview_key=f"customers/{other.id}/assets/background/their-file.png",
+    )
+
+    assert background_image_key(db, sample_user.id, asset.id) is None
+    assert _refused(db, sample_user, _with_background({"type": "image", "asset_id": asset.id})).endswith(
+        "not one of your background images"
+    )
+
+
+@pytest.mark.parametrize(
+    "value",
+    [{"type": "image", "asset_id": 1, "url": "https://evil.example/x.png"}, {"type": "video", "asset_id": 1}],
+)
+def test_the_kept_form_takes_nothing_else(db, sample_user, value):
+    _background_asset(db, sample_user)
+
+    assert _refused(db, sample_user, _with_background(value)).startswith("look.scene_settings.customBackground")
+
+
+def test_a_model_configs_settings_keep_only_the_catalogue_selections(db, sample_user):
+    model_config = {
+        "slots": [{"slotId": "Metal 1"}, {"slotId": "Gem 1"}],
+        "sceneSettings": {"BACKGROUND": "", "quality_mode": "standard", "customBackground": "https://evil.example/x.png"},
+    }
+
+    kept = validate_look(db, _look(model_config=model_config), sample_user.id)
+
+    assert kept["model_config"]["sceneSettings"] == {"BACKGROUND": None, "quality_mode": "standard"}
 
 
 def test_a_retired_catalogue_slug_is_refused(db, sample_user):

@@ -8,11 +8,12 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.core import storage as storage_mod
+from app.core.public_urls import public_file_url
 from app.core.rate_limit import get_rate_limiter
 from app.core.storage.local import LocalBackend
 from app.features.billing.quota_service import get_or_create_billing, reset_allotments
 from app.main import app
-from app.models import Render, RenderJob, Scene, User
+from app.models import Render, RenderJob, Scene, User, UserAsset
 from app.models.user import Session as DbSession
 
 VIEW = {"view": {"position": [0.62, 0.88, 2.25], "target": [0, 0, 0]}}
@@ -194,6 +195,21 @@ def test_the_look_comes_from_the_request_else_the_variant_else_the_scene(client,
     assert looks[0] == look
     assert (looks[1]["material"], looks[1]["lighting"], looks[1]["scene_settings"]["finish"]) == ("gold-18k-rose", "dramatic", "brushed")
     assert (looks[2]["material"], looks[2]["lighting"]) == ("platinum", "soft")
+
+
+def test_a_saved_background_image_of_the_owner_is_kept_by_id(client, db, owner, scene):
+    """The studio saves an uploaded backdrop as its link; the job keeps the asset, not the address."""
+    key = f"customers/{owner[0].id}/assets/background/abc123def456.png"
+    asset = UserAsset(user_id=owner[0].id, asset_type="background", label="Backdrop", storage_key=key, preview_key=key)
+    db.add(asset)
+    db.commit()
+    scene.scene_settings = {**scene.scene_settings, "customBackground": public_file_url(key)}
+    db.commit()
+
+    res = _create(client, owner[1], scene)
+
+    assert res.status_code == 201
+    assert _job_rows(db)[0].look["scene_settings"]["customBackground"] == {"type": "image", "asset_id": asset.id}
 
 
 def test_the_queue_is_capped_by_the_plan(client, db, owner, scene):

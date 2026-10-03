@@ -1,6 +1,6 @@
 """Build public URLs for stored object keys."""
 
-from urllib.parse import quote
+from urllib.parse import quote, unquote, urlsplit
 
 from app.config import get_settings
 from app.core import storage_keys as keys
@@ -8,6 +8,28 @@ from app.core import storage_keys as keys
 
 def _encode_key_path(key: str) -> str:
     return "/".join(quote(part, safe="") for part in key.strip("/").split("/"))
+
+
+def private_file_key(url: str) -> str | None:
+    """The key of the private file a link from public_file_url names, else None.
+
+    The link must be the app's own /api/files/ path, on APP_PUBLIC_URL's origin or
+    root-relative, with no query or fragment, and name a customer's file. Any other link,
+    another host's or a data URL, gives None.
+    """
+    parts = urlsplit(url)
+    app = urlsplit(get_settings().app_public_url)
+    files_path = f"{app.path.rstrip('/')}/api/files/"
+    if parts.query or parts.fragment or not parts.path.startswith(files_path):
+        return None
+    if (parts.scheme or parts.netloc) and (parts.scheme, parts.netloc.lower()) != (app.scheme, app.netloc.lower()):
+        return None
+    key = "/".join(unquote(part) for part in parts.path.removeprefix(files_path).split("/"))
+    try:
+        keys.reject_unsafe_key(key)
+    except ValueError:
+        return None
+    return key if keys.is_customer_private_key(key) else None
 
 
 def public_file_url(key: str) -> str | None:

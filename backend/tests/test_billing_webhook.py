@@ -345,25 +345,125 @@ def test_webhook_rejects_invalid_signature(db):
     assert exc.value.status_code == 400
 
 
-def test_signed_subscription_update_moves_the_customer_to_grow(db, sample_user):
-    """A plan change made in the Stripe portal arrives as customer.subscription.updated."""
-    billing = get_or_create_billing(db, sample_user)
-    billing.stripe_customer_id = "cus_grow"
-    db.commit()
-    event = {
-        "id": "evt_portal_upgrade",
+def _subscription_event(
+    event_id: str, event_type: str = "customer.subscription.updated", **changes
+) -> dict:
+    """A customer.subscription.* event for GROW_SUBSCRIPTION, with `changes` made to it."""
+    return {
+        "id": event_id,
         "object": "event",
-        "type": "customer.subscription.updated",
-        "data": {"object": GROW_SUBSCRIPTION},
+        "type": event_type,
+        "data": {"object": {**GROW_SUBSCRIPTION, **changes}},
     }
 
+
+def _grow_customer_billing(db, user, **fields):
+    """The user's billing row, linked to the Stripe customer GROW_SUBSCRIPTION belongs to."""
+    billing = get_or_create_billing(db, user)
+    billing.stripe_customer_id = "cus_grow"
+    for name, value in fields.items():
+        setattr(billing, name, value)
+    db.commit()
+    return billing
+
+
+def _credit_balances(billing) -> tuple[int, ...]:
+    return (
+        billing.model_credits_balance,
+        billing.ai_image_credits_balance,
+        billing.render_credits_balance,
+        billing.custom_material_credits_balance,
+        billing.custom_asset_credits_balance,
+    )
+
+
+def test_signed_subscription_update_moves_the_customer_to_grow(db, sample_user):
+    """A plan change made in the Stripe portal arrives as customer.subscription.updated. It
+    changes the plan; the plan's credits come with the payment, not with this event."""
+    billing = _grow_customer_billing(db, sample_user)
+    credits_before = _credit_balances(billing)
+
     with _stripe_test_env() as env:
-        result = _send_signed(db, event)
+        result = _send_signed(db, _subscription_event("evt_upgrade"))
     db.refresh(billing)
 
     assert result == {"status": "ok"}
     assert (billing.plan_tier, billing.stripe_subscription_id) == ("grow", "sub_grow")
     assert (billing.period_start, billing.period_end) == GROW_PERIOD
+    assert _credit_balances(billing) == credits_before
     env.plan_email.assert_called_once_with(
         to=sample_user.email, plan_label=PLAN_LABELS["grow"], action="updated"
+    )
+
+
+def test_subscription_update_on_the_same_plan_adds_no_credits(db, sample_user):
+    """Renewals, card changes and cancel toggles send customer.subscription.updated too. They
+    must not refill used credits or wipe bought ones, and need no plan email."""
+    billing = _grow_customer_billing(
+        db,
+        sample_user,
+        plan_tier="grow",
+        stripe_subscription_id="sub_grow",
+        ai_image_credits_balance=3,
+    )
+    credits_before = _credit_balances(billing)
+
+    with _stripe_test_env() as env:
+        result = _send_signed(db, _subscription_event("evt_card_change"))
+    db.refresh(billing)
+
+    assert result == {"status": "ok"}
+    assert billing.plan_tier == "grow"
+    assert _credit_balances(billing) == credits_before
+    env.plan_email.assert_not_called()
+
+
+def test_subscription_created_before_its_first_payment_clears_starts_no_plan(db, sample_user):
+    billing = _grow_customer_billing(db, sample_user)
+    credits_before = _credit_balances(billing)
+
+    with _stripe_test_env() as env:
+        created = _subscription_event(
+            "evt_created_unpaid", "customer.subscription.created", status="incomplete"
+        )
+        _send_signed(db, created)
+    db.refresh(billing)
+
+    assert (billing.plan_tier, billing.stripe_subscription_id) == ("free", None)
+    assert _credit_balances(billing) == credits_before
+    env.plan_email.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "event_type", ["customer.subscription.updated", "customer.subscription.deleted"]
+)
+def test_an_older_subscription_ending_leaves_the_newer_plan(db, sample_user, event_type):
+    """The customer moved from sub_grow to sub_new; sub_grow ending must not downgrade them."""
+    billing = _grow_customer_billing(
+        db, sample_user, plan_tier="studio", stripe_subscription_id="sub_new"
+    )
+
+    with _stripe_test_env() as env:
+        _send_signed(db, _subscription_event("evt_old_ends", event_type, status="canceled"))
+    db.refresh(billing)
+
+    assert (billing.plan_tier, billing.stripe_subscription_id) == ("studio", "sub_new")
+    env.plan_email.assert_not_called()
+
+
+def test_the_current_subscription_ending_moves_the_customer_to_free(db, sample_user):
+    billing = _grow_customer_billing(
+        db, sample_user, plan_tier="grow", stripe_subscription_id="sub_grow"
+    )
+
+    with _stripe_test_env() as env:
+        deleted = _subscription_event(
+            "evt_cancelled", "customer.subscription.deleted", status="canceled"
+        )
+        _send_signed(db, deleted)
+    db.refresh(billing)
+
+    assert (billing.plan_tier, billing.stripe_subscription_id) == ("free", None)
+    env.plan_email.assert_called_once_with(
+        to=sample_user.email, plan_label=PLAN_LABELS["free"], action="cancelled"
     )

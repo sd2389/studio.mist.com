@@ -124,6 +124,24 @@ def set_subscription_period(
     db.commit()
 
 
+def change_plan(
+    db: Session,
+    billing: UserBilling,
+    *,
+    tier: PlanTier,
+    period_start: datetime | None,
+    period_end: datetime | None,
+    stripe_subscription_id: str | None,
+) -> None:
+    """Move the account to a plan and billing period. Credit balances stay as they are."""
+    billing.plan_tier = tier
+    billing.period_start = period_start
+    billing.period_end = period_end
+    billing.stripe_subscription_id = stripe_subscription_id
+    billing.updated_at = datetime.utcnow()
+    db.commit()
+
+
 def downgrade_to_free(db: Session, billing: UserBilling) -> None:
     billing.stripe_subscription_id = None
     billing.period_start = None

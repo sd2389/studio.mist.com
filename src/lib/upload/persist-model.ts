@@ -111,14 +111,15 @@ export async function persistUploadedModel(input: PersistModelInput): Promise<Pe
         scene_settings: sceneSettings,
       }),
     });
-    const regJson = (await reg.json()) as { error?: string; scene_id?: number };
+    const regJson = (await reg.json()) as { error?: string; scene_id?: number; model_key?: string };
     if (!reg.ok) {
       throw new RegisterRejectedError(regJson.error ?? "Register failed");
     }
-    if (typeof regJson.scene_id !== "number") {
-      throw new Error("Missing scene_id from register response");
+    if (typeof regJson.scene_id !== "number" || !regJson.model_key) {
+      throw new Error("Missing scene_id or model_key from register response");
     }
-    return { sceneId: regJson.scene_id, modelKey: modelPut.key };
+    // The server keeps the checked model under a key of its own and deletes the presigned one.
+    return { sceneId: regJson.scene_id, modelKey: regJson.model_key };
   } catch (presignErr) {
     if (presignErr instanceof RegisterRejectedError) throw presignErr;
 

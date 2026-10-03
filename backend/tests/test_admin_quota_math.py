@@ -19,6 +19,39 @@ def test_consume_model_credit_decrements_balance(db, sample_user):
     assert billing.model_credits_balance == start - 1
 
 
+def test_consume_model_credit_counts_the_upload_and_waits_for_the_callers_commit(db, sample_user):
+    billing = get_or_create_billing(db, sample_user)
+    start = billing.model_credits_balance
+
+    consume_model_credit(db, billing, 500)
+    db.rollback()
+    db.refresh(billing)
+    assert (billing.model_credits_balance, billing.storage_bytes_used) == (start, 0)
+
+    consume_model_credit(db, billing, 500)
+    db.commit()
+    db.refresh(billing)
+    assert (billing.model_credits_balance, billing.storage_bytes_used) == (start - 1, 500)
+
+
+def test_consume_model_credit_refuses_a_credit_another_save_already_spent(db, sample_user):
+    """The balance in memory says 1, but a concurrent save took it: no second spend."""
+    import pytest
+    from fastapi import HTTPException
+    from sqlalchemy import update
+
+    from app.models.billing import UserBilling
+
+    billing = get_or_create_billing(db, sample_user)
+    billing.model_credits_balance = 1
+    db.commit()
+    db.execute(update(UserBilling.__table__).where(UserBilling.__table__.c.id == billing.id).values(model_credits_balance=0))
+
+    with pytest.raises(HTTPException) as exc:
+        consume_model_credit(db, billing)
+    assert exc.value.status_code == 402
+
+
 def test_adjust_credits_grant_and_deduct(db, sample_user, admin_user):
     billing = get_or_create_billing(db, sample_user)
     start = billing.model_credits_balance

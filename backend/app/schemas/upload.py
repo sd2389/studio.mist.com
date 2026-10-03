@@ -9,6 +9,7 @@ class PresignRequest(BaseModel):
 
 class RegisterRequest(BaseModel):
     key: str = Field(..., min_length=3, max_length=512)
+    # Declared by the client and logged; the plan cap holds against the stored GLB's own count.
     polygon_count: int = Field(..., ge=0)
     name: str | None = Field(default=None, max_length=255)
     sku: str | None = Field(default=None, max_length=128)

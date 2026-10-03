@@ -17,6 +17,10 @@ class StorageAdapterError(AdapterError):
     dependency = "storage"
 
 
+class StorageObjectTooLargeError(StorageAdapterError):
+    """A stored object is larger than the caller would read; it was left unread."""
+
+
 class EmailAdapterError(AdapterError):
     dependency = "email"
 

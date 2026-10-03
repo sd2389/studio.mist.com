@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
 from fastapi import HTTPException
 
 from app.config import get_settings
-from app.core.adapters.errors import StorageAdapterError
+from app.core.adapters.errors import StorageAdapterError, StorageObjectTooLargeError
 from app.core.cache_policy import cache_control_for_key
 
 
@@ -17,17 +18,24 @@ class LocalBackend:
         self._root = root or get_settings().upload_dir
 
     def _path(self, key: str) -> Path:
-        return self._root / key
+        """The file for `key`. A key that would leave the storage root (`..`, absolute) is refused."""
+        root = os.path.realpath(self._root)
+        path = os.path.realpath(os.path.join(root, key))
+        if not path.startswith(root + os.sep):
+            raise HTTPException(status_code=400, detail="Invalid storage key")
+        return Path(path)
 
     def put_bytes(self, key: str, data: bytes, content_type: str | None = None) -> None:
         dest = self._path(key)
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_bytes(data)
 
-    def get_bytes(self, key: str) -> bytes:
+    def get_bytes(self, key: str, max_bytes: int | None = None) -> bytes:
         path = self._path(key)
         if not path.exists():
             raise HTTPException(status_code=404, detail="Uploaded file not found")
+        if max_bytes is not None and path.stat().st_size > max_bytes:
+            raise StorageObjectTooLargeError(f"{key} is larger than {max_bytes} bytes")
         data = path.read_bytes()
         if not data:
             raise HTTPException(status_code=400, detail="Uploaded file is empty")

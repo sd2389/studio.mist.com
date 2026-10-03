@@ -1,4 +1,8 @@
-"""Upload flows: ingest config merge, persist scene metadata, store bytes."""
+"""Upload flows: ingest config merge, persist scene metadata, store bytes.
+
+Every stored model is binary glTF 2.0, checked by its bytes; its triangles are counted from
+the file, never taken from the client.
+"""
 
 from __future__ import annotations
 
@@ -11,8 +15,10 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.core import storage
 from app.core import storage_keys as keys
+from app.core.observability import get_logger, log_event
 from app.features.publish import service as publish_service
 from app.features.billing.quota_service import (
     assert_model_credit,
@@ -23,6 +29,7 @@ from app.features.billing.quota_service import (
 from app.models.billing import UserBilling
 from app.models.scene import Scene
 from app.models.user import User
+from app.services import glb
 from app.services.model_config import (
     build_scene_settings_config,
     build_slot_material_config,
@@ -31,8 +38,13 @@ from app.services.model_config import (
     merge_slot_material_config,
 )
 
-# Mirrors SUPPORTED_MODEL_EXTS in src/lib/model-key.ts. The browser converts every one of
-# these to GLB before upload, so stored model keys always end in CANONICAL_MODEL_SUFFIX.
+logger = get_logger("studio.upload")
+
+GLB_CONTENT_TYPE = "model/gltf-binary"
+NOT_GLB_DETAIL = "Models must be GLB; the studio's upload page converts CAD files for you."
+
+# Mirrors SUPPORTED_MODEL_EXTS in src/lib/model-key.ts. These names only pick the key; the
+# browser converts every one of them to GLB first, and the server checks the bytes.
 SUPPORTED_MODEL_SUFFIXES = (
     ".glb",
     ".gltf",
@@ -112,6 +124,47 @@ def build_ingest_configs(filename: str, payload: bytes) -> tuple[dict, dict]:
     return slot_config, scene_config
 
 
+def require_upload_size(byte_count: int) -> None:
+    max_bytes = get_settings().max_upload_bytes
+    if byte_count > max_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File exceeds maximum upload size ({max_bytes // (1024 * 1024)} MB)",
+        )
+
+
+def count_model_triangles(payload: bytes) -> int:
+    """Triangles the model draws, counted from its own bytes. Anything else is refused:
+    415 for another format (CAD, OBJ, glTF JSON, a renamed file), 422 for a GLB that is cut
+    short, malformed, or draws no triangles."""
+    try:
+        triangles = glb.count_glb_triangles(payload)
+    except glb.NotGlbError as exc:
+        raise HTTPException(status_code=415, detail=NOT_GLB_DETAIL) from exc
+    except glb.BrokenGlbError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"This GLB can't be read: {exc}. Try the upload again from the studio's upload page.",
+        ) from exc
+    if triangles < 1:
+        raise HTTPException(status_code=422, detail="This GLB draws no triangles, so there is nothing to show.")
+    return triangles
+
+
+def assert_model_fits_plan(db: Session, user: User, model_bytes: bytes, upload_bytes: int) -> UserBilling:
+    """What every model passes before it is stored, in this order: real GLB (415 / 422),
+    triangles within the plan (402), room in storage (402), a model credit left (402).
+    Returns the billing row the credit is then taken from."""
+    assert_polygon_limit(db, user, count_model_triangles(model_bytes))
+    assert_storage_for_upload(db, user, upload_bytes)
+    return assert_model_credit(db, user)
+
+
+def reject_taken_sku(db: Session, sku: str | None) -> None:
+    if sku and db.execute(select(Scene.id).where(Scene.sku == sku)).first() is not None:
+        raise HTTPException(status_code=409, detail="SKU already exists")
+
+
 def save_scene_and_charge(db: Session, scene: Scene, billing: UserBilling, upload_bytes: int) -> None:
     """Save the scene, its model credit and its storage in one commit: a refused charge
     leaves no scene behind, and a save that fails takes no credit."""
@@ -123,6 +176,29 @@ def save_scene_and_charge(db: Session, scene: Scene, billing: UserBilling, uploa
         db.rollback()
         raise
     db.refresh(scene)
+
+
+def store_model_scene(
+    db: Session, scene: Scene, model_bytes: bytes, billing: UserBilling, upload_bytes: int
+) -> None:
+    """Write the checked model at the scene's key, save the scene with its charge, then
+    publish it. A save that fails takes the written model away again."""
+    storage.write_bytes(scene.model_key, model_bytes, content_type=GLB_CONTENT_TYPE)
+    try:
+        save_scene_and_charge(db, scene, billing, upload_bytes)
+    except Exception:
+        delete_quietly(scene.model_key)
+        raise
+    publish_service.publish_scene_to_public(scene)
+
+
+def delete_quietly(key: str) -> None:
+    """Remove an object the server will not keep. A failure is logged, not raised over the
+    error that led here."""
+    try:
+        storage.delete(key)
+    except Exception as exc:  # noqa: BLE001 - cleanup must not mask the original error
+        log_event(logger, "upload.cleanup_failed", key=key, error=str(exc))
 
 
 def _total_upload_bytes(model_bytes: int, thumbnail_key: str | None) -> int:
@@ -218,22 +294,18 @@ def save_direct_multipart(
     model_config_raw: Any,
     slot_selections_raw: Any,
     scene_settings_raw: Any,
-    polygon_count: int,
 ) -> dict[str, int | str]:
+    """Save a model sent in the request body. Nothing is written until the bytes are a real
+    GLB that fits the plan."""
     require_supported_model_filename(filename)
+    if not body:
+        raise HTTPException(status_code=400, detail="Empty file")
+    require_upload_size(len(body))
     safe_name = safe_filename(filename, force_glb=True)
     key = keys.model_key(user.id, safe_name)
 
-    if sku:
-        existing = db.execute(select(Scene).where(Scene.sku == sku)).scalars().first()
-        if existing is not None:
-            raise HTTPException(status_code=409, detail="SKU already exists")
-
-    # The declared count comes from the client; the cap also holds against what the GLB draws.
-    assert_polygon_limit(db, user, max(polygon_count, count_glb_triangles(body)))
-
-    assert_storage_for_upload(db, user, len(body))
-    billing = assert_model_credit(db, user)
+    reject_taken_sku(db, sku)
+    billing = assert_model_fits_plan(db, user, body, len(body))
 
     model_config_payload = parse_json_object(model_config_raw, "model_config")
     slot_selections_payload = parse_json_object(slot_selections_raw, "slot_selections")
@@ -244,8 +316,6 @@ def save_direct_multipart(
     scene_settings_payload = merge_scene_settings(inferred_scene, scene_settings_payload or None)
     if not slot_selections_payload:
         slot_selections_payload = dict(model_config_payload.get("defaultMaterials") or {})
-
-    storage.write_bytes(key, body)
 
     now = datetime.utcnow()
     scene = Scene(
@@ -264,8 +334,7 @@ def save_direct_multipart(
         created_at=now,
         updated_at=now,
     )
-    save_scene_and_charge(db, scene, billing, len(body))
-    publish_service.publish_scene_to_public(scene)
+    store_model_scene(db, scene, body, billing, len(body))
     return {"scene_id": scene.id, "model_key": key}
 
 

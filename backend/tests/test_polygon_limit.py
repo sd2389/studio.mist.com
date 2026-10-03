@@ -80,6 +80,8 @@ def test_register_rejects_over_cap_before_consuming_model_credit(db, sample_user
 
 
 def test_direct_save_rejects_over_cap_before_consuming_model_credit(db, sample_user):
+    from model_samples import glb_with_triangles
+
     from app.features.upload import service as upload_service
 
     billing = get_or_create_billing(db, sample_user)
@@ -90,11 +92,10 @@ def test_direct_save_rejects_over_cap_before_consuming_model_credit(db, sample_u
             db,
             user=sample_user,
             filename="model.glb",
-            body=b"glTF-ish",
+            body=glb_with_triangles(100_001),
             model_config_raw=None,
             slot_selections_raw=None,
             scene_settings_raw=None,
-            polygon_count=100_001,
         )
 
     assert exc.value.status_code == 402

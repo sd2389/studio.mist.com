@@ -3,6 +3,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
+from fastapi import HTTPException
 
 from app.core.adapters.errors import StorageObjectTooLargeError
 from app.core.s3_client import read_object_body
@@ -57,3 +58,14 @@ def test_s3_read_caps_what_it_reads_when_the_length_is_missing():
 def test_s3_read_returns_the_bytes_within_the_cap():
     assert read_object_body({"Body": _Body(b"glb"), "ContentLength": 3}, "k", max_bytes=3) == b"glb"
     assert read_object_body({"Body": _Body(b"glb")}, "k") == b"glb"
+
+
+@pytest.mark.parametrize("key", ["../outside.glb", "models/../../outside.glb", "/tmp/outside.glb", ""])
+def test_local_backend_refuses_keys_outside_its_root(tmp_path, key):
+    backend = LocalBackend(root=tmp_path / "uploads")
+
+    with pytest.raises(HTTPException) as exc:
+        backend.put_bytes(key, b"glTF")
+
+    assert exc.value.status_code == 400
+    assert not (tmp_path / "outside.glb").exists()

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -17,7 +18,12 @@ class LocalBackend:
         self._root = root or get_settings().upload_dir
 
     def _path(self, key: str) -> Path:
-        return self._root / key
+        """The file for `key`. A key that would leave the storage root (`..`, absolute) is refused."""
+        root = os.path.realpath(self._root)
+        path = os.path.realpath(os.path.join(root, key))
+        if not path.startswith(root + os.sep):
+            raise HTTPException(status_code=400, detail="Invalid storage key")
+        return Path(path)
 
     def put_bytes(self, key: str, data: bytes, content_type: str | None = None) -> None:
         dest = self._path(key)

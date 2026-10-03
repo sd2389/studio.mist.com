@@ -118,7 +118,7 @@ Templates: [`.env.example`](.env.example) (web, Compose) and [`backend/.env.exam
 | `STORAGE_BACKEND` | backend | `local`, `r2` or `s3`; unset or `auto` picks R2 when its keys are set, then S3 when `AWS_BUCKET` is set, else `backend/uploads/` |
 | `R2_*` | backend | Cloudflare R2 account, keys, private and public buckets, endpoint and public base URL |
 | `AWS_*` | backend | Amazon S3 or another S3-compatible store |
-| `MAX_UPLOAD_BYTES`, `RATE_LIMIT_*` | backend | Upload size cap; hourly limits on uploads and AI backgrounds |
+| `MAX_UPLOAD_BYTES`, `RATE_LIMIT_*` | backend | Upload size cap; hourly limits on uploads and AI backgrounds, counted in the database so every API process shares them |
 | `AI_BACKGROUND_MODE` | backend | AI backgrounds: `off`, `stub` (no GPU) or `sdxl` (GPU host, optional packages) |
 | `AI_ON_MODEL_PROVIDER`, `REPLICATE_API_TOKEN` | backend | On-model shots: `stub`, `sdxl` or `replicate` |
 | `EMAIL_FROM`, `CONTACT_NOTIFY_EMAIL`, `SMTP_*` | backend | Password-reset and contact-form email; without `SMTP_HOST`, emails go to the log |

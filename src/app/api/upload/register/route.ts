@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireSessionApi } from "@/lib/auth/require-api-access";
 import { readUpstreamJson, upstreamError, upstreamFetch } from "@/lib/auth/upstream";
-import { enforceApiRateLimit } from "@/lib/observability/api-rate-limit";
 
 type RegisterBody = {
   key?: string;
@@ -20,13 +19,6 @@ type RegisterBody = {
 export async function POST(request: Request) {
   const denied = await requireSessionApi();
   if (denied) return denied;
-
-  const limited = await enforceApiRateLimit({
-    scope: "api.upload.register",
-    maxRequests: 30,
-    request,
-  });
-  if (limited) return limited;
 
   let body: RegisterBody;
   try {

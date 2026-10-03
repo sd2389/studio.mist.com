@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { SESSION_COOKIE } from "@/lib/auth/constants";
 import { sessionCookieOptions } from "@/lib/auth/server-session";
 import { readUpstreamJson, upstreamError, upstreamFetch } from "@/lib/auth/upstream";
+import { enforceIpRateLimit } from "@/lib/observability/api-rate-limit";
 
 const SESSION_MAX_AGE = 60 * 60 * 24 * 30;
 
@@ -18,6 +19,9 @@ async function setSessionFromAuthResponse(json: unknown): Promise<NextResponse> 
 }
 
 export async function POST(request: Request) {
+  const limited = enforceIpRateLimit({ scope: "api.auth.signup", maxRequests: 20, request });
+  if (limited) return limited;
+
   let payload: unknown;
   try {
     payload = await request.json();

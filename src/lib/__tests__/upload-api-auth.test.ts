@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const fetchCurrentUser = vi.fn();
 const upstreamFetch = vi.fn();
 const authHeaders = vi.fn(async () => ({}));
-const enforceApiRateLimit = vi.fn(async () => null);
 
 vi.mock("@/lib/auth/server-session", () => ({
   fetchCurrentUser: () => fetchCurrentUser(),
@@ -16,10 +15,6 @@ vi.mock("@/lib/auth/upstream", () => ({
   upstreamError: (_json: unknown, fallback: string) => fallback,
 }));
 
-vi.mock("@/lib/observability/api-rate-limit", () => ({
-  enforceApiRateLimit: () => enforceApiRateLimit(),
-}));
-
 vi.mock("@/lib/api-url", () => ({
   getServerApiUrl: () => "http://backend.test",
 }));
@@ -30,7 +25,6 @@ describe("unauthenticated upload write APIs", () => {
     fetchCurrentUser.mockReset();
     upstreamFetch.mockReset();
     authHeaders.mockClear();
-    enforceApiRateLimit.mockClear();
     fetchCurrentUser.mockResolvedValue(null);
   });
 
@@ -47,7 +41,6 @@ describe("unauthenticated upload write APIs", () => {
     const body = (await res.json()) as { error?: string };
     expect(body.error).toBe("Authentication required");
     expect(upstreamFetch).not.toHaveBeenCalled();
-    expect(enforceApiRateLimit).not.toHaveBeenCalled();
   });
 
   it("POST /api/upload/register returns 401 and does not call upstream", async () => {
@@ -67,7 +60,6 @@ describe("unauthenticated upload write APIs", () => {
     const body = (await res.json()) as { error?: string };
     expect(body.error).toBe("Authentication required");
     expect(upstreamFetch).not.toHaveBeenCalled();
-    expect(enforceApiRateLimit).not.toHaveBeenCalled();
   });
 
   it("POST /api/models/upload returns 401 and does not call upstream fetch", async () => {
@@ -85,7 +77,33 @@ describe("unauthenticated upload write APIs", () => {
     const body = (await res.json()) as { error?: string };
     expect(body.error).toBe("Authentication required");
     expect(fetchSpy).not.toHaveBeenCalled();
-    expect(enforceApiRateLimit).not.toHaveBeenCalled();
     fetchSpy.mockRestore();
+  });
+});
+
+describe("signed-in upload proxies", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    upstreamFetch.mockReset();
+    fetchCurrentUser.mockResolvedValue({ id: 1, email: "user@example.com", role: "user" });
+  });
+
+  it("leave rate limits to the API, which counts them for every process", async () => {
+    upstreamFetch.mockImplementation(async () => new Response(JSON.stringify({ key: "k" }), { status: 200 }));
+    const { POST } = await import("@/app/api/upload/presign/route");
+    const presign = () =>
+      POST(
+        new Request("http://localhost/api/upload/presign", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Forwarded-For": "203.0.113.9" },
+          body: JSON.stringify({ filename: "ring.glb" }),
+        }),
+      );
+
+    const statuses = [];
+    for (let i = 0; i < 40; i += 1) statuses.push((await presign()).status);
+
+    expect(new Set(statuses)).toEqual(new Set([200]));
+    expect(upstreamFetch).toHaveBeenCalledTimes(40);
   });
 });

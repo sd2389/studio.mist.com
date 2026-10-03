@@ -13,7 +13,6 @@ from sqlalchemy import func, select
 
 from app.core import storage as storage_mod
 from app.core.deps import get_current_user
-from app.core.rate_limit import get_rate_limiter
 from app.core.storage.local import LocalBackend
 from app.database import get_db
 from app.features.billing.quota_service import get_or_create_billing
@@ -43,10 +42,8 @@ def client(db, sample_user, store):
     """The API, signed in as `sample_user`."""
     app.dependency_overrides[get_db] = lambda: db
     app.dependency_overrides[get_current_user] = lambda: sample_user
-    get_rate_limiter().reset()
     yield TestClient(app)
     app.dependency_overrides.clear()
-    get_rate_limiter().reset()
 
 
 def balances(db, user) -> tuple[int, int]:

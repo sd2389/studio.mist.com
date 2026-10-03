@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { getServerApiUrl } from "@/lib/api-url";
 import { requireSessionApi } from "@/lib/auth/require-api-access";
 import { upstreamFetch } from "@/lib/auth/upstream";
-import { enforceApiRateLimit } from "@/lib/observability/api-rate-limit";
 
 type PresignBody = {
   filename?: string;
@@ -12,13 +11,6 @@ type PresignBody = {
 export async function POST(request: Request) {
   const denied = await requireSessionApi();
   if (denied) return denied;
-
-  const limited = await enforceApiRateLimit({
-    scope: "api.upload.presign",
-    maxRequests: 30,
-    request,
-  });
-  if (limited) return limited;
 
   let body: PresignBody;
   try {

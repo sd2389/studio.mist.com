@@ -83,15 +83,24 @@ async function captureExport(id, outDir) {
   const payload = JSON.parse(readFileSync(`tests/goldens/fixtures/${id}.json`, "utf8"));
   const sink = await startSink({ model: readFileSync(FIXTURE_MODEL), origin: new URL(BASE_URL).origin });
   const browser = await launchWebGpuBrowser();
+  const console_ = [];
   try {
     const page = await browser.newPage({ viewport: { width: 800, height: 800 }, deviceScaleFactor: 1 });
     page.setDefaultTimeout(CAPTURE_TIMEOUT_MS);
+    page.on("console", (message) => console_.push(`[${message.type()}] ${message.text()}`));
+    page.on("pageerror", (error) => console_.push(`[pageerror] ${error.message}`));
     // As the worker hands a job over: set before the page loads, never in the URL.
     await page.addInitScript((job) => {
       window.__RENDER_JOB__ = job;
     }, { payload, sink: { url: sink.url, token: sink.token } });
     await page.goto(`${BASE_URL}/render-harness?mode=export`, { waitUntil: "domcontentloaded" });
-    const state = await waitForHarness(page, "done");
+    const state = await waitForHarness(page, "done").catch(async (error) => {
+      // Where it stopped: the page's last state, what reached the sink, and the page's own log.
+      const seen = await page.evaluate(() => String(window.__HARNESS_STATE__)).catch(() => "unreadable");
+      throw new Error(
+        `harness ${id}: ${error.message}\nstate: ${seen}\nsink progress: ${JSON.stringify(sink.progress.slice(-3))}\n${console_.slice(-40).join("\n")}`,
+      );
+    });
     if (state !== "done") throw new Error(`harness ${id}: ${state}`);
     const { renderer, outputs } = await page.evaluate(() => window.__RENDER_RESULT__);
     // What this golden is for: the WebGPU backend server exports use, not the WebGL 2 fallback.

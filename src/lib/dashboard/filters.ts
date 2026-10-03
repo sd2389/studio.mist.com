@@ -1,7 +1,15 @@
-import type { Scene } from "@/lib/api/scenes";
+import {
+  SCENE_SEARCH_MAX_LENGTH,
+  scenePageCount,
+  type Scene,
+  type SceneListPage,
+} from "@/lib/api/scenes";
 
 export const DASHBOARD_ROWS_OPTIONS = [10, 20, 50, 100] as const;
 export const DEFAULT_DASHBOARD_ROWS = 10;
+/** The longest category and the highest page `GET /scenes` takes. */
+const CATEGORY_MAX_LENGTH = 128;
+const PAGE_MAX = 100_000;
 
 export type DashboardFilters = {
   q: string;
@@ -37,61 +45,21 @@ export function parseDashboardSearchParams(
     : DEFAULT_DASHBOARD_ROWS;
 
   return {
-    q: (raw("q") ?? "").trim(),
-    category: (raw("category") ?? "").trim(),
-    page: parsePositiveInt(raw("page"), 1),
+    q: (raw("q") ?? "").trim().slice(0, SCENE_SEARCH_MAX_LENGTH),
+    category: (raw("category") ?? "").trim().slice(0, CATEGORY_MAX_LENGTH),
+    page: Math.min(parsePositiveInt(raw("page"), 1), PAGE_MAX),
     limit,
   };
 }
 
-function sceneMatchesQuery(scene: Scene, q: string): boolean {
-  if (!q) return true;
-  const needle = q.toLowerCase();
-  const haystacks = [
-    scene.name,
-    scene.sku,
-    scene.note,
-    scene.category,
-  ]
-    .filter(Boolean)
-    .map((s) => String(s).toLowerCase());
-  return haystacks.some((h) => h.includes(needle));
-}
-
-export function filterScenes(scenes: Scene[], filters: Pick<DashboardFilters, "q" | "category">): Scene[] {
-  return scenes.filter((scene) => {
-    if (filters.category && scene.category !== filters.category) return false;
-    return sceneMatchesQuery(scene, filters.q);
-  });
-}
-
-export function paginateScenes(
-  scenes: Scene[],
-  page: number,
-  limit: number,
-): { scenes: Scene[]; page: number; pageCount: number } {
-  const pageCount = Math.max(1, Math.ceil(scenes.length / limit));
-  const safePage = Math.min(Math.max(1, page), pageCount);
-  const start = (safePage - 1) * limit;
+/** The dashboard's view of a page of scenes from the API. */
+export function toDashboardFilterResult(page: SceneListPage): DashboardFilterResult {
   return {
-    scenes: scenes.slice(start, start + limit),
-    page: safePage,
-    pageCount,
-  };
-}
-
-export function applyDashboardFilters(
-  allScenes: Scene[],
-  filters: DashboardFilters,
-): DashboardFilterResult {
-  const filtered = filterScenes(allScenes, filters);
-  const { scenes, page, pageCount } = paginateScenes(filtered, filters.page, filters.limit);
-  return {
-    scenes,
-    total: filtered.length,
-    page,
-    pageCount,
-    limit: filters.limit,
+    scenes: page.items,
+    total: page.total,
+    page: page.page,
+    pageCount: scenePageCount(page),
+    limit: page.limit,
   };
 }
 

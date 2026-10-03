@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 from fastapi import HTTPException
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -21,6 +22,7 @@ from app.core import storage_keys as keys
 from app.core.adapters.errors import StorageObjectTooLargeError
 from app.core.observability import get_logger, log_event
 from app.features.publish import service as publish_service
+from app.features.scene.skus import SKU_TAKEN, assert_sku_available
 from app.features.upload.thumbnails import CheckedThumbnail, read_checked_thumbnail
 from app.features.billing.quota_service import (
     assert_model_credit,
@@ -165,18 +167,20 @@ def assert_model_fits_plan(db: Session, user: User, model_bytes: bytes, upload_b
     return assert_model_credit(db, user)
 
 
-def reject_taken_sku(db: Session, sku: str | None) -> None:
-    if sku and db.execute(select(Scene.id).where(Scene.sku == sku)).first() is not None:
-        raise HTTPException(status_code=409, detail="SKU already exists")
-
-
 def save_scene_and_charge(db: Session, scene: Scene, billing: UserBilling, upload_bytes: int) -> None:
     """Save the scene, its model credit and its storage in one commit: a refused charge
-    leaves no scene behind, and a save that fails takes no credit."""
+    leaves no scene behind, and a save that fails takes no credit. An upload that took the
+    same SKU after this one's check wins at the unique index: that is a 409, as the check's."""
+    sku = scene.sku
     db.add(scene)
     try:
         consume_model_credit(db, billing, upload_bytes)
         db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        if sku:
+            raise HTTPException(status_code=409, detail=SKU_TAKEN) from exc
+        raise
     except Exception:
         db.rollback()
         raise
@@ -204,7 +208,7 @@ def store_model_scene(
         for key in written:
             storage.delete_quietly(key)
         raise
-    publish_service.publish_scene_to_public(scene)
+    publish_service.publish_scene(db, scene)
 
 
 def read_stored_upload(key: str) -> bytes:
@@ -311,7 +315,7 @@ def _register_checked_upload(
     slot_selections: dict[str, str] | None,
     scene_settings: dict[str, Any] | None,
 ) -> dict[str, int | str]:
-    reject_taken_sku(db, sku)
+    assert_sku_available(db, sku)
     model_bytes = read_stored_upload(upload_key)
     thumbnail = read_checked_thumbnail(user.id, thumbnail_key)
     upload_bytes = len(model_bytes) + (len(thumbnail.data) if thumbnail else 0)
@@ -326,7 +330,7 @@ def _register_checked_upload(
         model_key=key,
         material=material,
         name=name or display_name_from_key(key),
-        sku=sku,
+        sku=sku or None,
         category=category,
         note=note,
         lighting="studio",
@@ -366,7 +370,7 @@ def save_direct_multipart(
     safe_name = safe_filename(filename, force_glb=True)
     key = keys.model_key(user.id, safe_name)
 
-    reject_taken_sku(db, sku)
+    assert_sku_available(db, sku)
     billing = assert_model_fits_plan(db, user, body, len(body))
 
     model_config_payload = parse_json_object(model_config_raw, "model_config")
@@ -384,7 +388,7 @@ def save_direct_multipart(
         model_key=key,
         material="original",
         name=name or display_name_from_key(key),
-        sku=sku,
+        sku=sku or None,
         category=category,
         note=note,
         lighting="studio",

@@ -3,7 +3,12 @@ import "server-only";
 import { loadSourceCatalogServer } from "@/lib/catalog/load-source-catalog";
 import { authHeaders } from "@/lib/auth/server-session";
 import { getServerApiUrl } from "@/lib/api-url";
-import type { Scene, SceneDetail } from "@/lib/api/scenes";
+import {
+  sceneListSearch,
+  type SceneDetail,
+  type SceneListPage,
+  type SceneListParams,
+} from "@/lib/api/scenes";
 import type { SourceCatalogPayload } from "@/lib/source-catalog";
 
 async function readJson<T>(res: Response): Promise<T> {
@@ -29,13 +34,13 @@ async function authedFetch(path: string, init: RequestInit = {}): Promise<Respon
   return fetch(backendUrl(path), { ...init, headers, cache: "no-store" });
 }
 
-export async function fetchScenesServer(): Promise<Scene[]> {
-  const res = await authedFetch("/scenes");
+export async function fetchScenesServer(params: SceneListParams = {}): Promise<SceneListPage> {
+  const res = await authedFetch(`/scenes${sceneListSearch(params)}`);
   if (!res.ok) {
     const body = await readJson<{ detail?: string; error?: string }>(res);
     throw new Error(body.detail ?? body.error ?? "Failed to load scenes");
   }
-  return readJson<Scene[]>(res);
+  return readJson<SceneListPage>(res);
 }
 
 export async function fetchSceneByViewerIdServer(viewerId: string): Promise<SceneDetail | null> {

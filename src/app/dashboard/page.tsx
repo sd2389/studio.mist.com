@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { DashboardShell, loadDashboardData } from "@/components/dashboard/DashboardShell";
+import { DashboardShell } from "@/components/dashboard/DashboardShell";
+import { loadDashboardData } from "@/components/dashboard/load-dashboard-data";
 import { parseDashboardSearchParams } from "@/lib/dashboard/filters";
 import { requirePageUser } from "@/lib/auth/require-page-user";
 import { fetchBillingAccountServer } from "@/lib/billing/server-fetch";

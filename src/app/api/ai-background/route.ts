@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { getPublicApiUrl } from "@/lib/api-url";
 import { requireSessionApi } from "@/lib/auth/require-api-access";
 import { readUpstreamJson, upstreamError, upstreamFetch } from "@/lib/auth/upstream";
-import { enforceApiRateLimit } from "@/lib/observability/api-rate-limit";
 
 type Body = {
   jewelry_b64?: string;
@@ -15,13 +14,6 @@ type Body = {
 export async function POST(request: Request) {
   const denied = await requireSessionApi();
   if (denied) return denied;
-
-  const limited = await enforceApiRateLimit({
-    scope: "api.ai-background",
-    maxRequests: 60,
-    request,
-  });
-  if (limited) return limited;
 
   let body: Body;
   try {

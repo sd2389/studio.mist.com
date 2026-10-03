@@ -36,6 +36,27 @@ class SceneListItem(BaseModel):
     render_count: int
 
 
+class SceneListQuery(BaseModel):
+    """`GET /scenes` filters. `q` searches name, SKU, note and category, ignoring case;
+    `category` matches exactly."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    q: str = Field(default="", max_length=200)
+    category: str = Field(default="", max_length=128)
+    page: int = Field(default=1, ge=1, le=100_000)
+    limit: int = Field(default=20, ge=1, le=100)
+
+
+class SceneListPage(BaseModel):
+    """One page of a user's scenes, newest first. `total` counts every scene that matches."""
+
+    items: list[SceneListItem]
+    total: int
+    page: int
+    limit: int
+
+
 class RenderItem(BaseModel):
     id: int
     scene_id: int

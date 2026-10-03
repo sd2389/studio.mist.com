@@ -15,7 +15,9 @@ from app.core import storage_keys as keys
 from app.core.model_keys import normalized_model_key
 from app.core.observability import get_logger, log_event
 from app.core.public_urls import public_file_url
-from app.features.billing.quota_service import assert_image_resolution
+from app.features.billing.quota_service import assert_image_resolution, get_or_create_billing, release_storage_bytes
+from app.features.publish import service as publish_service
+from app.features.scene.deletion import keys_used_elsewhere, uploaded_thumbnail
 from app.features.scene.service import first_scene_for_model, require_owned_scene
 from app.models import Render, Scene
 from app.models.user import User
@@ -103,6 +105,7 @@ def save_render_from_data_url(
     scene = resolve_scene_for_render(db, body.scene_id, body.model_id)
     if scene is not None:
         require_owned_scene(scene, user.id)
+        published_before = publish_service.published_inputs(scene)
         render = Render(
             scene_id=scene.id,
             key=key,
@@ -116,17 +119,28 @@ def save_render_from_data_url(
         )
         db.add(render)
 
+        replaced_thumbnail = None
         if body.kind in ("still", "hires"):
+            replaced_thumbnail = uploaded_thumbnail(db, scene)
             scene.thumbnail_key = key
         if body.material is not None:
             scene.material = body.material
         if body.lighting is not None:
             scene.lighting = body.lighting
         scene.updated_at = datetime.utcnow()
+        if replaced_thumbnail is not None:
+            # The upload's thumbnail counted toward storage and the render replacing it never
+            # does, so its bytes come back now and its file goes once this commits.
+            freed = storage.object_size(replaced_thumbnail) or 0
+            release_storage_bytes(db, get_or_create_billing(db, user), freed)
 
         db.commit()
         db.refresh(render)
         render_id = render.id
+        if replaced_thumbnail and replaced_thumbnail not in keys_used_elsewhere(db, scene.id, [replaced_thumbnail]):
+            storage.delete_quietly(replaced_thumbnail)
+        # A still or hires render becomes the thumbnail, so the published copy follows it.
+        publish_service.republish_if_changed(db, scene, published_before)
     elif body.scene_id is not None:
         raise HTTPException(status_code=404, detail="Scene not found")
 

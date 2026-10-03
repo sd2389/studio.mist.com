@@ -1,23 +1,26 @@
 """Scene CRUD routes — delegate to scene feature."""
 
-from fastapi import APIRouter, Depends
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user
 from app.database import get_db
 from app.features.scene import service as scene_service
 from app.models.user import User
-from app.schemas.scene import SceneDetail, SceneListItem, ScenePatch
+from app.schemas.scene import SceneDetail, SceneListItem, SceneListPage, SceneListQuery, ScenePatch
 
 router = APIRouter()
 
 
-@router.get("", response_model=list[SceneListItem])
+@router.get("", response_model=SceneListPage)
 def list_scenes(
+    query: Annotated[SceneListQuery, Query()],
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-) -> list[SceneListItem]:
-    return scene_service.list_scenes(db, user.id)
+) -> SceneListPage:
+    return scene_service.list_scenes(db, user.id, query)
 
 
 @router.get("/{scene_id}", response_model=SceneDetail)

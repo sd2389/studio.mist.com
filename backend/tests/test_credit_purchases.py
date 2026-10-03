@@ -1,12 +1,13 @@
 """Purchase ledger: a paid top-up adds its credits once per Checkout Session."""
 
 from sqlalchemy import func, select
+from sqlalchemy.orm import Session
 
 from app.features.admin.service import get_user_detail
 from app.features.billing import purchases
 from app.features.billing.purchases import record_topup_purchase
 from app.features.billing.quota_service import get_or_create_billing
-from app.models.billing import CreditPurchase
+from app.models.billing import CreditPurchase, UserBilling
 
 
 def _record(db, billing, *, session_id: str = "cs_1", kind: str = "ai", credits: int = 50) -> bool:
@@ -92,3 +93,17 @@ def test_admin_user_detail_lists_purchases_newest_first(db, sample_user):
     newest = purchases_shown[0]
     assert (newest.kind, newest.credits, newest.stripe_event_id) == ("model", 10, "evt_1")
     assert (newest.amount_total, newest.currency) == (1900, "usd")
+
+
+def test_two_purchases_committing_at_once_both_count(db, sample_user):
+    """Each purchase adds in the database, so one can't overwrite the other's total."""
+    billing = get_or_create_billing(db, sample_user)
+    start = billing.ai_image_credits_balance
+    # Another delivery adds its purchase while this session still holds the old balance.
+    with Session(db.get_bind()) as elsewhere:
+        assert _record(elsewhere, get_or_create_billing(elsewhere, sample_user), session_id="cs_a")
+
+    assert _record(db, billing, session_id="cs_b") is True
+
+    assert db.scalar(select(UserBilling.ai_image_credits_balance).where(UserBilling.id == billing.id)) == start + 100
+    assert _purchase_count(db) == 2

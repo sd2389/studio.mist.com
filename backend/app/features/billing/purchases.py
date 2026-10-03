@@ -4,21 +4,32 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.billing import CreditPurchase, UserBilling
 
 
-def _add_topup_credits(billing: UserBilling, *, kind: str, amount: int) -> None:
-    if kind == "model":
-        billing.model_credits_balance += amount
-    elif kind == "ai":
-        billing.ai_image_credits_balance += amount
-    else:
+# The balance each kind of top-up adds to.
+_TOPUP_BALANCES = {
+    "model": UserBilling.model_credits_balance,
+    "ai": UserBilling.ai_image_credits_balance,
+}
+
+
+def _add_topup_credits(db: Session, billing: UserBilling, *, kind: str, amount: int) -> None:
+    """Adds in the database (`balance = balance + amount`), so two purchases committing at
+    once both count; a total worked out here could overwrite the other's."""
+    balance = _TOPUP_BALANCES.get(kind)
+    if balance is None:
         raise ValueError(f"Unknown top-up kind: {kind}")
-    billing.updated_at = datetime.utcnow()
+    db.execute(
+        update(UserBilling)
+        .where(UserBilling.id == billing.id)
+        .values({balance: balance + amount, UserBilling.updated_at: datetime.utcnow()})
+        .execution_options(synchronize_session=False)
+    )
 
 
 def _is_session_recorded(db: Session, session_id: str) -> bool:
@@ -46,7 +57,7 @@ def record_topup_purchase(
     """
     if _is_session_recorded(db, session_id):
         return False
-    _add_topup_credits(billing, kind=kind, amount=credits)
+    _add_topup_credits(db, billing, kind=kind, amount=credits)
     db.add(
         CreditPurchase(
             user_id=billing.user_id,

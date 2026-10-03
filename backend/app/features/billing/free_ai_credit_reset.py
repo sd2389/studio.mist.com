@@ -86,8 +86,9 @@ def apply_free_ai_reset(
 ) -> list[AiCreditReset]:
     """Lower the planned balances, with one credit_adjustments row each, in one commit.
 
-    Each balance is read again under a row lock, so credits spent since the plan stay spent,
-    and an account that has left Free or is now within its limit is left alone.
+    Each balance is read again under a row lock: credits spent since the plan stay spent,
+    credits added since (a purchase, a grant) are kept on top of what the plan kept, and an
+    account that has left Free or is now within its limit is left alone.
     Returns what was written.
     """
     require_admin(db, admin_user_id)
@@ -99,7 +100,8 @@ def apply_free_ai_reset(
         if billing is None or normalize_tier(billing.plan_tier) != "free":
             continue
         current = billing.ai_image_credits_balance
-        new = min(current, allowance + reset.paid + reset.granted)
+        arrived_since_plan = max(0, current - reset.current)
+        new = min(current, allowance + reset.paid + reset.granted + arrived_since_plan)
         if new == current:
             continue
         billing.ai_image_credits_balance = new

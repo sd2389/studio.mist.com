@@ -238,6 +238,18 @@ def run_script(db, monkeypatch):
     return run
 
 
+def test_credits_added_after_the_plan_are_kept(db, admin_user):
+    """A purchase that lands between the plan and --apply keeps its credits."""
+    late_buyer = _account(db, "late-buyer")
+    resets = plan_free_ai_reset(db, None)
+    with Session(db.get_bind()) as elsewhere:
+        _buy(elsewhere, late_buyer, "cs_after_plan", credits=50)
+
+    apply_free_ai_reset(db, resets, admin_user_id=admin_user.id)
+
+    assert _ai_credits(db, late_buyer) == ALLOWANCE + 50
+
+
 def test_dry_run_prints_the_plan_and_changes_nothing(db, run_script, capsys):
     plain = _account(db, "plain")
     _account(db, "grow", plan="grow")

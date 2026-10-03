@@ -13,8 +13,8 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.features.billing import email_service as billing_email
 from app.features.billing.plans import PLAN_LABELS, TOP_UP_PACKS, PlanTier, normalize_tier
+from app.features.billing.purchases import record_topup_purchase
 from app.features.billing.quota_service import (
-    add_topup_credits,
     downgrade_to_free,
     get_or_create_billing,
     reset_allotments,
@@ -156,6 +156,22 @@ def create_portal_session(db: Session, user: User) -> str:
     return session.url
 
 
+def list_paid_topup_sessions(
+    client: stripe.StripeClient, customer_id: str, *, kind: str
+) -> dict[str, int]:
+    """Credits per paid top-up Checkout Session of one kind for a customer, across all pages."""
+    sessions = client.v1.checkout.sessions.list(
+        params={"customer": customer_id, "status": "complete", "limit": 100}
+    )
+    credits_by_session: dict[str, int] = {}
+    for session in sessions.auto_paging_iter():
+        metadata = _read_metadata(session)
+        if _read_field(session, "payment_status") == "paid" and metadata.get("topup_kind") == kind:
+            session_id = str(_read_field(session, "id"))
+            credits_by_session[session_id] = int(metadata.get("topup_credits") or 0)
+    return credits_by_session
+
+
 def _is_event_processed(db: Session, event_id: str) -> bool:
     existing = db.execute(
         select(BillingEvent).where(BillingEvent.stripe_event_id == event_id)
@@ -201,6 +217,16 @@ def _read_field(obj: object, key: str, default: object = None) -> object:
     if isinstance(obj, dict):
         return obj.get(key, default)
     return getattr(obj, key, default)
+
+
+def _read_metadata(obj: object) -> dict[str, str]:
+    """An object's metadata as a plain dict. StripeObject is not a dict: dict() on it raises."""
+    metadata = _read_field(obj, "metadata")
+    if isinstance(metadata, dict):
+        return metadata
+    if isinstance(metadata, stripe.StripeObject):
+        return metadata.to_dict()
+    return {}
 
 
 def _subscription_price_id(subscription: object) -> str | None:
@@ -260,8 +286,10 @@ def handle_webhook(db: Session, payload: bytes, signature: str | None) -> dict[s
 
     data_obj = _read_field(_read_field(event, "data"), "object")
 
-    if event_type == "checkout.session.completed":
-        _handle_checkout_completed(db, data_obj)
+    if event_type in {"checkout.session.completed", "checkout.session.async_payment_succeeded"}:
+        _handle_checkout_completed(db, data_obj, event_id)
+    elif event_type == "checkout.session.async_payment_failed":
+        _log_failed_async_payment(data_obj)
     elif event_type in {"customer.subscription.created", "customer.subscription.updated"}:
         pair = _user_from_customer(db, _read_field(data_obj, "customer"))
         if pair:
@@ -308,12 +336,25 @@ def handle_webhook(db: Session, payload: bytes, signature: str | None) -> dict[s
     return {"status": "ok"}
 
 
-def _handle_checkout_completed(db: Session, session: object) -> None:
-    metadata = _read_field(session, "metadata") or {}
-    if not isinstance(metadata, dict):
-        metadata = dict(metadata) if metadata else {}
+def _handle_checkout_completed(db: Session, session: object, event_id: str) -> None:
+    """checkout.session.completed, and async_payment_succeeded for delayed payment methods.
+
+    Nothing is granted until the session is paid. A delayed method (a bank debit, say)
+    completes the checkout unpaid; async_payment_succeeded brings the same session back
+    paid, and only then are top-up credits added or the plan started.
+    """
+    metadata = _read_metadata(session)
     user_id_raw = metadata.get("user_id")
     if not user_id_raw:
+        return
+    payment_status = _read_field(session, "payment_status")
+    if payment_status != "paid":
+        logger.info(
+            "Checkout session %s for user %s is %s; nothing granted until it is paid",
+            _read_field(session, "id"),
+            user_id_raw,
+            payment_status,
+        )
         return
     user = db.get(User, int(user_id_raw))
     if user is None:
@@ -321,15 +362,7 @@ def _handle_checkout_completed(db: Session, session: object) -> None:
     billing = get_or_create_billing(db, user)
 
     if _read_field(session, "mode") == "payment":
-        kind = metadata.get("topup_kind")
-        credits_raw = metadata.get("topup_credits")
-        if kind and credits_raw:
-            add_topup_credits(db, billing, kind=str(kind), amount=int(credits_raw))
-            billing_email.send_payment_receipt_email(
-                to=user.email,
-                plan_label=f"Top-up ({metadata.get('pack_id', kind)})",
-                amount_label="one-time purchase",
-            )
+        _grant_topup(db, user, billing, session, metadata, event_id)
         return
 
     subscription_id = _read_field(session, "subscription")
@@ -342,4 +375,51 @@ def _handle_checkout_completed(db: Session, session: object) -> None:
         to=user.email,
         plan_label=PLAN_LABELS[tier],
         action="activated",
+    )
+
+
+def _log_failed_async_payment(session: object) -> None:
+    logger.warning(
+        "Checkout session %s for user %s: the delayed payment failed; nothing granted",
+        _read_field(session, "id"),
+        _read_metadata(session).get("user_id"),
+    )
+
+
+def _grant_topup(
+    db: Session,
+    user: User,
+    billing: UserBilling,
+    session: object,
+    metadata: dict[str, str],
+    event_id: str,
+) -> None:
+    """Add a paid top-up, recorded in the purchase ledger, once per Checkout Session."""
+    kind = metadata.get("topup_kind")
+    credits_raw = metadata.get("topup_credits")
+    if not kind or not credits_raw:
+        return
+    session_id = str(_read_field(session, "id") or "")
+    if not session_id:
+        logger.error("Top-up checkout in event %s has no session id; no credits added", event_id)
+        return
+    amount_total = _read_field(session, "amount_total")
+    currency = _read_field(session, "currency")
+    added = record_topup_purchase(
+        db,
+        billing,
+        kind=str(kind),
+        credits=int(credits_raw),
+        session_id=session_id,
+        event_id=event_id,
+        amount_total=int(amount_total) if amount_total is not None else None,
+        currency=str(currency) if currency else None,
+    )
+    if not added:
+        logger.info("Checkout session %s already added its top-up", session_id)
+        return
+    billing_email.send_payment_receipt_email(
+        to=user.email,
+        plan_label=f"Top-up ({metadata.get('pack_id', kind)})",
+        amount_label="one-time purchase",
     )

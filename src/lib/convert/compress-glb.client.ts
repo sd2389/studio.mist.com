@@ -1,13 +1,14 @@
-/** Browser-only GLB compression (meshopt + Draco). Loaded via dynamic import from to-glb.ts only. */
+/**
+ * GLB compression for uploads (meshopt, then Draco). to-glb.ts imports it on demand in the
+ * browser and keeps the uncompressed GLB, with a warning, if it throws.
+ */
 
 export async function compressGlbBuffer(glb: ArrayBuffer): Promise<ArrayBuffer> {
-  if (typeof window === "undefined") return glb;
-
   const [
     { WebIO },
     { KHRDracoMeshCompression, EXTMeshoptCompression },
     { draco, meshopt },
-    { MeshoptEncoder },
+    { MeshoptDecoder, MeshoptEncoder },
     draco3d,
   ] = await Promise.all([
     import("@gltf-transform/core"),
@@ -17,13 +18,17 @@ export async function compressGlbBuffer(glb: ArrayBuffer): Promise<ArrayBuffer> 
     import("draco3dgltf"),
   ]);
 
-  await MeshoptEncoder.ready;
+  await Promise.all([MeshoptEncoder.ready, MeshoptDecoder.ready]);
 
+  // Every codec the two extensions use. Without "meshopt.encoder", writing the meshopt
+  // buffers throws, and every upload went out uncompressed.
   const io = new WebIO()
     .registerExtensions([KHRDracoMeshCompression, EXTMeshoptCompression])
     .registerDependencies({
       "draco3d.decoder": await draco3d.createDecoderModule(),
       "draco3d.encoder": await draco3d.createEncoderModule(),
+      "meshopt.decoder": MeshoptDecoder,
+      "meshopt.encoder": MeshoptEncoder,
     });
 
   const doc = await io.readBinary(new Uint8Array(glb));

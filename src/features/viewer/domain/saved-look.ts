@@ -2,7 +2,7 @@ import {
   buildSceneCatalogIndex,
   type SceneCatalogIndex,
 } from "@/lib/catalog/scene-catalog-index";
-import type { SceneDetail, SceneLook } from "@/lib/api/scenes";
+import type { Scene, SceneLook } from "@/lib/api/scenes";
 import type { EditCatalogs } from "@/lib/catalog/edit-catalogs";
 import type { CatalogItem, CatalogPage } from "@/lib/catalog/types";
 import type { SlotMaterialRef } from "@/lib/library/custom-material-ref";
@@ -12,15 +12,26 @@ import {
   getDefaultSceneSettings,
 } from "@/lib/slot-materials/model-config";
 import { useCatalogParamsStore } from "@/stores/catalog-params-store";
-import type { FinishId, LightingPresetId, MaterialPresetId } from "@/stores/material-preset-store";
+import {
+  useMaterialPresetStore,
+  type FinishId,
+  type LightingPresetId,
+  type MaterialPresetId,
+} from "@/stores/material-preset-store";
 import { useUserLibraryStore } from "@/stores/user-library-store";
 import { FINISHES } from "../ui/studio-material-groups";
 
-/** A scene's model config, rebuilt from its slot selections for scenes saved before configs had slots. */
-export function resolveModelConfig(scene: SceneDetail) {
-  return scene.model_config?.slots?.length
-    ? scene.model_config
-    : buildModelConfigFromSlots(Object.keys(scene.slot_selections ?? {}));
+/**
+ * A look as the studio saves it (`persistPayload` in useSavedScene): what a scene stores, and
+ * what a render job copies and renders (ADR 0005).
+ */
+export type LookSnapshot = Pick<Scene, "material" | "lighting" | "slot_selections" | "scene_settings" | "model_config">;
+
+/** A look's model config, rebuilt from its slot selections for scenes saved before configs had slots. */
+export function resolveModelConfig(look: LookSnapshot) {
+  return look.model_config?.slots?.length
+    ? look.model_config
+    : buildModelConfigFromSlots(Object.keys(look.slot_selections ?? {}));
 }
 
 /** The finish a look was saved with; anything else, or none, is polished. */
@@ -29,18 +40,18 @@ export function savedFinish(value: unknown): FinishId {
 }
 
 /**
- * Everything the canvas draws a saved scene with, in the studio store's shape: material
+ * Everything the canvas draws a saved look with, in the studio store's shape: material
  * preset, lighting, finish, per-slot materials and scene settings. The embed shows exactly
  * this; the studio starts editing from it. The finish lives in the store, not in the settings.
  */
-export function savedLook(scene: SceneDetail) {
-  const { finish, ...sceneSettings } = scene.scene_settings ?? getDefaultSceneSettings();
-  const selections = (scene.slot_selections ?? {}) as Record<string, SlotMaterialRef>;
+export function savedLook(look: LookSnapshot) {
+  const { finish, ...sceneSettings } = look.scene_settings ?? getDefaultSceneSettings();
+  const selections = (look.slot_selections ?? {}) as Record<string, SlotMaterialRef>;
   return {
-    preset: scene.material as MaterialPresetId,
-    lighting: scene.lighting as LightingPresetId,
+    preset: look.material as MaterialPresetId,
+    lighting: look.lighting as LightingPresetId,
     finish: savedFinish(finish),
-    slotSelections: sanitizeSlotSelections(selections, resolveModelConfig(scene)),
+    slotSelections: sanitizeSlotSelections(selections, resolveModelConfig(look)),
     sceneSettings,
   };
 }
@@ -56,6 +67,15 @@ export function registerLookMaterials(look: SceneLook | null | undefined): void 
   catalog.registerGems(look.gems);
   const library = useUserLibraryStore.getState();
   for (const material of look.user_materials) library.upsertMaterial(material);
+}
+
+/**
+ * Puts a saved look in the studio store, with the catalogue and library materials it names
+ * (a scene's `look`, a render job's `look_items`), so the canvas draws it.
+ */
+export function applySavedLook(look: LookSnapshot, items: SceneLook | null | undefined): void {
+  registerLookMaterials(items);
+  useMaterialPresetStore.setState(savedLook(look));
 }
 
 function catalogPage<T extends CatalogItem>(...lists: (readonly T[] | undefined)[]): CatalogPage<T> {

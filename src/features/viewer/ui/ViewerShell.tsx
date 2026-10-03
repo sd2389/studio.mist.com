@@ -1,34 +1,25 @@
 "use client";
 
 import { useGLTF } from "@react-three/drei";
-import { useEffect, useMemo, useState, type ComponentProps } from "react";
+import { useEffect, useState } from "react";
 import { modelExtFromUrl, viewerIdFromModelKey } from "@/lib/model-key";
 import { EmbedChrome } from "./EmbedChrome";
 import { StudioPrimaryBar } from "./StudioPrimaryBar";
 import { StudioSidebar } from "./StudioSidebar";
+import { useLookStage } from "./useLookStage";
 import { useSavedScene } from "./useSavedScene";
 import { useStudioModals } from "./useStudioModals";
 import { ViewerStage } from "./ViewerStage";
 import { SceneEditPanel } from "@/features/editor/ui/SceneEditPanel";
-import {
-  lookupBackground,
-  lookupEnvironment,
-  lookupGround,
-} from "@/lib/catalog/scene-catalog-index";
 import type { EditCatalogs } from "@/lib/catalog/edit-catalogs";
 import { StudioTopBar } from "./StudioTopBar";
 import { ZoomControls } from "./ZoomControls";
 import { useStudioPrimaryPanel } from "./useStudioPrimaryPanel";
-import { resolveSceneSettings } from "../domain/resolve-scene-settings";
-import { buildLookCatalogIndex } from "../domain/saved-look";
+import type { LookStage } from "../domain/look-stage";
 import { cn } from "@/lib/utils";
 import type { EmbedSettings } from "@/lib/embed-settings";
 import { resolveModelUrl } from "@/lib/model-url";
 import type { SceneDetail } from "@/lib/api/scenes";
-import {
-  fetchSourceCatalog,
-  type SourceCatalogPayload,
-} from "@/lib/source-catalog";
 import { useMaterialPresetStore } from "@/stores/material-preset-store";
 
 type ViewerShellProps = {
@@ -56,14 +47,8 @@ export function ViewerShell({
   // Batch exports swap the model in the view while they render each variant.
   const [batchModelUrl, setBatchModelUrl] = useState<string | null>(null);
   const modelUrl = batchModelUrl ?? sceneModelUrl;
-  const preset = useMaterialPresetStore((s) => s.preset);
   const autoRotate = useMaterialPresetStore((s) => s.autoRotate);
-  const lighting = useMaterialPresetStore((s) => s.lighting);
-  const sceneSettings = useMaterialPresetStore((s) => s.sceneSettings);
-
-  const [catalog, setCatalog] = useState<SourceCatalogPayload | null>(null);
   const { panel, setPanel } = useStudioPrimaryPanel("metal");
-
 
   useEffect(() => {
     const ext = modelExtFromUrl(modelUrl);
@@ -72,51 +57,15 @@ export function ViewerShell({
     }
   }, [modelUrl]);
 
-  useEffect(() => {
-    let mounted = true;
-    void fetchSourceCatalog()
-      .then((payload) => {
-        if (!mounted) return;
-        setCatalog(payload);
-      })
-      .catch(() => {
-        if (!mounted) return;
-        setCatalog(null);
-      });
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
   const { modelConfig, setModelConfig, sceneSku, sceneLook } = useSavedScene({
     modelId,
     variant,
     initialScene,
   });
-
-  const resolvedSceneSettings = useMemo(
-    () => resolveSceneSettings(sceneSettings, catalog?.scenes),
-    [catalog, sceneSettings],
-  );
+  // The saved look's catalogue items come with the scene; the Edit tab adds the pages it browses.
+  const stage = useLookStage({ modelUrl, modelConfig, catalogs, lookItems: sceneLook });
 
   const { openers, modals } = useStudioModals(modelId, sceneSku);
-
-  // Catalogue environments, background and ground the look names, from the scene or the Edit tab.
-  const sceneCatalog = useMemo(() => buildLookCatalogIndex(catalogs, sceneLook), [catalogs, sceneLook]);
-  const catalogLook = {
-    metalEnvironment: lookupEnvironment(sceneCatalog, sceneSettings["ENVIRONMENT-METAL"]),
-    gemEnvironment: lookupEnvironment(sceneCatalog, sceneSettings["ENVIRONMENT-GEM"]),
-    backgroundItem: lookupBackground(sceneCatalog, sceneSettings.BACKGROUND),
-    groundItem: lookupGround(sceneCatalog, sceneSettings.GROUND),
-  };
-  const stage = {
-    modelUrl,
-    preset,
-    lighting,
-    modelConfig,
-    sceneSettings: resolvedSceneSettings,
-    ...catalogLook,
-  };
   const editPanel =
     editable && initialScene?.id && catalogs ? (
       <SceneEditPanel
@@ -200,7 +149,7 @@ type EmbedViewProps = {
   initialScene: SceneDetail | null;
   embedSettings?: EmbedSettings;
   displayName?: string;
-  stage: Omit<ComponentProps<typeof ViewerStage>, "autoRotate" | "children">;
+  stage: LookStage;
   /** The studio's own setting, for embeds that don't choose. */
   autoRotate: boolean;
 };

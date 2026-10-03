@@ -10,13 +10,7 @@ import {
   getDefaultSceneSettings,
 } from "@/lib/slot-materials/model-config";
 import { useMaterialPresetStore } from "@/stores/material-preset-store";
-import { registerLookMaterials, resolveModelConfig, savedLook } from "../domain/saved-look";
-
-/** Puts a saved scene's look in the studio store, with its catalogue and library materials. */
-function applySavedLook(scene: SceneDetail) {
-  registerLookMaterials(scene.look);
-  useMaterialPresetStore.setState(savedLook(scene));
-}
+import { applySavedLook, resolveModelConfig } from "../domain/saved-look";
 
 type UseSavedSceneArgs = {
   modelId: string;
@@ -52,7 +46,7 @@ export function useSavedScene({ modelId, variant, initialScene }: UseSavedSceneA
   useEffect(() => {
     if (initialScene) {
       applyingPersistedState.current = true;
-      applySavedLook(initialScene);
+      applySavedLook(initialScene, initialScene.look);
       window.setTimeout(() => {
         applyingPersistedState.current = false;
       }, 0);
@@ -64,7 +58,7 @@ export function useSavedScene({ modelId, variant, initialScene }: UseSavedSceneA
     void getSceneByViewerId(modelId)
       .then((scene) => {
         if (cancelled) return;
-        applySavedLook(scene);
+        applySavedLook(scene, scene.look);
         setModelConfig(resolveModelConfig(scene));
         setSceneSku(scene.sku ?? null);
         setSceneLook(scene.look ?? null);

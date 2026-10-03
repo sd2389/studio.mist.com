@@ -60,8 +60,9 @@ def _features_for_tier(tier: PlanTier) -> PlanFeatures:
         max_polygons=quotas.max_polygons,
         watermark_exports=quotas.watermark_exports,
         embed_enabled=True,
-        batch_export_enabled=tier != "free",
-        video_8k_enabled=tier != "free",
+        batch_export_enabled=quotas.batch_export,
+        video_8k_enabled=quotas.max_8k_video_seconds > 0,
+        campaign_pack_enabled=quotas.campaign_pack,
     )
 
 

@@ -21,6 +21,7 @@ class PlanFeatures(BaseModel):
     embed_enabled: bool
     batch_export_enabled: bool
     video_8k_enabled: bool
+    campaign_pack_enabled: bool
 
 
 class UserBillingSnapshot(BaseModel):

@@ -286,8 +286,10 @@ def handle_webhook(db: Session, payload: bytes, signature: str | None) -> dict[s
 
     data_obj = _read_field(_read_field(event, "data"), "object")
 
-    if event_type == "checkout.session.completed":
+    if event_type in {"checkout.session.completed", "checkout.session.async_payment_succeeded"}:
         _handle_checkout_completed(db, data_obj, event_id)
+    elif event_type == "checkout.session.async_payment_failed":
+        _log_failed_async_payment(data_obj)
     elif event_type in {"customer.subscription.created", "customer.subscription.updated"}:
         pair = _user_from_customer(db, _read_field(data_obj, "customer"))
         if pair:
@@ -335,9 +337,24 @@ def handle_webhook(db: Session, payload: bytes, signature: str | None) -> dict[s
 
 
 def _handle_checkout_completed(db: Session, session: object, event_id: str) -> None:
+    """checkout.session.completed, and async_payment_succeeded for delayed payment methods.
+
+    Nothing is granted until the session is paid. A delayed method (a bank debit, say)
+    completes the checkout unpaid; async_payment_succeeded brings the same session back
+    paid, and only then are top-up credits added or the plan started.
+    """
     metadata = _read_metadata(session)
     user_id_raw = metadata.get("user_id")
     if not user_id_raw:
+        return
+    payment_status = _read_field(session, "payment_status")
+    if payment_status != "paid":
+        logger.info(
+            "Checkout session %s for user %s is %s; nothing granted until it is paid",
+            _read_field(session, "id"),
+            user_id_raw,
+            payment_status,
+        )
         return
     user = db.get(User, int(user_id_raw))
     if user is None:
@@ -358,6 +375,14 @@ def _handle_checkout_completed(db: Session, session: object, event_id: str) -> N
         to=user.email,
         plan_label=PLAN_LABELS[tier],
         action="activated",
+    )
+
+
+def _log_failed_async_payment(session: object) -> None:
+    logger.warning(
+        "Checkout session %s for user %s: the delayed payment failed; nothing granted",
+        _read_field(session, "id"),
+        _read_metadata(session).get("user_id"),
     )
 
 

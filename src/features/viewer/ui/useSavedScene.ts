@@ -102,7 +102,7 @@ export function useSavedScene({ modelId, variant, initialScene }: UseSavedSceneA
   );
 
   useEffect(() => {
-    if (!shouldPersistViewerScene(variant) || modelId === "mist-solitaire" || modelId === "clearcoat") return;
+    if (!shouldPersistViewerScene(variant) || modelId === "mist-solitaire") return;
     if (!sceneLoaded || applyingPersistedState.current) return;
     if (persistTimer.current !== null)
       window.clearTimeout(persistTimer.current);

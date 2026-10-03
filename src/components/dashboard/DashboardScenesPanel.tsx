@@ -236,7 +236,7 @@ export function DashboardScenesPanel({
             </Link>
           </FeatureGate>
           <Link
-            href="/viewer/clearcoat"
+            href="/viewer/mist-solitaire"
             className={cn(
               buttonVariants({ variant: "outline", size: "sm" }),
               "h-10 gap-2 rounded-full border-foreground/10 bg-surface/45 px-4 font-mono text-[10px] uppercase tracking-[0.24em] shadow-none",

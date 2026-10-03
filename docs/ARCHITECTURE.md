@@ -40,7 +40,6 @@ Reuse these instead of rebuilding them per page:
 | A studio page (sidebar, phone sheet, header, export dialogs) | `StudioLayout` (`@/features/viewer`) |
 | A lit 3D view of jewelry or a stone (full view or catalogue tile) | `StudioCanvas` (`@/features/viewer`) |
 | A saved scene drawn as it was finished (the studio view and the embed) | `ViewerStage`, fed by `savedLook` and `registerLookMaterials` (`src/features/viewer/`); the scene's `look` brings its catalogue items ([ADR 0004](adr/0004-embed-final-look.md)) |
-| The credit a bundled third-party model's licence asks for | `modelCreditFor` (`src/features/viewer/domain/model-credit.ts`); `ViewerStage` shows it |
 | Everything a lighting mode sets | `LIGHTING_PRESETS` (`src/lib/viewer-lighting.ts`) |
 | Still export settings and rendering | `StillExportSettings`, `exportStill` (`@/features/render`) |
 | Turntable recording options | `turntableCaptureOptions`, `videoSizeLabel` (`@/features/render`) |

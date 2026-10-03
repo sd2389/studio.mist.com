@@ -11,7 +11,6 @@ What the app ships or fetches that it did not make, the licence each comes under
 | `public/hdr/dancing_hall_2k.hdr` | [Dancing Hall](https://polyhaven.com/a/dancing_hall) by Sergej Majboroda, Poly Haven | CC0 | `dark` lighting |
 | `public/hdr/brown_photostudio_02_2k.hdr` | [Brown Photostudio 02](https://polyhaven.com/a/brown_photostudio_02) by Sergej Majboroda, Poly Haven | CC0 | `catalog` lighting |
 | `public/hdr/studio_small_08_2k.hdr` | [Studio Small 08](https://polyhaven.com/a/studio_small_08) by Sergej Majboroda, Poly Haven | CC0 | `dramatic` lighting, the designer's dark theme, the home film |
-| `public/models/clearcoat/` | [Clearcoat Ring](https://github.com/KhronosGroup/glTF-Sample-Models/tree/main/2.0/ClearcoatRing) by UX3D GmbH, from the Khronos glTF Sample Models, unmodified | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), which requires credit: `ViewerStage` shows it with the model, and `LICENSE.md` sits beside the files | The `/viewer/clearcoat` demo (the dashboard's "New from demo") and its embed; the default fixture of `scripts/verify-phase2-upload.sh` |
 | DM Sans, Fraunces, Geist Mono | Google Fonts, downloaded at build time by `next/font/google` and served with the app | SIL Open Font License 1.1 | Type across the site and app (`src/app/layout.tsx`) |
 
 The five HDRs are Poly Haven's 2k `.hdr` files; their MD5s match Poly Haven's file listing.

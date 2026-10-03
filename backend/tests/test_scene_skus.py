@@ -6,12 +6,14 @@ from datetime import datetime
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
+from image_samples import raster
 from model_samples import REAL_GLB
 
 from app.core import storage
 from app.core.deps import get_current_user
 from app.core.storage.local import LocalBackend
 from app.database import get_db
+from app.features.billing.quota_service import get_or_create_billing
 from app.features.scene import service as scene_service
 from app.features.scene.service import patch_scene_by_id
 from app.features.upload import service as upload_service
@@ -136,3 +138,57 @@ def test_uploads_with_a_blank_sku_have_none_and_never_collide(db, sample_user, f
 
     assert db.get(Scene, first["scene_id"]).sku is None
     assert db.get(Scene, second["scene_id"]).sku is None
+
+
+def _stored(backend: LocalBackend) -> list[str]:
+    root = backend._root
+    return sorted(path.relative_to(root).as_posix() for path in root.rglob("*") if path.is_file())
+
+
+def _balances(db, user) -> tuple[int, int]:
+    billing = get_or_create_billing(db, user)
+    db.refresh(billing)
+    return billing.model_credits_balance, billing.storage_bytes_used
+
+
+@pytest.fixture()
+def lost_race(db, sample_user, monkeypatch):
+    """Another upload took R-1 after this one's check: the check passes, the index refuses."""
+    _scene(db, sample_user.id, "first", sku="R-1")
+    monkeypatch.setattr(upload_service, "assert_sku_available", lambda *_args: None)
+    return _balances(db, sample_user)
+
+
+def test_a_direct_upload_that_loses_a_sku_race_is_409_and_keeps_nothing(db, sample_user, files, lost_race):
+    with pytest.raises(HTTPException) as exc:
+        _upload(db, sample_user, sku="R-1")
+
+    assert (exc.value.status_code, exc.value.detail) == (409, "SKU already exists")
+    assert _stored(files) == []
+    assert _balances(db, sample_user) == lost_race
+    assert db.query(Scene).count() == 1
+
+
+def test_a_registered_upload_that_loses_a_sku_race_is_409_and_keeps_nothing(db, sample_user, files, lost_race):
+    uid = sample_user.id
+    model_key = f"customers/{uid}/models/{'a' * 32}-ring.glb"
+    thumbnail_key = f"customers/{uid}/thumbnails/{'b' * 32}-thumbnail.webp"
+    files.put_bytes(model_key, REAL_GLB)
+    files.put_bytes(thumbnail_key, raster("WEBP", (64, 64)))
+
+    with pytest.raises(HTTPException) as exc:
+        upload_service.register_after_presign(
+            db,
+            user=sample_user,
+            key=model_key,
+            sku="R-1",
+            thumbnail_key=thumbnail_key,
+            material="original",
+            model_config_data=None,
+            slot_selections=None,
+            scene_settings=None,
+        )
+
+    assert exc.value.status_code == 409
+    assert _stored(files) == []  # neither the presigned uploads nor their checked copies
+    assert _balances(db, sample_user) == lost_race

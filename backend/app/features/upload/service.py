@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 from fastapi import HTTPException
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -21,7 +22,7 @@ from app.core import storage_keys as keys
 from app.core.adapters.errors import StorageObjectTooLargeError
 from app.core.observability import get_logger, log_event
 from app.features.publish import service as publish_service
-from app.features.scene.skus import assert_sku_available
+from app.features.scene.skus import SKU_TAKEN, assert_sku_available
 from app.features.upload.thumbnails import CheckedThumbnail, read_checked_thumbnail
 from app.features.billing.quota_service import (
     assert_model_credit,
@@ -168,11 +169,18 @@ def assert_model_fits_plan(db: Session, user: User, model_bytes: bytes, upload_b
 
 def save_scene_and_charge(db: Session, scene: Scene, billing: UserBilling, upload_bytes: int) -> None:
     """Save the scene, its model credit and its storage in one commit: a refused charge
-    leaves no scene behind, and a save that fails takes no credit."""
+    leaves no scene behind, and a save that fails takes no credit. An upload that took the
+    same SKU after this one's check wins at the unique index: that is a 409, as the check's."""
+    sku = scene.sku
     db.add(scene)
     try:
         consume_model_credit(db, billing, upload_bytes)
         db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        if sku:
+            raise HTTPException(status_code=409, detail=SKU_TAKEN) from exc
+        raise
     except Exception:
         db.rollback()
         raise

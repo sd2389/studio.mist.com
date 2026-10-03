@@ -46,16 +46,6 @@ class UserAssetItem(BaseModel):
     created_at: datetime | None = None
 
 
-class CreateUserAssetRequest(BaseModel):
-    asset_type: str
-    label: str
-    storage_key: str
-    preview_key: str | None = None
-    mime_type: str | None = None
-    byte_size: int | None = None
-    meta: dict[str, Any] = Field(default_factory=dict)
-
-
 ItemT = TypeVar("ItemT")
 
 

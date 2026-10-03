@@ -15,7 +15,7 @@ from app.features.billing.quota_service import assert_custom_asset_credit, consu
 from app.features.user_library import repository, serializers
 from app.models.user import User
 from app.models.user_library import UserAsset
-from app.schemas.library import CreateUserAssetRequest, LibraryPage, UserAssetItem
+from app.schemas.library import LibraryPage, UserAssetItem
 
 VALID_ASSET_TYPES = frozenset({"background", "metal_env", "gem_env"})
 MAX_ASSET_BYTES = 8 * 1024 * 1024
@@ -48,38 +48,6 @@ def list_assets(
         limit=repository.clamp_limit(limit),
         offset=max(offset, 0),
     )
-
-
-def register_asset(
-    db: Session,
-    user_id: int,
-    body: CreateUserAssetRequest,
-) -> UserAssetItem:
-    if body.asset_type not in VALID_ASSET_TYPES:
-        raise HTTPException(status_code=400, detail="Invalid asset_type")
-    if not body.label.strip():
-        raise HTTPException(status_code=400, detail="label is required")
-    if not keys.key_belongs_to_user(body.storage_key, user_id):
-        raise HTTPException(status_code=400, detail="Invalid storage key")
-
-    user = _user_or_404(db, user_id)
-    billing = assert_custom_asset_credit(db, user, body.byte_size or 0)
-
-    row = UserAsset(
-        user_id=user_id,
-        asset_type=body.asset_type,
-        label=body.label.strip(),
-        storage_key=body.storage_key,
-        preview_key=body.preview_key,
-        mime_type=body.mime_type,
-        byte_size=body.byte_size,
-        meta=body.meta or {},
-    )
-    db.add(row)
-    db.commit()
-    db.refresh(row)
-    consume_custom_asset_credit(db, billing, body.byte_size or 0)
-    return serializers.asset_to_item(row)
 
 
 def upload_asset(

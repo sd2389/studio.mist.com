@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetRateLimitsForTests } from "@/lib/rate-limit";
 
 const upstreamFetch = vi.fn<(path: string, init?: RequestInit) => Promise<Response>>();
@@ -62,5 +62,39 @@ describe("sign-in and sign-up proxies", () => {
 
     expect(seen.slice(0, 20)).toEqual(Array(20).fill(401));
     expect(seen[20]).toBe(429);
+  });
+});
+
+describe("the caller's IP sent to the API", () => {
+  beforeEach(() => {
+    resetRateLimitsForTests();
+    upstreamFetch.mockReset();
+    upstreamFetch.mockImplementation(async () => new Response(JSON.stringify({ detail: "Invalid" }), { status: 401 }));
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  function sentHeaders(): Headers {
+    return new Headers(upstreamFetch.mock.calls[0]?.[1]?.headers);
+  }
+
+  it("goes with INTERNAL_PROXY_TOKEN, so the API can count each caller on its own", async () => {
+    vi.stubEnv("INTERNAL_PROXY_TOKEN", "shared-secret");
+
+    await attempt(login, "203.0.113.9");
+
+    expect(sentHeaders().get("X-Internal-Proxy-Token")).toBe("shared-secret");
+    expect(sentHeaders().get("X-Client-IP")).toBe("203.0.113.9");
+  });
+
+  it("is not sent without the token, which the API would need to believe it", async () => {
+    vi.stubEnv("INTERNAL_PROXY_TOKEN", "");
+
+    await attempt(signup, "203.0.113.9");
+
+    expect(sentHeaders().has("X-Client-IP")).toBe(false);
+    expect(sentHeaders().has("X-Internal-Proxy-Token")).toBe(false);
   });
 });

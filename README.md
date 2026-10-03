@@ -126,6 +126,7 @@ Templates: [`.env.example`](.env.example) (web, Compose) and [`backend/.env.exam
 | `ADMIN_EMAILS` | backend | Comma-separated email addresses that get admin access |
 | `DEMO_EMBED_PASSWORD` | backend | Password for the embed demo's owner account; unset, the seed gives it a random one |
 | `HEALTH_DEPS_TOKEN` | backend | `X-Health-Token` value for `GET /health/deps` in production |
+| `INTERNAL_PROXY_TOKEN` | web, backend | Shared secret, the same on both: the web server's sign-in and sign-up proxies send it with the caller's IP, and the API believes a forwarded IP only with it (never a bare `X-Forwarded-For`). Unset, sign-ins through the web app share one per-IP budget, and the API warns at startup in production |
 | `RENDER_WORKER_TOKEN` | backend, worker | Shared secret for the render worker; the job-claim endpoint returns 503 until it is set |
 | `RENDER_API_URL` | worker | Backend URL |
 | `HARNESS_BASE_URL` | worker, goldens | Web app URL that serves `/render-harness` |
@@ -135,6 +136,7 @@ Templates: [`.env.example`](.env.example) (web, Compose) and [`backend/.env.exam
 - **Database:** use a managed PostgreSQL, set `DATABASE_URL`, and run `alembic upgrade head` on deploy (the backend image does this on start). The Compose database is for development.
 - **Storage:** set `STORAGE_BACKEND` plus the `R2_*` or `AWS_*` variables on the backend. Uploads are presigned and registered through FastAPI, so the web app holds no storage keys. For R2, `python -m scripts.setup_r2` (from `backend/`) creates the private and public buckets and sets CORS on the private one from `CORS_ORIGINS` and `APP_PUBLIC_URL`. For S3, start from `scripts/s3-cors.example.json`.
 - **Files:** private models and renders load through the signed-in `/api/files/...` route, while published SKU models keep public URLs. Stored objects get `Cache-Control` by key prefix (`backend/app/core/cache_policy.py`). With a CDN, set `PUBLIC_CDN_ORIGIN` (backend) and `NEXT_PUBLIC_CDN_ORIGIN` (web build).
+- **Proxy token:** set `INTERNAL_PROXY_TOKEN` to the same random value on the web app and the backend (e.g. `openssl rand -hex 32`), so the API rate-limits sign-ins per caller rather than per web server.
 - **Origins:** set `APP_PUBLIC_URL`, `NEXT_PUBLIC_API_URL`, `PUBLIC_API_BASE` and `CORS_ORIGINS` to the public origins and keep `API_URL` internal. `NEXT_PUBLIC_*` values are compiled into the bundle, so rebuild the web image after changing them.
 - **Catalogue:** after deploying, run `python -m scripts.seed_catalog` and `python -m scripts.fetch_cc0_hdris` from `backend/`.
 

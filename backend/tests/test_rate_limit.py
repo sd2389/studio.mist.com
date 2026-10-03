@@ -91,15 +91,9 @@ def limited_app(db):
     return TestClient(app)
 
 
-def test_the_dependency_refuses_a_caller_past_the_budget(limited_app) -> None:
-    caller = {"X-Forwarded-For": "203.0.113.9"}
-    assert [limited_app.get("/limited", headers=caller).status_code for _ in range(3)] == [200, 200, 429]
-    assert limited_app.get("/limited", headers={"X-Forwarded-For": "198.51.100.4"}).status_code == 200
-
-
-def test_an_oversized_forwarded_address_is_cut_before_it_is_stored(limited_app, db) -> None:
-    assert limited_app.get("/limited", headers={"X-Forwarded-For": "1" * 5000}).status_code == 200
-    assert db.execute(select(RateLimitCounter.key)).scalar_one() == "test.route:ip:" + "1" * 64
+def test_the_dependency_refuses_a_caller_past_the_budget(limited_app, db) -> None:
+    assert [limited_app.get("/limited").status_code for _ in range(3)] == [200, 200, 429]
+    assert db.execute(select(RateLimitCounter.key)).scalar_one() == "test.route:ip:testclient"
 
 
 def test_no_limits_when_rate_limiting_is_off(limited_app, monkeypatch) -> None:

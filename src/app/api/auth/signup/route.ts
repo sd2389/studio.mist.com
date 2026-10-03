@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { SESSION_COOKIE } from "@/lib/auth/constants";
 import { sessionCookieOptions } from "@/lib/auth/server-session";
+import { clientIpHeaders } from "@/lib/auth/client-ip";
 import { readUpstreamJson, upstreamError, upstreamFetch } from "@/lib/auth/upstream";
 import { enforceIpRateLimit } from "@/lib/observability/api-rate-limit";
 
@@ -31,6 +32,7 @@ export async function POST(request: Request) {
 
   const upstream = await upstreamFetch("/auth/signup", {
     method: "POST",
+    headers: clientIpHeaders(request),
     body: JSON.stringify(payload),
   });
   const json = await readUpstreamJson(upstream);

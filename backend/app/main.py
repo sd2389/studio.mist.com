@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
+from app.core.client_ip import warn_if_proxy_token_missing
 from app.core.cors_origins import resolve_cors_origins
 from app.core.observability import configure_logging, init_sentry
 from app.database import init_db
@@ -38,4 +39,5 @@ app.include_router(api_router)
 
 @app.on_event("startup")
 def on_startup() -> None:
+    warn_if_proxy_token_missing(get_settings())
     init_db()

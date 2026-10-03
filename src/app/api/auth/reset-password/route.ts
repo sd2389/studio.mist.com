@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { clientIpHeaders } from "@/lib/auth/client-ip";
 import { readUpstreamJson, upstreamError, upstreamFetch } from "@/lib/auth/upstream";
 
 export async function POST(request: Request) {
@@ -11,6 +12,7 @@ export async function POST(request: Request) {
 
   const upstream = await upstreamFetch("/auth/reset-password", {
     method: "POST",
+    headers: clientIpHeaders(request),
     body: JSON.stringify(payload),
   });
   const json = await readUpstreamJson(upstream);

@@ -16,6 +16,7 @@ from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.core.client_ip import client_ip
 from app.core.deps import get_current_user, get_optional_user
 from app.database import get_db
 from app.models.rate_limit import RateLimitCounter
@@ -23,7 +24,7 @@ from app.models.user import User
 
 # The longest window a limit may use. Counters older than this are deleted, once a day.
 MAX_WINDOW_SECONDS = 24 * 3600
-# An IPv6 address is at most 45 characters; anything longer in a header is cut, not stored.
+# An IPv6 address is at most 45 characters; anything longer is cut, not stored.
 _MAX_IDENTITY_LENGTH = 64
 
 _next_cleanup = 0.0
@@ -79,19 +80,10 @@ def check_rate_limit(db: Session, key: str, *, max_requests: int, window_seconds
         )
 
 
-def _client_ip(request: Request) -> str:
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    if request.client and request.client.host:
-        return request.client.host
-    return "unknown"
-
-
 def _rate_limit_key(request: Request, user: User | None, scope: str) -> str:
     if user is not None:
         return f"{scope}:user:{user.id}"
-    return f"{scope}:ip:{_client_ip(request)[:_MAX_IDENTITY_LENGTH]}"
+    return f"{scope}:ip:{client_ip(request)[:_MAX_IDENTITY_LENGTH]}"
 
 
 def rate_limit_dependency(

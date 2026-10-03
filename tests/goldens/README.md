@@ -1,25 +1,35 @@
 # Golden render baselines
 
-Captured via `npm run golden:capture` against `/render-harness` in headless
-Chromium + SwiftShader (see `scripts/golden/browser.mjs`). `npm run test:golden`
-re-captures and compares with SSIM ≥ 0.98. The five lighting setups are captured at once, each
-in its own browser, since all pages of one browser share its single SwiftShader GPU process;
-`GOLDEN_CONCURRENCY=<n>` runs at most n at a time.
+Captured via `npm run golden:capture` against `/render-harness` in headless Chromium +
+SwiftShader (see `scripts/golden/browser.mjs`). `npm run test:golden` re-captures and compares
+with SSIM ≥ 0.98. Every golden is captured at once, each in its own browser, since all pages of
+one browser share its single SwiftShader GPU process; `GOLDEN_CONCURRENCY=<n>` runs at most n at
+a time.
 
-Once the scene has loaded, the harness draws exactly `WARMUP_FRAMES` (24, in
-`scripts/golden/browser.mjs`) frames on a fixed clock (frame N at N/60 s), instead of the 60 a
-render job draws, then stops drawing and reports ready. A capture depends on neither load speed
-nor when the screenshot is taken, so on one machine it is the same PNG byte for byte every run.
-Changing that number changes every capture.
+The harness exists only in the render worker's build of the app (ADR 0005): build and start it
+with `BUILD_TARGET=worker`, or run `BUILD_TARGET=worker npm run dev`. The public build has no
+`/render-harness` route.
+
+| Golden | What it captures | Backend |
+|---|---|---|
+| `studio`, `soft`, `dark`, `catalog`, `dramatic` | The harness's golden mode: the live canvas under each lighting setup, screenshotted | WebGL 2 (SwiftShader gives WebGPU no adapter with these flags) |
+| `export-still` | The harness's export mode: the job in `fixtures/export-still.json` (a still from a Campaign Pack angle, with a saved look and a CSS gradient backdrop), rendered as the render worker renders it; the golden is the PNG the page hands the sink | WebGPU on SwiftShader (`--enable-unsafe-webgpu`); the capture fails if three.js fell back to WebGL 2 |
+
+Once the scene has loaded, the harness draws a fixed number of frames on a fixed clock (frame N
+at N/60 s) and stops drawing. The lighting goldens draw `WARMUP_FRAMES` (24, in
+`scripts/golden/browser.mjs`) instead of the 60 a render job draws; the export golden draws the
+job's 60. A capture depends on neither load speed nor when the screenshot is taken, so on one
+machine it is the same PNG byte for byte every run. Changing those numbers changes every capture.
 
 Regenerate ONLY when a render change is intentional and visually approved. The safest source
 is CI itself: when `golden` fails it uploads its captures as the `golden-failures` artifact,
-made on the same runner image as every later check.
+made on the same runner image as every later check. A golden with no baseline yet (a new one)
+fails the same way, so it is baselined from CI too.
 1. `gh run download <run id> -n golden-failures`
 2. Eyeball each PNG against the old one in `tests/goldens/`
 3. Copy them over the old ones and commit them with the change that caused them.
 
-To capture locally instead, start the app (`npm run dev`) and run
+To capture locally instead, start the worker app (`BUILD_TARGET=worker npm run dev`) and run
 `HARNESS_BASE_URL=<its URL> npm run golden:capture`. Local captures can differ slightly from
 CI's even on SwiftShader, so prefer CI's. Never regenerate on a desktop GPU.
 
@@ -32,4 +42,6 @@ builds. After any playwright bump, regenerate and re-approve the goldens.
 The model fixture is `public/test-fixtures/PDR-2413.glb`, regenerated from
 `samples/PDR-2413.3dm` (not in git) via `npm run golden:fixture` (dev server
 required). Regenerating the fixture also requires regenerating the goldens,
-since they are pinned to the exact fixture bytes.
+since they are pinned to the exact fixture bytes. The export golden's job is
+`fixtures/export-still.json`, in the shape of the API's job payload
+(`src/features/render/harness/job-payload.ts`); a unit test keeps it readable by the harness.

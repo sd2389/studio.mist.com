@@ -1,9 +1,9 @@
-import { readFileSync, mkdtempSync } from "node:fs";
+import { existsSync, readFileSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { PNG } from "pngjs";
 import { ssim } from "ssim.js";
-import { captureAll, LIGHTING_IDS } from "./browser.mjs";
+import { captureAll, GOLDEN_IDS } from "./browser.mjs";
 
 // NOTE: Node 22.19 does not enable type-stripping by default (requires --experimental-strip-types,
 // which is only the default in Node 23+). Rather than add a tsx devDependency or complicate the
@@ -39,14 +39,17 @@ async function main() {
   const tmp = mkdtempSync(path.join(tmpdir(), "golden-"));
   await captureAll(tmp);
   let failed = false;
-  for (const lighting of LIGHTING_IDS) {
-    const score = compareImages(
-      decode(path.join(tmp, `${lighting}.png`)),
-      decode(`${GOLDEN_DIR}/${lighting}.png`),
-    );
+  for (const id of GOLDEN_IDS) {
+    const golden = `${GOLDEN_DIR}/${id}.png`;
+    if (!existsSync(golden)) {
+      failed = true;
+      console.log(`FAIL ${id}: no golden yet; approve the capture in ${tmp} (CI: the golden-failures artifact)`);
+      continue;
+    }
+    const score = compareImages(decode(path.join(tmp, `${id}.png`)), decode(golden));
     const ok = score >= THRESHOLD;
     if (!ok) failed = true;
-    console.log(`${ok ? "PASS" : "FAIL"} ${lighting}: SSIM ${score.toFixed(4)} (threshold ${THRESHOLD})`);
+    console.log(`${ok ? "PASS" : "FAIL"} ${id}: SSIM ${score.toFixed(4)} (threshold ${THRESHOLD})`);
   }
   if (failed) process.exit(1);
 }

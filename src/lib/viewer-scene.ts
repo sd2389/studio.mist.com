@@ -1,6 +1,11 @@
 import type { ModelTransform, SavedPose, SceneAdvancedSettings } from "@/lib/slot-materials/model-config";
 import { DEFAULT_MODEL_TRANSFORM } from "@/lib/slot-materials/model-config";
 
+/** The viewer's lens (vertical field of view, degrees): live views and saved poses are drawn with it. */
+export const VIEWER_FOV_DEG = 42;
+/** Where the viewer's camera starts; it looks at the origin. */
+export const VIEWER_START_POSITION: [number, number, number] = [0.62, 0.88, 2.25];
+
 export const DEFAULT_POSES: SavedPose[] = [
   {
     id: "pose-top",

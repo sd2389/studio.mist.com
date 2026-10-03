@@ -21,6 +21,16 @@ def counted_keys(scene: Scene, render_keys: list[str]) -> list[str]:
     return counted
 
 
+def uploaded_thumbnail(db: Session, scene: Scene) -> str | None:
+    """The thumbnail the scene's upload came with, which counted toward storage; None when the
+    current thumbnail is one of its renders, or there is none."""
+    key = scene.thumbnail_key
+    if not key:
+        return None
+    render = db.scalar(select(Render.id).where(Render.scene_id == scene.id, Render.key == key).limit(1))
+    return key if render is None else None
+
+
 def keys_used_elsewhere(db: Session, scene_id: int, candidates: list[str]) -> set[str]:
     """Which of these files another scene still uses, as model, thumbnail or render."""
     others = union_all(

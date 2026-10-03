@@ -105,6 +105,37 @@ def _png_data_url() -> str:
     return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
 
 
+def test_a_render_replacing_the_uploaded_thumbnail_frees_it(db, sample_user, files):
+    """The upload's thumbnail counted toward storage; once a still replaces it, its file and
+    its bytes go, so deleting the scene later has nothing left to miss."""
+    uid = sample_user.id
+    model_key = f"customers/{uid}/models/{'c' * 32}-ring.glb"
+    thumbnail_key = f"customers/{uid}/thumbnails/{'d' * 32}-thumbnail.webp"
+    files.put_bytes(model_key, REAL_GLB)
+    files.put_bytes(thumbnail_key, raster("WEBP", (512, 512)))
+    result = upload_service.register_after_presign(
+        db,
+        user=sample_user,
+        key=model_key,
+        sku=None,
+        thumbnail_key=thumbnail_key,
+        material="original",
+        model_config_data=None,
+        slot_selections=None,
+        scene_settings=None,
+    )
+    scene = db.get(Scene, result["scene_id"])
+    uploaded = scene.thumbnail_key
+
+    body = RenderSaveRequest(image=_png_data_url(), scene_id=scene.id, kind="still")
+    render_service.save_render_from_data_url(db, body, sample_user)
+
+    assert storage_used(db, sample_user) == len(REAL_GLB)
+    assert uploaded not in stored(files)
+    delete_scene_by_id(db, scene.id, uid)
+    assert (storage_used(db, sample_user), stored(files)) == (0, [])
+
+
 def test_renders_go_too_but_give_back_nothing_they_never_counted(db, sample_user, files):
     scene = upload(db, sample_user)
     for kind in ("still", "hires"):  # a still or hires render becomes the thumbnail

@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -17,6 +17,8 @@ if TYPE_CHECKING:
 
 class Scene(Base):
     __tablename__ = "scenes"
+    # GET /scenes: one user's scenes, newest first.
+    __table_args__ = (Index("ix_scenes_user_id_updated_at", "user_id", "updated_at"),)
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     model_key: Mapped[str] = mapped_column(String(512))

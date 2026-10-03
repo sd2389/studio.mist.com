@@ -14,5 +14,7 @@ export type {
   Render,
   Scene,
   SceneDetail,
+  SceneListPage,
+  SceneListParams,
   ScenePatch,
 } from "@/lib/api/scenes";

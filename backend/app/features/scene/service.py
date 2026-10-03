@@ -1,9 +1,10 @@
 """Scene queries, DTO shaping, and patch application."""
 
+import math
 from datetime import datetime
 
 from fastapi import HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import ColumnElement, Select, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core import storage
@@ -14,7 +15,15 @@ from app.features.billing.quota_service import assert_variant_limit
 from app.features.publish import service as publish_service
 from app.features.scene.look import scene_look
 from app.models import Render, Scene
-from app.schemas.scene import RenderItem, SceneDetail, SceneListItem, SceneLook, ScenePatch
+from app.schemas.scene import (
+    RenderItem,
+    SceneDetail,
+    SceneListItem,
+    SceneListPage,
+    SceneListQuery,
+    SceneLook,
+    ScenePatch,
+)
 
 
 def _scene_model_url(scene: Scene) -> str | None:
@@ -186,15 +195,45 @@ def commit_patch(db: Session, scene: Scene, body: ScenePatch) -> SceneListItem:
     return to_list_item(scene, render_count)
 
 
-def list_scenes(db: Session, user_id: int) -> list[SceneListItem]:
-    rows = db.execute(
-        select(Scene, func.count(Render.id))
-        .outerjoin(Render, Render.scene_id == Scene.id)
-        .where(Scene.user_id == user_id)
-        .group_by(Scene.id)
-        .order_by(Scene.updated_at.desc())
-    ).all()
-    return [to_list_item(scene, int(count or 0)) for scene, count in rows]
+def scene_list_conditions(user_id: int, query: SceneListQuery) -> list[ColumnElement[bool]]:
+    """The user's scenes that match the filters. Wildcards in `q` match themselves."""
+    conditions = [Scene.user_id == user_id]
+    if query.q:
+        searched = (Scene.name, Scene.sku, Scene.note, Scene.category)
+        conditions.append(or_(*(column.icontains(query.q, autoescape=True) for column in searched)))
+    if query.category:
+        conditions.append(Scene.category == query.category)
+    return conditions
+
+
+def scene_page_query(conditions: list[ColumnElement[bool]], page: int, limit: int) -> Select:
+    """One page of scenes, newest first, each with its render count and the number that match."""
+    render_count = select(func.count(Render.id)).where(Render.scene_id == Scene.id).scalar_subquery()
+    return (
+        select(Scene, render_count.label("render_count"), func.count().over().label("total"))
+        .where(*conditions)
+        .order_by(Scene.updated_at.desc(), Scene.id.desc())
+        .limit(limit)
+        .offset((page - 1) * limit)
+    )
+
+
+def list_scenes(db: Session, user_id: int, query: SceneListQuery) -> SceneListPage:
+    """One query for a page and its total; a page past the end answers with the last page."""
+    conditions = scene_list_conditions(user_id, query)
+    page = query.page
+    rows = db.execute(scene_page_query(conditions, page, query.limit)).all()
+    if not rows and page > 1:
+        # A stale link, or scenes deleted since: the last page that has scenes, if any.
+        matching = db.execute(select(func.count(Scene.id)).where(*conditions)).scalar_one()
+        page = max(1, math.ceil(matching / query.limit))
+        rows = db.execute(scene_page_query(conditions, page, query.limit)).all() if matching else []
+    return SceneListPage(
+        items=[to_list_item(row.Scene, row.render_count) for row in rows],
+        total=rows[0].total if rows else 0,
+        page=page,
+        limit=query.limit,
+    )
 
 
 def load_scene_detail(db: Session, scene: Scene) -> SceneDetail:

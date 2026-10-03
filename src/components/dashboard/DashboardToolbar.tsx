@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SCENE_SEARCH_MAX_LENGTH } from "@/lib/api/scenes";
 import {
   buildDashboardQuery,
   DASHBOARD_ROWS_OPTIONS,
@@ -77,6 +78,7 @@ export function DashboardToolbar({
               <Input
                 id="dashboard-search"
                 value={searchDraft}
+                maxLength={SCENE_SEARCH_MAX_LENGTH}
                 onChange={(e) => setSearchDraft(e.target.value)}
                 placeholder="Search models…"
                 className="h-12 rounded-full border-foreground/10 bg-surface/45 pl-10 text-foreground shadow-none placeholder:text-foreground/35"

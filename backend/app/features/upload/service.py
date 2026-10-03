@@ -21,6 +21,7 @@ from app.core import storage_keys as keys
 from app.core.adapters.errors import StorageObjectTooLargeError
 from app.core.observability import get_logger, log_event
 from app.features.publish import service as publish_service
+from app.features.upload.thumbnails import CheckedThumbnail, read_checked_thumbnail
 from app.features.billing.quota_service import (
     assert_model_credit,
     assert_polygon_limit,
@@ -183,15 +184,25 @@ def save_scene_and_charge(db: Session, scene: Scene, billing: UserBilling, uploa
 
 
 def store_model_scene(
-    db: Session, scene: Scene, model_bytes: bytes, billing: UserBilling, upload_bytes: int
+    db: Session,
+    scene: Scene,
+    model_bytes: bytes,
+    billing: UserBilling,
+    upload_bytes: int,
+    thumbnail: CheckedThumbnail | None = None,
 ) -> None:
-    """Write the checked model at the scene's key, save the scene with its charge, then
-    publish it. A save that fails takes the written model away again."""
-    storage.write_bytes(scene.model_key, model_bytes, content_type=GLB_CONTENT_TYPE)
+    """Write the checked model (and thumbnail) at the scene's keys, save the scene with its
+    charge, then publish it. A save that fails takes the written objects away again."""
+    written = [scene.model_key]
     try:
+        storage.write_bytes(scene.model_key, model_bytes, content_type=GLB_CONTENT_TYPE)
+        if thumbnail is not None:
+            written.append(thumbnail.key)
+            storage.write_bytes(thumbnail.key, thumbnail.data, content_type=thumbnail.content_type)
         save_scene_and_charge(db, scene, billing, upload_bytes)
     except Exception:
-        delete_quietly(scene.model_key)
+        for key in written:
+            delete_quietly(key)
         raise
     publish_service.publish_scene_to_public(scene)
 
@@ -214,14 +225,8 @@ def read_stored_upload(key: str) -> bytes:
         raise _upload_too_large(max_bytes) from exc
 
 
-def _thumbnail_bytes(thumbnail_key: str | None) -> int:
-    """Storage a presigned thumbnail takes; it counts toward the plan along with the model."""
-    if not thumbnail_key:
-        return 0
-    try:
-        return len(read_stored_upload(thumbnail_key))
-    except OSError:
-        return 0
+def _scene_uses(db: Session, column: Any, key: str) -> bool:
+    return db.execute(select(Scene.id).where(column == key)).first() is not None
 
 
 def _require_own_upload_keys(user_id: int, key: str, thumbnail_key: str | None) -> None:
@@ -237,8 +242,9 @@ def _require_own_upload_keys(user_id: int, key: str, thumbnail_key: str | None) 
         raise HTTPException(status_code=400, detail="key must be under your customer models prefix")
     if not key.lower().endswith(CANONICAL_MODEL_SUFFIX):
         raise HTTPException(status_code=400, detail="model key must end with .glb")
-    if thumbnail_key is not None and not keys.key_belongs_to_user(thumbnail_key, user_id):
-        raise HTTPException(status_code=400, detail="thumbnail_key must be under your customer prefix")
+    # Register deletes the presigned thumbnail, so it must be one: never a model, render or asset.
+    if thumbnail_key is not None and not thumbnail_key.startswith(f"{keys.customer_thumbnails_prefix(user_id)}/"):
+        raise HTTPException(status_code=400, detail="thumbnail_key must be under your customer thumbnails prefix")
 
 
 _UPLOAD_KEY_PREFIX = re.compile(r"^[0-9a-f]{32}-")
@@ -264,16 +270,20 @@ def register_after_presign(
     slot_selections: dict[str, str] | None,
     scene_settings: dict[str, Any] | None,
 ) -> dict[str, int | str]:
-    """Save a model the browser uploaded through a presigned URL.
+    """Save a model the browser uploaded through a presigned URL, with its optional thumbnail.
 
-    The uploaded object is checked like a direct upload, from its own bytes, then deleted
-    whether the model is accepted or refused. An accepted model's checked bytes are written
-    under a fresh key: the presigned URL can overwrite the uploaded object until it expires,
-    so no scene may point at that object.
+    Both uploaded objects are checked from their own bytes, then deleted whether the save
+    succeeds or not. Checked bytes are written under fresh keys: a presigned URL can overwrite
+    its object until it expires, so no scene may point at one. A bad model is refused; a bad
+    thumbnail is dropped and the model saved without it.
     """
     _require_own_upload_keys(user.id, key, thumbnail_key)
-    if db.execute(select(Scene.id).where(Scene.model_key == key)).first() is not None:
+    if _scene_uses(db, Scene.model_key, key):
         raise HTTPException(status_code=409, detail="This model is already saved.")
+    if thumbnail_key and _scene_uses(db, Scene.thumbnail_key, thumbnail_key):
+        # A scene saved before thumbnails were copied shows this very object: leave it be.
+        log_event(logger, "upload.thumbnail_dropped", key=thumbnail_key, reason="a saved scene uses it")
+        thumbnail_key = None
     try:
         return _register_checked_upload(
             db,
@@ -291,6 +301,8 @@ def register_after_presign(
         )
     finally:
         delete_quietly(key)
+        if thumbnail_key:
+            delete_quietly(thumbnail_key)
 
 
 def _register_checked_upload(
@@ -310,7 +322,8 @@ def _register_checked_upload(
 ) -> dict[str, int | str]:
     reject_taken_sku(db, sku)
     model_bytes = read_stored_upload(upload_key)
-    upload_bytes = len(model_bytes) + _thumbnail_bytes(thumbnail_key)
+    thumbnail = read_checked_thumbnail(user.id, thumbnail_key)
+    upload_bytes = len(model_bytes) + (len(thumbnail.data) if thumbnail else 0)
     billing = assert_model_fits_plan(db, user, model_bytes, upload_bytes)
     key = _key_for_checked_model(user.id, upload_key)
     inferred_slots, inferred_scene = build_ingest_configs(key, model_bytes)
@@ -329,13 +342,13 @@ def _register_checked_upload(
         model_config=model_config,
         slot_selections=selections,
         scene_settings=merged_scene,
-        thumbnail_key=thumbnail_key,
+        thumbnail_key=thumbnail.key if thumbnail else None,
         user_id=user.id,
         project_id=1,
         created_at=now,
         updated_at=now,
     )
-    store_model_scene(db, scene, model_bytes, billing, upload_bytes)
+    store_model_scene(db, scene, model_bytes, billing, upload_bytes, thumbnail)
     return {"scene_id": scene.id, "model_key": key}
 
 

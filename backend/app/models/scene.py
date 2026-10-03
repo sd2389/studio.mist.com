@@ -34,6 +34,8 @@ class Scene(Base):
     variants: Mapped[dict] = mapped_column(JSON, default=dict)
     product_specs: Mapped[dict] = mapped_column(JSON, default=dict)
     thumbnail_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # When the SKU's public copies of the model and thumbnail were last made; null without them.
+    published_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True)
     project_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("projects.id", ondelete="SET NULL"), nullable=True

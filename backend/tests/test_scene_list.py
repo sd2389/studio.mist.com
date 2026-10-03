@@ -159,15 +159,21 @@ def statements(db) -> list[str]:
     event.remove(engine, "before_cursor_execute", record)
 
 
+def _published(n: int) -> dict:
+    """Every other scene has a SKU, published."""
+    return {"sku": f"R-{n}", "published_at": START} if n % 2 else {}
+
+
 def test_a_thousand_scenes_answer_one_page_in_one_query_without_storage(db, sample_user, no_storage, statements):
     uid = sample_user.id
-    _add(db, *(_scene(uid, n) for n in range(1, 1001)))
+    _add(db, *(_scene(uid, n, **_published(n)) for n in range(1, 1001)))
     statements.clear()
 
     page = list_scenes(db, uid, SceneListQuery(q="scene", page=7, limit=100))
 
     assert len(statements) == 1
     assert (page.total, len(page.items), page.items[0].name) == (1000, 100, "Scene 400")
+    assert sum(1 for item in page.items if item.sku) == 50
 
 
 @pytest.fixture()

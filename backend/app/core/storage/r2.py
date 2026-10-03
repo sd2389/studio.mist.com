@@ -140,6 +140,16 @@ class R2Backend:
         except (BotoCoreError, ClientError) as exc:
             raise StorageAdapterError(f"Copy to public bucket failed: {exc}", cause=exc) from exc
 
+    def public_exists(self, key: str) -> bool:
+        bucket = self.public_bucket
+        if not bucket:
+            return False
+        try:
+            self._client.head_object(Bucket=bucket, Key=key)
+            return True
+        except ClientError:
+            return False
+
     def put_public_bytes(self, key: str, data: bytes, content_type: str | None = None) -> None:
         bucket = self.public_bucket
         if not bucket:

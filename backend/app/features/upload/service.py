@@ -204,7 +204,7 @@ def store_model_scene(
         for key in written:
             storage.delete_quietly(key)
         raise
-    publish_service.publish_scene_to_public(scene)
+    publish_service.publish_scene(db, scene)
 
 
 def read_stored_upload(key: str) -> bytes:

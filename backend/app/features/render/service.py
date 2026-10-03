@@ -16,6 +16,7 @@ from app.core.model_keys import normalized_model_key
 from app.core.observability import get_logger, log_event
 from app.core.public_urls import public_file_url
 from app.features.billing.quota_service import assert_image_resolution
+from app.features.publish import service as publish_service
 from app.features.scene.service import first_scene_for_model, require_owned_scene
 from app.models import Render, Scene
 from app.models.user import User
@@ -103,6 +104,7 @@ def save_render_from_data_url(
     scene = resolve_scene_for_render(db, body.scene_id, body.model_id)
     if scene is not None:
         require_owned_scene(scene, user.id)
+        published_before = publish_service.published_inputs(scene)
         render = Render(
             scene_id=scene.id,
             key=key,
@@ -127,6 +129,8 @@ def save_render_from_data_url(
         db.commit()
         db.refresh(render)
         render_id = render.id
+        # A still or hires render becomes the thumbnail, so the published copy follows it.
+        publish_service.republish_if_changed(db, scene, published_before)
     elif body.scene_id is not None:
         raise HTTPException(status_code=404, detail="Scene not found")
 

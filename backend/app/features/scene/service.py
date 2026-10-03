@@ -7,10 +7,12 @@ from fastapi import HTTPException
 from sqlalchemy import ColumnElement, Select, func, or_, select
 from sqlalchemy.orm import Session
 
-from app.core import storage
-from app.core import storage_keys as keys
 from app.core.model_keys import normalized_model_key
-from app.core.public_urls import public_file_url
+from app.core.public_urls import (
+    public_file_url,
+    published_scene_model_url,
+    published_scene_thumbnail_url,
+)
 from app.features.billing.quota_service import assert_variant_limit
 from app.features.publish import service as publish_service
 from app.features.scene.look import scene_look
@@ -27,18 +29,15 @@ from app.schemas.scene import (
 
 
 def _scene_model_url(scene: Scene) -> str | None:
-    if scene.sku:
-        published_key = keys.public_model_key(scene.user_id, scene.sku)
-        if storage.get_storage().exists(published_key):
-            return public_file_url(published_key)
+    """The public copy once the scene is published, else the private model."""
+    if scene.sku and scene.published_at is not None:
+        return published_scene_model_url(scene.user_id, scene.sku)
     return public_file_url(scene.model_key) if scene.model_key else None
 
 
 def _scene_thumbnail_url(scene: Scene) -> str | None:
-    if scene.sku:
-        published_key = keys.public_thumbnail_key(scene.user_id, scene.sku)
-        if storage.get_storage().exists(published_key):
-            return public_file_url(published_key)
+    if scene.sku and scene.published_at is not None and scene.thumbnail_key:
+        return published_scene_thumbnail_url(scene.user_id, scene.sku)
     return public_file_url(scene.thumbnail_key) if scene.thumbnail_key else None
 
 
@@ -185,10 +184,12 @@ def first_scene_for_sku(db: Session, sku: str) -> Scene | None:
 
 def commit_patch(db: Session, scene: Scene, body: ScenePatch) -> SceneListItem:
     assert_variants_fit_plan(db, scene, body)
+    published_before = publish_service.published_inputs(scene)
     apply_patch(scene, body)
     db.commit()
     db.refresh(scene)
-    publish_service.publish_scene_to_public(scene)
+    # The studio saves about 350 ms after every change; most saves change nothing published.
+    publish_service.republish_if_changed(db, scene, published_before)
     render_count = int(
         db.execute(select(func.count(Render.id)).where(Render.scene_id == scene.id)).scalar_one()
     )

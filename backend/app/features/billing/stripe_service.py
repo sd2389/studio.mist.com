@@ -229,17 +229,29 @@ def _read_metadata(obj: object) -> dict[str, str]:
     return {}
 
 
-def _subscription_price_id(subscription: object) -> str | None:
+def _first_subscription_item(subscription: object) -> object | None:
     items = _read_field(subscription, "items")
     data = _read_field(items, "data", []) if items is not None else []
-    if not data:
-        return None
-    first = data[0]
-    price = _read_field(first, "price")
+    return data[0] if data else None
+
+
+def _subscription_price_id(subscription: object) -> str | None:
+    first = _first_subscription_item(subscription)
+    price = _read_field(first, "price") if first is not None else None
     if price is None:
         return None
     value = _read_field(price, "id")
     return str(value) if value else None
+
+
+def _subscription_period(subscription: object, key: str) -> datetime | None:
+    """current_period_start or current_period_end. From API version 2025-03-31.basil
+    Stripe sends them on the subscription items, not on the subscription."""
+    value = _read_field(subscription, key)
+    if value is None:
+        first = _first_subscription_item(subscription)
+        value = _read_field(first, key) if first is not None else None
+    return _ts_to_dt(value)
 
 
 def _apply_subscription(
@@ -258,8 +270,8 @@ def _apply_subscription(
         db,
         billing,
         tier=tier,
-        period_start=_ts_to_dt(_read_field(subscription, "current_period_start")),
-        period_end=_ts_to_dt(_read_field(subscription, "current_period_end")),
+        period_start=_subscription_period(subscription, "current_period_start"),
+        period_end=_subscription_period(subscription, "current_period_end"),
         stripe_subscription_id=str(_read_field(subscription, "id") or "") or None,
     )
     return tier
@@ -294,7 +306,7 @@ def handle_webhook(db: Session, payload: bytes, signature: str | None) -> dict[s
         pair = _user_from_customer(db, _read_field(data_obj, "customer"))
         if pair:
             user, billing = pair
-            tier = _apply_subscription(db, billing, data)
+            tier = _apply_subscription(db, billing, data_obj)
             billing_email.send_subscription_updated_email(
                 to=user.email,
                 plan_label=PLAN_LABELS[tier],

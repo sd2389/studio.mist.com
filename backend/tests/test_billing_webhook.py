@@ -5,6 +5,7 @@ import hmac
 import json
 import time
 from contextlib import contextmanager
+from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -13,7 +14,7 @@ import stripe
 from fastapi import HTTPException
 from sqlalchemy import func, select
 
-from app.features.billing.plans import get_quotas
+from app.features.billing.plans import PLAN_LABELS, get_quotas
 from app.features.billing.quota_service import get_or_create_billing
 from app.features.billing.stripe_service import _record_event, handle_webhook
 from app.models.billing import BillingEvent, CreditPurchase
@@ -40,6 +41,8 @@ GROW_SUBSCRIPTION = {
         ],
     },
 }
+# GROW_SUBSCRIPTION's billing period as the account stores it (naive UTC).
+GROW_PERIOD = (datetime(2026, 9, 21, 14, 13, 20), datetime(2026, 10, 21, 14, 13, 20))
 
 
 def _stripe_signature(payload: str, secret: str) -> str:
@@ -340,3 +343,27 @@ def test_webhook_rejects_invalid_signature(db):
             with pytest.raises(HTTPException) as exc:
                 handle_webhook(db, b"{}", "bad")
     assert exc.value.status_code == 400
+
+
+def test_signed_subscription_update_moves_the_customer_to_grow(db, sample_user):
+    """A plan change made in the Stripe portal arrives as customer.subscription.updated."""
+    billing = get_or_create_billing(db, sample_user)
+    billing.stripe_customer_id = "cus_grow"
+    db.commit()
+    event = {
+        "id": "evt_portal_upgrade",
+        "object": "event",
+        "type": "customer.subscription.updated",
+        "data": {"object": GROW_SUBSCRIPTION},
+    }
+
+    with _stripe_test_env() as env:
+        result = _send_signed(db, event)
+    db.refresh(billing)
+
+    assert result == {"status": "ok"}
+    assert (billing.plan_tier, billing.stripe_subscription_id) == ("grow", "sub_grow")
+    assert (billing.period_start, billing.period_end) == GROW_PERIOD
+    env.plan_email.assert_called_once_with(
+        to=sample_user.email, plan_label=PLAN_LABELS["grow"], action="updated"
+    )

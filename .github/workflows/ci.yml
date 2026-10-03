@@ -104,9 +104,10 @@ jobs:
         working-directory: backend
         run: python -m pytest -q
 
-  # The render worker's build of the app (BUILD_TARGET=worker), whose render harness is captured
-  # in headless Chromium on the SwiftShader software renderer and compared with tests/goldens by
-  # SSIM. Read tests/goldens/README.md before regenerating them.
+  # The render worker's build of the app, whose render harness is captured in headless Chromium
+  # on the SwiftShader software renderer (WebGL 2 for the lighting goldens, WebGPU for the export
+  # golden) and compared with tests/goldens by SSIM. Read tests/goldens/README.md before
+  # regenerating them.
   golden:
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.render == 'true') }}

@@ -70,7 +70,7 @@ def get_assets(
 
 
 @router.post("/assets/upload", response_model=UserAssetItem)
-async def upload_asset(
+def upload_asset(
     file: UploadFile = File(...),
     asset_type: str = Form(...),
     label: str | None = Form(default=None),

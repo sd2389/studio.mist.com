@@ -182,12 +182,18 @@ def assert_model_credit(db: Session, user: User) -> UserBilling:
 def consume_model_credit(db: Session, billing: UserBilling, upload_bytes: int = 0) -> None:
     """Spend one model credit and count the model's `upload_bytes` of storage.
 
-    One conditional UPDATE, so two saves racing for the last credit cannot both have it.
-    Not committed: the caller commits it with the scene it pays for, or rolls both back.
+    One conditional UPDATE that also holds the plan's storage limit, so two saves racing for
+    the last credit or the last bytes cannot both have them. Not committed: the caller
+    commits it with the scene it pays for, or rolls both back.
     """
+    storage_limit = get_quotas(normalize_tier(billing.plan_tier)).storage_bytes
     spent = db.execute(
         update(UserBilling)
-        .where(UserBilling.id == billing.id, UserBilling.model_credits_balance > 0)
+        .where(
+            UserBilling.id == billing.id,
+            UserBilling.model_credits_balance > 0,
+            UserBilling.storage_bytes_used <= storage_limit - upload_bytes,
+        )
         .values(
             model_credits_balance=UserBilling.model_credits_balance - 1,
             storage_bytes_used=UserBilling.storage_bytes_used + upload_bytes,
@@ -195,7 +201,13 @@ def consume_model_credit(db: Session, billing: UserBilling, upload_bytes: int = 
         )
     )
     if spent.rowcount != 1:
-        raise HTTPException(status_code=402, detail="No model credits remaining.")
+        db.refresh(billing)  # which limit the other save took
+        if billing.model_credits_balance <= 0:
+            raise HTTPException(status_code=402, detail="No model credits remaining.")
+        raise HTTPException(
+            status_code=402,
+            detail="Storage limit reached. Upgrade your plan or delete unused models.",
+        )
 
 
 def assert_ai_image_credit(db: Session, user: User) -> UserBilling:
@@ -245,11 +257,19 @@ def assert_custom_material_credit(db: Session, user: User) -> UserBilling:
 
 
 def consume_custom_material_credit(db: Session, billing: UserBilling) -> None:
-    if billing.custom_material_credits_balance <= 0:
+    """Spend one custom-material credit in one conditional UPDATE, so two saves racing for
+    the last credit cannot both have it. Not committed: the caller commits it with the
+    material it pays for, or rolls both back."""
+    spent = db.execute(
+        update(UserBilling)
+        .where(UserBilling.id == billing.id, UserBilling.custom_material_credits_balance > 0)
+        .values(
+            custom_material_credits_balance=UserBilling.custom_material_credits_balance - 1,
+            updated_at=datetime.utcnow(),
+        )
+    )
+    if spent.rowcount != 1:
         raise HTTPException(status_code=402, detail="No custom material credits remaining.")
-    billing.custom_material_credits_balance -= 1
-    billing.updated_at = datetime.utcnow()
-    db.commit()
 
 
 def assert_custom_asset_credit(db: Session, user: User, byte_size: int) -> UserBilling:
@@ -270,16 +290,29 @@ def assert_custom_asset_credit(db: Session, user: User, byte_size: int) -> UserB
 
 
 def consume_custom_asset_credit(db: Session, billing: UserBilling, byte_size: int) -> None:
-    tier = normalize_tier(billing.plan_tier)
-    quotas = get_quotas(tier)
-    if billing.custom_asset_credits_balance <= 0:
-        raise HTTPException(status_code=402, detail="No custom asset credits remaining.")
-    if billing.storage_bytes_used + byte_size > quotas.storage_bytes:
+    """Spend one custom-asset credit and count the asset's `byte_size` of storage, in one
+    conditional UPDATE that also holds the plan's storage limit, so two uploads racing for
+    the last credit or the last bytes cannot both have them. Not committed: the caller
+    commits it with the asset it pays for, or rolls both back."""
+    storage_limit = get_quotas(normalize_tier(billing.plan_tier)).storage_bytes
+    spent = db.execute(
+        update(UserBilling)
+        .where(
+            UserBilling.id == billing.id,
+            UserBilling.custom_asset_credits_balance > 0,
+            UserBilling.storage_bytes_used <= storage_limit - byte_size,
+        )
+        .values(
+            custom_asset_credits_balance=UserBilling.custom_asset_credits_balance - 1,
+            storage_bytes_used=UserBilling.storage_bytes_used + byte_size,
+            updated_at=datetime.utcnow(),
+        )
+    )
+    if spent.rowcount != 1:
+        db.refresh(billing)  # which limit the other upload took
+        if billing.custom_asset_credits_balance <= 0:
+            raise HTTPException(status_code=402, detail="No custom asset credits remaining.")
         raise HTTPException(status_code=402, detail="Storage limit reached.")
-    billing.custom_asset_credits_balance -= 1
-    billing.storage_bytes_used += byte_size
-    billing.updated_at = datetime.utcnow()
-    db.commit()
 
 
 def assert_storage_for_upload(db: Session, user: User, byte_size: int) -> UserBilling:

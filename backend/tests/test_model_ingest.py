@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
+from image_samples import raster
 from model_samples import COMPRESSED_GLB, REAL_GLB, RENAMED_FILES, TRUNCATED_GLB, glb, glb_with_triangles, mesh_doc
 from sqlalchemy import func, select
 
@@ -214,22 +215,110 @@ def register(db, user, key: str, **fields) -> dict:
     )
 
 
-def test_register_keeps_the_checked_glb_under_a_fresh_key_and_charges_once(db, sample_user, store):
-    key = upload_key(sample_user.id)
-    thumbnail = f"customers/{sample_user.id}/thumbnails/{'b' * 32}-thumbnail.webp"
-    store.put_bytes(key, REAL_GLB)
-    store.put_bytes(thumbnail, b"RIFF-webp")
-    credits, _ = balances(db, sample_user)
+def thumbnail_key(user_id: int) -> str:
+    """Where a presigned PUT put the thumbnail."""
+    return f"customers/{user_id}/thumbnails/{'b' * 32}-thumbnail.webp"
 
-    result = register(db, sample_user, key, sku="RING-1", thumbnail_key=thumbnail)
+
+def stored_thumbnails(backend: LocalBackend, user_id: int) -> list[str]:
+    root = backend._root
+    return sorted(path.relative_to(root).as_posix() for path in root.glob(f"customers/{user_id}/thumbnails/*"))
+
+
+def test_register_keeps_the_checked_glb_and_thumbnail_under_fresh_keys_and_charges_once(
+    db, sample_user, store, monkeypatch
+):
+    key, thumb = upload_key(sample_user.id), thumbnail_key(sample_user.id)
+    thumbnail = raster("WEBP", (512, 512))
+    store.put_bytes(key, REAL_GLB)
+    store.put_bytes(thumb, thumbnail)
+    credits, _ = balances(db, sample_user)
+    content_types: dict[str, str | None] = {}
+
+    def write_bytes(key, data, content_type=None):
+        content_types[key] = content_type
+        store.put_bytes(key, data, content_type)
+
+    monkeypatch.setattr(storage_mod, "write_bytes", write_bytes)
+
+    result = register(db, sample_user, key, sku="RING-1", thumbnail_key=thumb)
 
     saved = result["model_key"]
     assert saved != key and saved.startswith(f"customers/{sample_user.id}/models/") and saved.endswith("-ring.glb")
-    assert stored_models(store, sample_user.id) == [saved]  # the presigned object is gone
-    assert store.get_bytes(saved) == REAL_GLB
+    assert stored_models(store, sample_user.id) == [saved]  # the presigned objects are gone
     scene = db.get(Scene, result["scene_id"])
-    assert (scene.model_key, scene.name, scene.thumbnail_key) == (saved, "Ring", thumbnail)
-    assert balances(db, sample_user) == (credits - 1, len(REAL_GLB) + len(b"RIFF-webp"))
+    assert (scene.model_key, scene.name) == (saved, "Ring")
+    assert stored_thumbnails(store, sample_user.id) == [scene.thumbnail_key] != [thumb]
+    assert (store.get_bytes(saved), store.get_bytes(scene.thumbnail_key)) == (REAL_GLB, thumbnail)
+    assert content_types == {saved: "model/gltf-binary", scene.thumbnail_key: "image/webp"}
+    assert balances(db, sample_user) == (credits - 1, len(REAL_GLB) + len(thumbnail))
+
+
+@pytest.mark.parametrize(
+    "thumbnail",
+    [
+        REAL_GLB,  # not an image
+        b"RIFF\x10\x00\x00\x00WEBPVP8 ",  # WebP magic, no image
+        raster("PNG", (64, 64))[:100],  # cut short
+        raster("PNG", (4096, 8)),  # wider than 2048 px
+        raster("PNG") + bytes(2 * 1024 * 1024),  # over 2 MB
+        None,  # never uploaded
+    ],
+    ids=["glb", "webp-magic-only", "truncated-png", "too-wide", "too-large", "missing"],
+)
+def test_a_bad_thumbnail_is_dropped_and_the_model_saved_without_it(db, sample_user, store, thumbnail):
+    key, thumb = upload_key(sample_user.id), thumbnail_key(sample_user.id)
+    store.put_bytes(key, REAL_GLB)
+    if thumbnail is not None:
+        store.put_bytes(thumb, thumbnail)
+    credits, _ = balances(db, sample_user)
+
+    result = register(db, sample_user, key, thumbnail_key=thumb)
+
+    assert db.get(Scene, result["scene_id"]).thumbnail_key is None
+    assert stored_thumbnails(store, sample_user.id) == []  # the bad upload is deleted too
+    assert balances(db, sample_user) == (credits - 1, len(REAL_GLB))
+
+
+def test_a_png_thumbnail_is_kept_as_png(db, sample_user, store):
+    """Browsers that can't encode WebP hand the canvas back as PNG."""
+    key, thumb = upload_key(sample_user.id), thumbnail_key(sample_user.id)
+    store.put_bytes(key, REAL_GLB)
+    store.put_bytes(thumb, raster("PNG", (512, 512)))
+
+    result = register(db, sample_user, key, thumbnail_key=thumb)
+
+    assert store.get_bytes(db.get(Scene, result["scene_id"]).thumbnail_key) == raster("PNG", (512, 512))
+
+
+def test_a_thumbnail_key_outside_the_users_thumbnails_is_refused_untouched(db, sample_user, store):
+    """Register deletes the thumbnail upload, so it may not name a model, render or asset."""
+    key = upload_key(sample_user.id)
+    render = f"customers/{sample_user.id}/renders/{'c' * 32}.png"
+    store.put_bytes(key, REAL_GLB)
+    store.put_bytes(render, raster("PNG"))
+
+    with pytest.raises(HTTPException) as exc:
+        register(db, sample_user, key, thumbnail_key=render)
+
+    assert exc.value.status_code == 400
+    assert store.get_bytes(render) == raster("PNG")
+    assert scene_count(db) == 0
+
+
+def test_a_thumbnail_a_saved_scene_shows_is_left_alone(db, sample_user, store):
+    """Scenes saved before thumbnails were copied point at their presigned thumbnail."""
+    key, thumb = upload_key(sample_user.id), thumbnail_key(sample_user.id)
+    store.put_bytes(key, REAL_GLB)
+    store.put_bytes(thumb, raster("WEBP"))
+    now = datetime.utcnow()
+    db.add(Scene(model_key="customers/1/models/old.glb", thumbnail_key=thumb, user_id=sample_user.id, created_at=now, updated_at=now))
+    db.commit()
+
+    result = register(db, sample_user, key, thumbnail_key=thumb)
+
+    assert db.get(Scene, result["scene_id"]).thumbnail_key is None
+    assert stored_thumbnails(store, sample_user.id) == [thumb]
 
 
 @pytest.mark.parametrize("kind", sorted(NOT_GLB))
@@ -301,20 +390,21 @@ def test_register_with_no_credits_left_deletes_the_upload(db, sample_user, store
     assert (scene_count(db), balances(db, sample_user)) == (0, (0, 0))
 
 
-def test_register_whose_save_fails_keeps_neither_the_upload_nor_its_copy(db, sample_user, store, monkeypatch):
+def test_register_whose_save_fails_keeps_neither_the_uploads_nor_their_copies(db, sample_user, store, monkeypatch):
     """The early credit check passes, then the charge is refused at commit."""
-    key = upload_key(sample_user.id)
+    key, thumb = upload_key(sample_user.id), thumbnail_key(sample_user.id)
     store.put_bytes(key, REAL_GLB)
+    store.put_bytes(thumb, raster("WEBP"))
     billing = get_or_create_billing(db, sample_user)
     billing.model_credits_balance = 0
     db.commit()
     monkeypatch.setattr(upload_service, "assert_model_credit", lambda db, user: billing)
 
     with pytest.raises(HTTPException) as exc:
-        register(db, sample_user, key)
+        register(db, sample_user, key, thumbnail_key=thumb)
 
     assert exc.value.status_code == 402
-    assert stored_models(store, sample_user.id) == []
+    assert stored_models(store, sample_user.id) == stored_thumbnails(store, sample_user.id) == []
     assert (scene_count(db), balances(db, sample_user)) == (0, (0, 0))
 
 

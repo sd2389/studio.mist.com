@@ -7,10 +7,14 @@ from pathlib import Path
 from typing import Any
 
 from app.config import Settings, get_settings
+from app.core.observability import get_logger, log_event
 from app.core.storage.base import StorageBackend
 from app.core.storage.local import LocalBackend
 from app.core.storage.r2 import R2Backend
 from app.core.storage.s3 import S3Backend
+
+
+_logger = get_logger("studio.storage")
 
 
 def _build_backend(settings: Settings) -> StorageBackend:
@@ -67,6 +71,15 @@ def delete(key: str) -> None:
     get_storage().delete(key)
 
 
+def delete_quietly(key: str) -> None:
+    """Remove an object nobody will keep, such as a refused or unsaved upload. A failure is
+    logged, never raised over the error that led here."""
+    try:
+        delete(key)
+    except Exception as exc:  # noqa: BLE001 - cleanup must not mask the original error
+        log_event(_logger, "storage.cleanup_failed", key=key, error=str(exc))
+
+
 def presign_put(key: str, content_type: str, expires_in: int = 900) -> str:
     return get_storage().presign_put(key, content_type, expires_in=expires_in)
 
@@ -94,6 +107,7 @@ __all__ = [
     "StorageBackend",
     "copy_to_public",
     "delete",
+    "delete_quietly",
     "get_public_storage",
     "get_s3_object_stream",
     "get_storage",

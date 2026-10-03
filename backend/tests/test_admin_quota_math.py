@@ -52,6 +52,30 @@ def test_consume_model_credit_refuses_a_credit_another_save_already_spent(db, sa
     assert exc.value.status_code == 402
 
 
+def test_consume_model_credit_refuses_bytes_past_the_storage_limit(db, sample_user):
+    """A save that would take storage past the plan's limit spends nothing, even with credits left."""
+    import pytest
+    from fastapi import HTTPException
+
+    billing = get_or_create_billing(db, sample_user)
+    limit = get_quotas("free").storage_bytes
+    billing.model_credits_balance = 2
+    billing.storage_bytes_used = limit - 100
+    db.commit()
+
+    with pytest.raises(HTTPException) as exc:
+        consume_model_credit(db, billing, 101)
+    assert exc.value.status_code == 402
+    assert "Storage limit" in exc.value.detail
+    db.refresh(billing)
+    assert (billing.model_credits_balance, billing.storage_bytes_used) == (2, limit - 100)
+
+    consume_model_credit(db, billing, 100)
+    db.commit()
+    db.refresh(billing)
+    assert (billing.model_credits_balance, billing.storage_bytes_used) == (1, limit)
+
+
 def test_adjust_credits_grant_and_deduct(db, sample_user, admin_user):
     billing = get_or_create_billing(db, sample_user)
     start = billing.model_credits_balance

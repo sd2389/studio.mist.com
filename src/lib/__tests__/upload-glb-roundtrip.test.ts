@@ -5,29 +5,14 @@ import { convertUploadToGlb, inspectModelFromFile } from "@/lib/convert/to-glb";
 import { detectSlots } from "@/lib/slot-materials/detect-slots";
 import { buildRingFixture } from "./fixtures/jewelry-fixtures";
 import { toBinaryStl } from "./fixtures/mesh-writers";
+import { installNodeFileReader } from "./fixtures/node-file-reader";
 
 /**
  * The stored artefact is always a GLB: a segmented upload must keep its slot names, jewelry
  * roles, flat non-indexed stones and detected units through GLTFExporter → GLTFLoader.
  */
 
-/** GLTFExporter reads its Blob output through FileReader, which Node does not ship. */
-class NodeFileReader {
-  result: ArrayBuffer | null = null;
-  onloadend: (() => void) | null = null;
-  readAsArrayBuffer(blob: Blob) {
-    void blob.arrayBuffer().then((buffer) => {
-      this.result = buffer;
-      this.onloadend?.();
-    });
-  }
-}
-
-beforeAll(() => {
-  if (typeof globalThis.FileReader === "undefined") {
-    (globalThis as unknown as { FileReader: unknown }).FileReader = NodeFileReader;
-  }
-});
+beforeAll(installNodeFileReader);
 
 async function roundTrip(file: File): Promise<{ scene: THREE.Object3D; slotTokens: Record<string, string[]> }> {
   const inspected = await inspectModelFromFile(file);

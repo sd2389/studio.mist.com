@@ -121,6 +121,7 @@ export async function main() {
     });
   }
   log(`profile ${config.profileName}, ${config.slots} slot(s), kinds ${config.kinds.join(", ")}, harness ${config.harnessUrl}, API ${config.apiUrl}`);
+  if (!config.sandbox) log("Chromium's sandbox is OFF (WORKER_CHROMIUM_SANDBOX=0): never run customers' jobs like this");
   const api = createApiClient({ baseUrl: config.apiUrl, workerToken: config.workerToken });
   const assets = createAssetCache({ dir: config.cacheDir, maxBytes: config.cacheMaxBytes, log });
   const slots = Array.from({ length: config.slots }, (_, index) => createSlot(index, { config, assets }));

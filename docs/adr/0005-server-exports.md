@@ -376,7 +376,7 @@ A screenshot of the live viewer can't be prevented, and the live viewer stays un
 |---|---|---|
 | `nvidia` | Linux GPU hosts | `--enable-unsafe-webgpu --use-angle=vulkan --enable-features=Vulkan,VulkanFromANGLE --disable-vulkan-surface --ignore-gpu-blocklist --force-color-profile=srgb --hide-scrollbars`; container `NVIDIA_DRIVER_CAPABILITIES=graphics,utility,compute` |
 | `metal` | a Mac, local development | `--force-color-profile=srgb --hide-scrollbars` (Metal needs no flags) |
-| `swiftshader` | CI and CPU-only hosts | `chrome-headless-shell` with `--enable-unsafe-webgpu`: WebGPU on SwiftShader, slow but the same backend as production |
+| `swiftshader` | CI and CPU-only hosts | new headless with `--enable-unsafe-webgpu --use-webgpu-adapter=swiftshader --use-angle=swiftshader --enable-features=Vulkan --use-vulkan=swiftshader`: WebGPU on SwiftShader, slow but the same backend as production. (As built in A4: on Linux, `chrome-headless-shell`'s SwiftShader WebGPU lost its device.) |
 
 At start the worker opens `/render-harness?mode=probe`, which reports `navigator.gpu.requestAdapter()` and whether three.js picked the WebGPU backend. With `WORKER_REQUIRE_GPU=1` (production) it refuses to claim on SwiftShader or WebGL 2, so a host with broken drivers stays idle rather than producing slow, different output. Every job's `renderer` field records what drew it.
 
@@ -402,7 +402,7 @@ The `scale` and `setparams` filters matter: without them ffmpeg converts RGB wit
 
 **Concurrency and scaling.** One slot per GPU by default (`WORKER_SLOTS`), two on 24 GB cards; an 8K still holds about 1 GB of GPU memory and, at 4000², the sample averager alone allocates 256 MB of CPU memory, so give each slot 8 GB of RAM and `shm_size: 2gb`. Studio jobs (priority 100) go before batch jobs (10), and the per-user running cap keeps one customer's 500-design batch from starving everyone else. An admin endpoint, `GET /render-jobs/stats` (queued by kind and priority, oldest wait, running per worker), feeds autoscaling: start a host when the oldest studio job has waited 30 s or the batch backlog exceeds an hour of work, stop it after 15 idle minutes, never above `WORKER_MAX_HOSTS`.
 
-**Image and compose.** `scripts/render-worker/Dockerfile`, on `node:22-bookworm-slim` (Playwright doesn't support Alpine, which the web image uses):
+**Image and compose.** `Dockerfile.worker` at the repo root (as built in A4: a build stage makes the worker build's standalone server, which the worker starts on 127.0.0.1, and the image keeps Playwright alone of the dev dependencies), on `node:22-bookworm-slim` (Playwright doesn't support Alpine, which the web image uses). The sketch:
 
 ```dockerfile
 FROM node:22-bookworm-slim
@@ -417,7 +417,7 @@ USER node
 CMD ["node", "scripts/render-worker/worker.mjs"]
 ```
 
-`docker-compose.yml` gains two services that plain `docker compose up` leaves off: `render-worker` (profile `worker`, `nvidia` profile, one GPU reserved through `deploy.resources.reservations.devices`) and `render-worker-cpu` (profile `worker-cpu`, `swiftshader`, for local smoke tests with `STORAGE_BACKEND=local`). Both get `RENDER_API_URL`, `RENDER_WORKER_TOKEN` and `shm_size`. On a Mac, `WORKER_GPU=metal npm run worker:render` runs the worker against a local stack. Chrome for Testing is x86-64 on Linux; arm64 Linux hosts would get Playwright's Chromium and are out of scope.
+`docker-compose.yml` gains two services that plain `docker compose up` leaves off: `worker-gpu` (profile `worker-gpu`, `nvidia` profile, one GPU reserved through `deploy.resources.reservations.devices`) and `worker-cpu` (profile `worker-cpu`, `swiftshader`, for local smoke tests with `STORAGE_BACKEND=local`). Both get `RENDER_API_URL`, `RENDER_WORKER_TOKEN` and `shm_size`. On a Mac, `WORKER_GPU=metal npm run worker:render` runs the worker against a local stack. Chrome for Testing is x86-64 on Linux; arm64 Linux hosts would get Playwright's Chromium and are out of scope.
 
 ### The harness export mode
 

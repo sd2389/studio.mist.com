@@ -1,0 +1,50 @@
+# The render worker (ADR 0005, "Image and compose"): the worker build of the app, which has the
+# render harness, served on 127.0.0.1 inside the container; Chrome for Testing through Playwright;
+# ffmpeg for videos (B3). Build it for linux/amd64 (Compose does): Playwright's Chrome for Testing
+# has no arm64 Linux build. `docker compose --profile worker-gpu up` (NVIDIA) or
+# `--profile worker-cpu up` (SwiftShader) runs it; see scripts/render-worker/README.md.
+ARG NODE_IMAGE=node:22-bookworm-slim
+
+# ---------- the worker build of the app ----------
+FROM ${NODE_IMAGE} AS builder
+# Where the page loads catalogue HDRs and backgrounds from, if not the API; list it in
+# WORKER_ASSET_ORIGINS too. Leave NEXT_PUBLIC_CDN_ORIGIN and NEXT_PUBLIC_API_URL unset: the page
+# gets everything else from the worker.
+ARG NEXT_PUBLIC_SOURCE_ASSET_ORIGIN=
+ENV NEXT_PUBLIC_SOURCE_ASSET_ORIGIN=${NEXT_PUBLIC_SOURCE_ASSET_ORIGIN} \
+    NEXT_TELEMETRY_DISABLED=1
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY . .
+RUN BUILD_TARGET=worker npm run build
+
+# ---------- the worker ----------
+FROM ${NODE_IMAGE}
+ENV NODE_ENV=production \
+    NEXT_TELEMETRY_DISABLED=1 \
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+    WORKER_APP_DIR=/app \
+    WORKER_CACHE_DIR=/var/cache/render-worker \
+    XDG_CACHE_HOME=/tmp/.cache
+# ffmpeg encodes videos (B3); the Free mark asks for "Helvetica Neue", Helvetica, Arial, and
+# Liberation Sans is the Arial match; libvulkan1 is the Vulkan loader the NVIDIA driver plugs into.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates ffmpeg fonts-liberation libvulkan1 \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /var/cache/render-worker \
+    && chown node:node /var/cache/render-worker
+WORKDIR /app
+# The app as Next's standalone server, which the worker starts on 127.0.0.1 (WORKER_APP_DIR).
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder /app/public ./public
+# The worker needs Playwright alone, and Chrome for Testing with the libraries it links to. New
+# headless is the full browser, so no headless shell.
+COPY --from=builder /app/node_modules/playwright ./node_modules/playwright
+COPY --from=builder /app/node_modules/playwright-core ./node_modules/playwright-core
+RUN node node_modules/playwright/cli.js install --with-deps --no-shell chromium \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /app/scripts/render-worker ./scripts/render-worker
+USER node
+CMD ["node", "scripts/render-worker/worker.mjs"]

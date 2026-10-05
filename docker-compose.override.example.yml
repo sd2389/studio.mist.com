@@ -5,3 +5,10 @@ services:
   backend:
     environment:
       RENDER_WORKER_TOKEN: smoketoken
+  # The render workers (docker compose --profile worker-cpu up) claim with the same token.
+  worker-cpu:
+    environment:
+      RENDER_WORKER_TOKEN: smoketoken
+  worker-gpu:
+    environment:
+      RENDER_WORKER_TOKEN: smoketoken

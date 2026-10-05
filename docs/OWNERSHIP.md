@@ -7,6 +7,7 @@
 | Scene editing | `src/features/editor` | The studio's Edit tab (`SceneEditPanel`): details and variants, specs, full catalogues and user library, position, camera, layers, batch exports, embed settings. `/model/:id` redirects to `/viewer` |
 | Scene persistence | `src/features/scene` | Scene API client, types re-exports |
 | Capture / export bridges | `src/features/render` | Screenshot, video, hires, transparent capture bridges; export plan gates (size cap, Free watermark, Campaign Pack tiers) |
+| Render worker | `scripts/render-worker`, `Dockerfile.worker` | Claims render jobs and renders them in the harness's export mode in headless Chrome on the host's GPU: launch profiles and self-check, sink, network policy, asset cache, uploads |
 | Campaign pack | `src/features/render/campaign-pack` | One-click ZIP: stills per metal × angle, turntables, 360° spin + viewer, ASET image, embed |
 | Studio scenes | `src/features/scene-setups` | Scene presets, reflective floors, props (plinth, crystals, silk), model-bounds staging |
 | Ring designer | `src/features/ring-builder`, `src/app/design` | Parametric configurator UI, build worker, downloads, studio handoff |

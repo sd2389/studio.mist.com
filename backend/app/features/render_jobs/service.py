@@ -7,9 +7,7 @@ the same thing whatever changes later.
 
 from __future__ import annotations
 
-import hashlib
-import json
-import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -28,6 +26,7 @@ from app.features.billing.quota_service import (
     hold_render_credits,
     refund_render_job,
 )
+from app.features.render_jobs import idempotency
 from app.features.render_jobs.pricing import render_job_cost
 from app.features.render_jobs.specs import (
     check_poses,
@@ -41,13 +40,18 @@ from app.features.scene.look import saved_look, validate_look, variant_look
 from app.features.scene.service import require_owned_scene
 from app.models import Render, RenderJob, Scene
 from app.models.user import User
-from app.schemas.render_job import RenderJobCreate, RenderJobOut, RenderJobOutput, RenderJobQuote
+from app.schemas.render_job import (
+    RenderJobBulkCreate,
+    RenderJobCreate,
+    RenderJobOut,
+    RenderJobOutput,
+    RenderJobQuote,
+)
 
 MAX_ATTEMPTS = 3
 STUDIO_PRIORITY = 100
 UNFINISHED = ("queued", "running")
 DOWNLOAD_URL_SECONDS = 300
-_IDEMPOTENCY_KEY = re.compile(r"[\x21-\x7e]{1,128}")
 
 
 @dataclass(frozen=True)
@@ -116,7 +120,7 @@ def _queue_jobs(
     user: User,
     planned: list[PlannedJob],
     *,
-    idempotency_key: str | None = None,
+    idempotency_keys: list[str] | None = None,
     request_hash: str | None = None,
 ) -> list[RenderJob]:
     """Hold the planned jobs' credits in one statement and queue them, all or none.
@@ -127,6 +131,7 @@ def _queue_jobs(
     tier = normalize_tier(get_or_create_billing(db, user).plan_tier)
     quotas = get_quotas(tier)
     now = datetime.utcnow()
+    keys = idempotency_keys or [None] * len(planned)
     try:
         period_start = hold_render_credits(db, user.id, sum(job.credits for job in planned))
         _assert_queue_room(db, user.id, len(planned), tier)
@@ -144,14 +149,14 @@ def _queue_jobs(
                 credits=job.credits,
                 credit_state="held",
                 billing_period_start=period_start,
-                idempotency_key=idempotency_key,
+                idempotency_key=key,
                 request_hash=request_hash,
                 status="queued",
                 attempts=0,
                 created_at=now,
                 updated_at=now,
             )
-            for job in planned
+            for job, key in zip(planned, keys, strict=True)
         ]
         db.add_all(jobs)
         db.commit()
@@ -163,54 +168,46 @@ def _queue_jobs(
     return jobs
 
 
-def _request_hash(body: RenderJobCreate) -> str:
-    """SHA-256 of the request as canonical JSON, so the same body hashes the same however it is written."""
-    canonical = json.dumps(body.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(canonical.encode()).hexdigest()
-
-
-def _job_for_key(db: Session, user_id: int, key: str, request_hash: str) -> RenderJob | None:
-    """The job an earlier request with this key made; 409 when that request had another body."""
-    job = db.execute(
-        select(RenderJob).where(RenderJob.user_id == user_id, RenderJob.idempotency_key == key)
-    ).scalars().first()
-    if job is not None and job.request_hash != request_hash:
-        raise HTTPException(status_code=409, detail="Idempotency-Key was already used for another request")
-    return job
+def _queue_once(
+    db: Session,
+    user: User,
+    plan: Callable[[], list[PlannedJob]],
+    key: str | None,
+    body: RenderJobCreate | RenderJobBulkCreate,
+) -> tuple[list[RenderJob], bool]:
+    """Queue the jobs `plan` makes, and say they are new. With an Idempotency-Key an earlier
+    request used with the same body, that request's jobs come back instead, planned and held
+    nothing; the same key with another body is 409."""
+    idempotency.check_key(key)
+    if key is None:
+        return _queue_jobs(db, user, plan()), True
+    bulk = isinstance(body, RenderJobBulkCreate)
+    body_hash = idempotency.request_hash(body)
+    if earlier := idempotency.earlier_jobs(db, user.id, key, body_hash, bulk=bulk):
+        return earlier, False
+    planned = plan()
+    keys = idempotency.bulk_job_keys(key, len(planned)) if bulk else [key]
+    try:
+        return _queue_jobs(db, user, planned, idempotency_keys=keys, request_hash=body_hash), True
+    except IntegrityError:
+        # A request with the same key queued its jobs first; this one held nothing.
+        earlier = idempotency.earlier_jobs(db, user.id, key, body_hash, bulk=bulk)
+        if not earlier:
+            raise
+        return earlier, False
 
 
 def create_job(
     db: Session, user: User, body: RenderJobCreate, idempotency_key: str | None = None
 ) -> tuple[RenderJob, bool]:
-    """Queue one job and say whether it is new.
-
-    With an Idempotency-Key, an earlier job made with the same key and body comes back
-    instead of a new one, and the same key with another body is 409.
-    """
-    if idempotency_key is not None and not _IDEMPOTENCY_KEY.fullmatch(idempotency_key):
-        raise HTTPException(status_code=400, detail="Idempotency-Key: 1 to 128 visible ASCII characters")
-    request_hash = _request_hash(body) if idempotency_key else None
-    if idempotency_key and (earlier := _job_for_key(db, user.id, idempotency_key, request_hash)):
-        return earlier, False
-
-    planned = plan_job(db, user, body)
-    try:
-        [job] = _queue_jobs(db, user, [planned], idempotency_key=idempotency_key, request_hash=request_hash)
-    except IntegrityError:
-        # A request with the same key queued its job first; this one held nothing.
-        earlier = _job_for_key(db, user.id, idempotency_key, request_hash) if idempotency_key else None
-        if earlier is None:
-            raise
-        return earlier, False
-    return job, True
+    """Queue one job and say whether it is new (see _queue_once for an Idempotency-Key)."""
+    [job], created = _queue_once(db, user, lambda: [plan_job(db, user, body)], idempotency_key, body)
+    return job, created
 
 
-def create_jobs(
-    db: Session, user: User, bodies: list[RenderJobCreate], idempotency_key: str | None = None
-) -> list[RenderJob]:
-    """Queue jobs for several scenes or variants at once (Grow and Studio): all of them, or none."""
-    if idempotency_key is not None:
-        raise HTTPException(status_code=400, detail="Idempotency-Key: /render-jobs/bulk doesn't take one")
+def plan_bulk(db: Session, user: User, bodies: list[RenderJobCreate]) -> list[PlannedJob]:
+    """Several create requests at once (Grow and Studio), each validated and priced; 400 or 402
+    naming the first one that can't be made."""
     if len(bodies) > MAX_BULK_RENDER_JOBS:
         raise HTTPException(status_code=400, detail=f"jobs: at most {MAX_BULK_RENDER_JOBS} a request")
     tier = normalize_tier(get_or_create_billing(db, user).plan_tier)
@@ -225,7 +222,15 @@ def create_jobs(
             planned.append(plan_job(db, user, body))
         except HTTPException as exc:
             raise HTTPException(status_code=exc.status_code, detail=f"jobs[{index}]: {exc.detail}") from exc
-    return _queue_jobs(db, user, planned)
+    return planned
+
+
+def create_jobs(
+    db: Session, user: User, body: RenderJobBulkCreate, idempotency_key: str | None = None
+) -> tuple[list[RenderJob], bool]:
+    """Queue jobs for several scenes or variants at once, all of them or none, and say whether
+    they are new (see _queue_once for an Idempotency-Key)."""
+    return _queue_once(db, user, lambda: plan_bulk(db, user, body.jobs), idempotency_key, body)
 
 
 def quote_job(db: Session, user: User, body: RenderJobCreate) -> RenderJobQuote:

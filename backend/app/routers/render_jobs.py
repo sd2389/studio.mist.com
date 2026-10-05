@@ -100,12 +100,16 @@ def create_render_job(
 @router.post("/bulk", status_code=201, response_model=RenderJobBulkOut, dependencies=_server_exports)
 def create_render_jobs(
     body: RenderJobBulkCreate,
+    response: Response,
     idempotency_key: Annotated[str | None, Header()] = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     _rate: Annotated[None, Depends(_create_limit)] = None,
 ) -> RenderJobBulkOut:
-    jobs = render_job_service.create_jobs(db, user, body.jobs, idempotency_key)
+    """201 with the new jobs, or 200 with the jobs an earlier request with the same Idempotency-Key made."""
+    jobs, created = render_job_service.create_jobs(db, user, body, idempotency_key)
+    if not created:
+        response.status_code = 200
     return RenderJobBulkOut(jobs=render_job_service.job_views(db, jobs))
 
 

@@ -345,18 +345,48 @@ def test_one_bad_job_queues_none_of_the_bulk(client, db, grower, scene):
     assert _balance(db, user) == 300
 
 
-def test_bulk_takes_no_idempotency_key_and_at_most_100_jobs(client, db, grower, scene):
+def test_bulk_takes_at_most_100_jobs_and_a_well_formed_key(client, db, grower, scene):
     headers = grower[1]
 
-    keyed = client.post(
-        "/render-jobs/bulk",
-        headers={**headers, "Idempotency-Key": "k"},
-        json={"jobs": [{"kind": "still", "scene_id": scene.id, "spec": FOUR_K}]},
-    )
     too_many = _bulk(client, headers, scene, *([{}] * 101))
+    bad_key = _bulk(client, {**headers, "Idempotency-Key": "has spaces"}, scene, {})
 
-    assert (keyed.status_code, too_many.status_code) == (400, 400)
+    assert (too_many.status_code, bad_key.status_code) == (400, 400)
     assert _job_rows(db) == []
+
+
+def test_a_repeated_bulk_key_returns_the_same_jobs_and_holds_once(client, db, grower, scene):
+    user, headers = grower
+    keyed = {**headers, "Idempotency-Key": "k" * 128}  # a digest of it fits each job's key
+
+    first = _bulk(client, keyed, scene, {}, {"variant_id": "v-rose"})
+    again = _bulk(client, keyed, scene, {}, {"variant_id": "v-rose"})
+
+    assert (first.status_code, again.status_code) == (201, 200)
+    assert [job["id"] for job in again.json()["jobs"]] == [job["id"] for job in first.json()["jobs"]]
+    assert len(_job_rows(db)) == 2
+    assert _balance(db, user) == 296
+
+
+def test_a_bulk_key_reused_with_another_body_is_409(client, db, grower, scene):
+    user, headers = grower
+    keyed = {**headers, "Idempotency-Key": "bulk-1"}
+    _bulk(client, keyed, scene, {}, {})
+
+    other_body = _bulk(client, keyed, scene, {})
+    single = _create(client, keyed, scene)
+
+    assert (other_body.status_code, single.status_code) == (409, 409)
+    assert len(_job_rows(db)) == 2
+    assert _balance(db, user) == 296
+
+
+def test_a_key_one_create_used_cant_make_a_bulk_request(client, db, grower, scene):
+    keyed = {**grower[1], "Idempotency-Key": "one-job"}
+    _create(client, keyed, scene)
+
+    assert _bulk(client, keyed, scene, {}).status_code == 409
+    assert len(_job_rows(db)) == 1
 
 
 def test_a_quote_prices_a_job_without_holding_anything(client, db, owner, scene):

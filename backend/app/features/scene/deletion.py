@@ -13,8 +13,9 @@ from app.models import Render, Scene
 
 
 def counted_keys(scene: Scene, render_keys: list[str]) -> list[str]:
-    """The files the scene's upload counted toward storage: its model and the thumbnail it
-    came with. A render made the thumbnail later was never counted."""
+    """The files the scene counted toward storage: its model and its thumbnail, the one its
+    upload came with or one set from the studio's view. A render made the thumbnail was never
+    counted."""
     counted = [scene.model_key]
     if scene.thumbnail_key and scene.thumbnail_key not in render_keys:
         counted.append(scene.thumbnail_key)
@@ -22,8 +23,9 @@ def counted_keys(scene: Scene, render_keys: list[str]) -> list[str]:
 
 
 def uploaded_thumbnail(db: Session, scene: Scene) -> str | None:
-    """The thumbnail the scene's upload came with, which counted toward storage; None when the
-    current thumbnail is one of its renders, or there is none."""
+    """The scene's thumbnail when it counted toward storage (the one its upload came with, or
+    one set from the studio's view); None when the thumbnail is one of its renders, or there is
+    none."""
     key = scene.thumbnail_key
     if not key:
         return None

@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.core import storage
 from app.core import storage_keys as keys
+from app.core.request_body import read_at_most
 from app.features.billing.quota_service import charge_render_job, count_storage_bytes
 from app.features.render_jobs.specs import PlannedOutput, planned_outputs
 from app.features.render_jobs.worker import discard_outputs, end_attempt, running_job
@@ -72,16 +73,6 @@ def upload_targets(db: Session, job_id: int, token: str, files: list[RenderJobUp
     return uploads
 
 
-async def _read_at_most(chunks: AsyncIterator[bytes], limit: int) -> bytes:
-    """The whole body, or 413 as soon as it passes `limit` bytes."""
-    body = bytearray()
-    async for chunk in chunks:
-        body += chunk
-        if len(body) > limit:
-            raise HTTPException(status_code=413, detail=f"At most {limit} bytes a file")
-    return bytes(body)
-
-
 async def save_local_upload(
     db: Session, job_id: int, token: str, name: str, content_type: str | None, body: AsyncIterator[bytes]
 ) -> None:
@@ -95,7 +86,7 @@ async def save_local_upload(
         raise HTTPException(status_code=404, detail=f"The job makes no '{name}'")
     if content_type != output.content_type:
         raise HTTPException(status_code=400, detail=f"Content-Type: {name} is {output.content_type}")
-    data = await _read_at_most(body, output.max_bytes)
+    data = await read_at_most(body, output.max_bytes)
     if not data:
         raise HTTPException(status_code=400, detail="The file is empty")
     storage.write_bytes(keys.render_job_output_key(job.user_id, job.id, name), data, content_type=content_type)

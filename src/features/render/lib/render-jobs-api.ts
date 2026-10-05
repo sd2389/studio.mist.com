@@ -104,6 +104,23 @@ export type RenderJobQuote = {
   warnings: string[];
 };
 
+/** Why a job or a request can't be made: the status creating it would answer (402, 404, 400), and why. */
+export type RenderJobRefusal = { status: number; detail: string };
+
+/** One job of a bulk quote: what it would cost and make, or why it can't be made. */
+export type RenderJobBulkQuoteItem = { quote: RenderJobQuote | null; refused: RenderJobRefusal | null };
+
+/** What a bulk request would cost, job by job, before anything is spent. */
+export type RenderJobBulkQuote = {
+  /** The jobs that can be made, together. */
+  credits: number;
+  /** In the request's order. */
+  items: RenderJobBulkQuoteItem[];
+  /** Why the plan refuses the request as a whole (Free has no bulk requests); its jobs are still priced. */
+  refused: RenderJobRefusal | null;
+  warnings: string[];
+};
+
 export type RenderJobFilter = Partial<{
   scene_id: number;
   batch_id: number;
@@ -131,15 +148,30 @@ export function createRenderJob(
   });
 }
 
-/** Queues up to 100 jobs at once (Grow and Studio), all or none. */
-export async function createRenderJobs(requests: RenderJobRequest[], { signal }: CallOptions = {}): Promise<RenderJob[]> {
-  const { jobs } = await apiPost<{ jobs: RenderJob[] }>("/api/render-jobs/bulk", { jobs: requests }, { signal });
+/**
+ * Queues up to 100 jobs at once (Grow and Studio), all or none. Like a single job, a repeated
+ * `idempotencyKey` with the same requests answers the jobs the first call made.
+ */
+export async function createRenderJobs(
+  requests: RenderJobRequest[],
+  { idempotencyKey = crypto.randomUUID(), signal }: CallOptions & { idempotencyKey?: string } = {},
+): Promise<RenderJob[]> {
+  const { jobs } = await apiPost<{ jobs: RenderJob[] }>(
+    "/api/render-jobs/bulk",
+    { jobs: requests },
+    { headers: { "Idempotency-Key": idempotencyKey }, signal },
+  );
   return jobs;
 }
 
 /** What `request` would cost; nothing is held or queued. */
 export function quoteRenderJob(request: RenderJobRequest, { signal }: CallOptions = {}): Promise<RenderJobQuote> {
   return apiPost<RenderJobQuote>("/api/render-jobs/quote", request, { signal });
+}
+
+/** What a bulk request would cost: each job's quote or why it can't be made, and the total. Nothing is held or queued. */
+export function quoteRenderJobs(requests: RenderJobRequest[], { signal }: CallOptions = {}): Promise<RenderJobBulkQuote> {
+  return apiPost<RenderJobBulkQuote>("/api/render-jobs/bulk/quote", { jobs: requests }, { signal });
 }
 
 export function getRenderJob(jobId: number, { signal }: CallOptions = {}): Promise<RenderJob> {

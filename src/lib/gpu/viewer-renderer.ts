@@ -39,11 +39,34 @@ export function asViewerRenderer(gl: unknown): ViewerRenderer {
   return gl as ViewerRenderer;
 }
 
-/** R3F `gl` factory — strips WebGL-only fields like `preserveDrawingBuffer`. */
-export async function createR3FWebGPURenderer(props: {
+type R3FRendererProps = {
   canvas: HTMLCanvasElement | OffscreenCanvas;
   [key: string]: unknown;
-}): Promise<ViewerRenderer> {
+};
+
+/** The renderer each canvas got, from its first `gl` call on. */
+const canvasRenderers = new WeakMap<HTMLCanvasElement | OffscreenCanvas, Promise<ViewerRenderer>>();
+
+/**
+ * R3F `gl` factory — strips WebGL-only fields like `preserveDrawingBuffer`. One renderer per
+ * canvas: R3F's `<Canvas>` configures its root on every render and asks for a renderer each
+ * time until the first `init()` has resolved, so a render during that wait (a fetch landing, a
+ * resize) used to put a second renderer on the same canvas. R3F resizes the renderer it holds
+ * when the size changes, which happened once, before the second one was stored: that one kept
+ * the 300×150 a fresh canvas starts with while the canvas element itself was resized, and
+ * WebGPU refused every frame ("resolve target … does not match the size of the other attachments").
+ */
+export function createR3FWebGPURenderer(props: R3FRendererProps): Promise<ViewerRenderer> {
+  const existing = canvasRenderers.get(props.canvas);
+  if (existing) return existing;
+  const renderer = createR3FRenderer(props);
+  canvasRenderers.set(props.canvas, renderer);
+  // A renderer that failed to start can be asked for again.
+  renderer.catch(() => canvasRenderers.delete(props.canvas));
+  return renderer;
+}
+
+function createR3FRenderer(props: R3FRendererProps): Promise<ViewerRenderer> {
   return createViewerRenderer({
     canvas: props.canvas,
     antialias: typeof props.antialias === "boolean" ? props.antialias : true,

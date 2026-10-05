@@ -36,6 +36,7 @@ export class JobFailure extends Error {
 
 const sleep = (ms, signal) =>
   new Promise((resolve, reject) => {
+    if (signal.aborted) return reject(signal.reason);
     const timer = setTimeout(resolve, ms);
     signal.addEventListener("abort", () => {
       clearTimeout(timer);
@@ -50,14 +51,21 @@ function race(work, failure) {
   return Promise.race([work, failure]);
 }
 
-/** Heartbeats every `seconds`, carrying the job's progress; a cancel or a lost job aborts it. */
+/**
+ * Heartbeats every `seconds`, and at once when the job changes stage, carrying its progress; a
+ * cancel or a lost job aborts it. One heartbeat at a time: a change during one goes right after.
+ */
 function startHeartbeats(job, { seconds, state, controller, log }) {
   let busy = false;
-  let sentAt = 0;
+  let again = false;
+  let stopped = false;
   const beat = async () => {
-    if (busy || controller.signal.aborted) return;
+    if (stopped || controller.signal.aborted) return;
+    if (busy) {
+      again = true;
+      return;
+    }
     busy = true;
-    sentAt = Date.now();
     try {
       const answer = await job.heartbeat({ progress: state.progress, stage: state.stage });
       if (answer?.cancel) controller.abort(new JobFailure("canceled", "The job was canceled or ran past its run time."));
@@ -66,13 +74,19 @@ function startHeartbeats(job, { seconds, state, controller, log }) {
       else log(`heartbeat failed: ${error.message}`);
     } finally {
       busy = false;
+      if (again) {
+        again = false;
+        void beat();
+      }
     }
   };
   const timer = setInterval(beat, seconds * 1000);
   return {
-    /** Reports progress now, unless a heartbeat went less than a second ago. */
-    soon: () => Date.now() - sentAt > 1000 && void beat(),
-    stop: () => clearInterval(timer),
+    now: () => void beat(),
+    stop: () => {
+      stopped = true;
+      clearInterval(timer);
+    },
   };
 }
 
@@ -119,6 +133,7 @@ function pageFailure(message) {
 
 /** Opens the export mode and waits until the page says it is done, or fails, crashes or is stopped. */
 async function renderOnPage(context, { harnessUrl, signal, log }) {
+  signal.throwIfAborted();
   const page = await context.newPage();
   const failure = new Promise((_, reject) => {
     page.once("crash", () => reject(new JobFailure("browser_crashed", "The page crashed.", { recycleBrowser: true })));
@@ -128,6 +143,7 @@ async function renderOnPage(context, { harnessUrl, signal, log }) {
       }
     });
     signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+    if (signal.aborted) reject(signal.reason);
   });
   page.on("pageerror", (error) => log(`page error: ${error.message}`));
   const done = (async () => {
@@ -296,6 +312,7 @@ export async function runJob({ claim, api, browser, config, assets, stopping, lo
   try {
     dir = await mkdtemp(path.join(config.tmpDir, `job-${job.id}-`));
     const payload = await job.payload(signal);
+    heartbeats.now();
     const runFor = (payload.limits?.max_runtime_seconds ?? DEFAULT_RUNTIME_SECONDS) * 1000 - (Date.now() - claimedAt);
     deadline = setTimeout(() => controller.abort(new JobFailure("timeout", "The job ran past its run time.")), Math.max(runFor, 0));
     const modelPath = path.join(dir, "model.glb");
@@ -310,7 +327,7 @@ export async function runJob({ claim, api, browser, config, assets, stopping, lo
       onProgress: (entry) => {
         const changed = entry.stage !== state.stage;
         Object.assign(state, { progress: entry.progress, stage: entry.stage });
-        if (changed) heartbeats.soon();
+        if (changed) heartbeats.now();
       },
     });
     context = await openJobContext(browser, { job, payload, sink, harnessUrl: config.harnessUrl, assets, assetPrefixes: config.assetPrefixes, controller, log });
@@ -320,8 +337,9 @@ export async function runJob({ claim, api, browser, config, assets, stopping, lo
       throw new JobFailure("gpu_lost", `The job drew with ${result?.renderer?.backend} on ${JSON.stringify(result?.renderer?.adapter)}.`, { recycleBrowser: true });
     }
     const outputs = collectOutputs(payload, result, sink);
+    signal.throwIfAborted();
     Object.assign(state, { stage: "uploading" });
-    heartbeats.soon();
+    heartbeats.now();
     const uploaded = await uploadOutputs(job, outputs, { signal, log });
     await completeJob(job, uploaded, result.renderer, { signal, log });
     log(`completed: ${uploaded.map((output) => `${output.name} (${output.bytes} bytes)`).join(", ")}`);

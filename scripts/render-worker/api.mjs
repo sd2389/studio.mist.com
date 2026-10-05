@@ -41,6 +41,7 @@ export class JobLostError extends ApiError {
 
 const defaultSleep = (ms, signal) =>
   new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(signal.reason);
     const timer = setTimeout(resolve, ms);
     signal?.addEventListener("abort", () => {
       clearTimeout(timer);
@@ -110,7 +111,7 @@ export function createApiClient({ baseUrl, workerToken, fetch = globalThis.fetch
       try {
         response = await fetch(url, { ...init, signal: AbortSignal.any(signals) });
       } catch (error) {
-        if (signal?.aborted || attempt >= attempts) throw signal?.reason ?? new ApiError(`${init.method ?? "GET"} ${url.pathname}: ${error.cause?.code ?? error.message}`);
+        if (signal?.aborted || attempt >= attempts) throw signal?.reason ?? new ApiError(`${init.method ?? "GET"} ${url.pathname}: ${error.cause?.code ?? error.cause?.message ?? error.message}`);
         await sleep(retryDelayMs * 2 ** (attempt - 1), signal);
         continue;
       }

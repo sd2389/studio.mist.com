@@ -231,6 +231,7 @@ def test_a_job_runs_from_claim_to_complete_over_http(client, db, files, job):
 
     assert (model.status_code, model.content, model.headers["content-type"]) == (200, b"glTF-binary", "model/gltf-binary")
     assert (beat.status_code, beat.json()["cancel"]) == (200, False)
+    assert beat.json()["lease_expires_at"].endswith("Z")
     assert uploads[0]["url"] == f"/render-jobs/{job.id}/uploads/RING-7.png"
     assert put.status_code == 204
     assert done.status_code == 200

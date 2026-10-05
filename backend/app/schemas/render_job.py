@@ -1,9 +1,9 @@
-from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from app.schemas.scene import SceneLook
+from app.schemas.utc import UTCDateTime
 
 
 class RenderJobCreate(BaseModel):
@@ -71,11 +71,11 @@ class RenderJobOut(BaseModel):
     attempts: int
     error: str | None
     error_code: str | None
-    cancel_requested_at: datetime | None
+    cancel_requested_at: UTCDateTime | None
     outputs: list[RenderJobOutput] = Field(default_factory=list)
-    created_at: datetime
-    started_at: datetime | None
-    finished_at: datetime | None
+    created_at: UTCDateTime
+    started_at: UTCDateTime | None
+    finished_at: UTCDateTime | None
 
 
 class RenderJobBulkOut(BaseModel):
@@ -209,7 +209,7 @@ class RenderJobHeartbeat(WorkerRequest):
 
 
 class RenderJobHeartbeatOut(BaseModel):
-    lease_expires_at: datetime
+    lease_expires_at: UTCDateTime
     # The owner asked to stop, or the attempt ran past its kind's run time: stop and fail the job.
     cancel: bool
 

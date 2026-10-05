@@ -1,4 +1,3 @@
-from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -6,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.schemas.catalog import BackgroundItem, EnvironmentItem, GemItem, GroundItem, MetalItem
 from app.schemas.library import UserMaterialItem
 from app.schemas.product_specs import ProductSpecs
+from app.schemas.utc import UTCDateTime
 
 
 class SceneListItem(BaseModel):
@@ -31,8 +31,8 @@ class SceneListItem(BaseModel):
     model_url: str | None
     thumbnail_key: str | None
     thumbnail_url: str | None
-    created_at: datetime
-    updated_at: datetime
+    created_at: UTCDateTime
+    updated_at: UTCDateTime
     render_count: int
 
 
@@ -67,7 +67,7 @@ class RenderItem(BaseModel):
     lighting: str | None
     width: int | None
     height: int | None
-    created_at: datetime
+    created_at: UTCDateTime
     url: str | None
 
 
@@ -105,8 +105,8 @@ class SceneDetail(BaseModel):
     model_url: str | None
     thumbnail_key: str | None
     thumbnail_url: str | None
-    created_at: datetime
-    updated_at: datetime
+    created_at: UTCDateTime
+    updated_at: UTCDateTime
     renders: list[RenderItem]
     # Lets a view that only displays the scene (the embed) draw it without the auth-gated
     # catalogue or the owner's library.

@@ -5,17 +5,34 @@
  * worker, which adds the token, and the reply handed to the page.
  */
 
-/** Draco's decoder, which drei's `useGLTF` loads for a compressed model (versioned, immutable). */
-export const DEFAULT_ASSET_PREFIXES = ["https://www.gstatic.com/draco/"];
+function prefixOf(value) {
+  const trimmed = value.trim();
+  const url = new URL(trimmed);
+  if (url.protocol !== "https:" && url.protocol !== "http:") throw new Error(`${trimmed}: not an http(s) URL`);
+  return url.pathname === "/" && !trimmed.endsWith("/") ? `${url.origin}/` : url.href;
+}
 
 /**
- * An allowlisted URL prefix: an origin alone (`https://assets.example.com`) allows everything on
- * that origin, but not `https://assets.example.com.evil.test`.
+ * An allowlisted URL prefix, which the worker fetches for the page: an origin alone
+ * (`https://assets.example.com`) allows everything on that origin, but not
+ * `https://assets.example.com.evil.test`. `<prefix>=<from>` fetches what the page asks for
+ * under `prefix` from `from` instead: in Compose the catalogue's URLs name the API as the
+ * browser reaches it (`http://localhost:8765/files/`), the worker as `http://backend:8765/files/`.
+ *
+ * @returns {{ prefix: string, from: string }}
  */
 export function assetPrefix(value) {
-  const url = new URL(value.trim());
-  if (url.protocol !== "https:" && url.protocol !== "http:") throw new Error(`${value}: not an http(s) URL`);
-  return url.pathname === "/" && !value.trim().endsWith("/") ? `${url.origin}/` : url.href;
+  const [prefix, from = prefix] = value.split(/=(?=https?:)/);
+  return { prefix: prefixOf(prefix), from: prefixOf(from) };
+}
+
+/** Draco's decoder, which drei's `useGLTF` loads for a compressed model (versioned, immutable). */
+export const DEFAULT_ASSET_PREFIXES = [assetPrefix("https://www.gstatic.com/draco/")];
+
+/** Where the worker fetches an allowlisted asset the page asked for; null for one off the allowlist. */
+export function assetSource(rawUrl, assetPrefixes) {
+  const entry = assetPrefixes.find(({ prefix }) => rawUrl.startsWith(prefix));
+  return entry ? `${entry.from}${rawUrl.slice(entry.prefix.length)}` : null;
 }
 
 /**
@@ -26,7 +43,7 @@ export function assetPrefix(value) {
  * @param {string | null} [options.sinkOrigin]
  * @param {number | null} [options.jobId] The job whose `/render-jobs/<id>/inputs/<name>` routes the page may read.
  * @param {string[]} [options.inputUrls] The job's signed inputs the page loads itself (a background image).
- * @param {string[]} [options.assetPrefixes]
+ * @param {{ prefix: string, from: string }[]} [options.assetPrefixes]
  */
 export function pagePolicy({ harnessOrigin, sinkOrigin = null, jobId = null, inputUrls = [], assetPrefixes = DEFAULT_ASSET_PREFIXES }) {
   return {
@@ -59,7 +76,7 @@ export function routeFor(rawUrl, method, policy) {
   if (url.origin === policy.sinkOrigin) return "continue";
   if (method !== "GET") return "abort";
   if (policy.inputUrls.has(url.href)) return "input";
-  if (policy.assetPrefixes.some((prefix) => url.href.startsWith(prefix))) return "asset";
+  if (assetSource(url.href, policy.assetPrefixes)) return "asset";
   return "abort";
 }
 
@@ -103,7 +120,7 @@ export async function guardContext(context, { policy, assets, readInput = null, 
   };
   const fulfilAsset = async (route, url) => {
     try {
-      const file = await assets.get(url);
+      const file = await assets.get(assetSource(url, policy.assetPrefixes));
       return await route.fulfill({ status: 200, path: file.path, headers: { ...FULFIL_HEADERS, "content-type": file.contentType } });
     } catch (error) {
       log(`asset ${withoutQuery(url)} failed: ${error.message}`);

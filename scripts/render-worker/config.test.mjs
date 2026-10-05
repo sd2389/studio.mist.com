@@ -28,6 +28,6 @@ describe("readConfig", () => {
 
   it("adds the asset origins to the allowlist", () => {
     const { assetPrefixes } = readConfig({ ...BASE, WORKER_ASSET_ORIGINS: "https://assets.example.com, https://cdn.example.com/catalog/" });
-    expect(assetPrefixes).toEqual(["https://www.gstatic.com/draco/", "https://assets.example.com/", "https://cdn.example.com/catalog/"]);
+    expect(assetPrefixes.map(({ prefix }) => prefix)).toEqual(["https://www.gstatic.com/draco/", "https://assets.example.com/", "https://cdn.example.com/catalog/"]);
   });
 });

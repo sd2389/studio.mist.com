@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assetPrefix, DEFAULT_ASSET_PREFIXES, pagePolicy, routeFor, withoutQuery } from "./network.mjs";
+import { assetPrefix, assetSource, DEFAULT_ASSET_PREFIXES, pagePolicy, routeFor, withoutQuery } from "./network.mjs";
 
 const HARNESS = "http://127.0.0.1:3000";
 const SINK = "http://127.0.0.1:41234";
@@ -61,9 +61,17 @@ describe("routeFor", () => {
 
 describe("assetPrefix", () => {
   it("makes an origin a prefix of its whole host and keeps a path prefix as it is", () => {
-    expect(assetPrefix("https://assets.example.com")).toBe("https://assets.example.com/");
-    expect(assetPrefix(" https://cdn.example.com/catalog/ ")).toBe("https://cdn.example.com/catalog/");
+    expect(assetPrefix("https://assets.example.com")).toEqual({ prefix: "https://assets.example.com/", from: "https://assets.example.com/" });
+    expect(assetPrefix(" https://cdn.example.com/catalog/ ").prefix).toBe("https://cdn.example.com/catalog/");
     expect(() => assetPrefix("ftp://files.example.com")).toThrow(/not an http/);
+  });
+
+  // In Compose the catalogue's URLs name the API as browsers reach it; the worker reaches it by service name.
+  it("fetches a prefix from elsewhere when told to", () => {
+    const prefixes = [assetPrefix("http://localhost:8765/files/=http://backend:8765/files/")];
+    expect(assetSource("http://localhost:8765/files/catalog/hdri/studio.hdr", prefixes)).toBe("http://backend:8765/files/catalog/hdri/studio.hdr");
+    expect(assetSource("http://localhost:8765/render-jobs/claim", prefixes)).toBeNull();
+    expect(routeFor("http://localhost:8765/files/catalog/hdri/studio.hdr", "GET", pagePolicy({ harnessOrigin: HARNESS, assetPrefixes: prefixes }))).toBe("asset");
   });
 });
 

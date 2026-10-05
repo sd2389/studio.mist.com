@@ -39,3 +39,5 @@ export {
   type RenderJobRequest,
   type RenderJobStatus,
 } from "./lib/render-jobs-api";
+export { isJobFinished, pollRenderJob } from "./lib/render-job-polling";
+export { useRenderJob } from "./ui/useRenderJob";

@@ -379,6 +379,30 @@ def assert_storage_for_upload(db: Session, user: User, byte_size: int) -> UserBi
     return billing
 
 
+def count_storage_bytes(db: Session, user_id: int, byte_size: int) -> None:
+    """Count `byte_size` more of the owner's storage, or 402 when it would pass the plan's limit.
+
+    One conditional UPDATE that holds the limit, so two completions racing for the last bytes
+    can't both have them. Not committed: the caller commits it with the files it counts.
+    """
+    billing = db.execute(select(UserBilling).where(UserBilling.user_id == user_id)).scalars().first()
+    storage_limit = get_quotas(normalize_tier(billing.plan_tier if billing else None)).storage_bytes
+    counted = db.execute(
+        update(UserBilling)
+        .where(UserBilling.user_id == user_id, UserBilling.storage_bytes_used <= storage_limit - byte_size)
+        .values(
+            storage_bytes_used=UserBilling.storage_bytes_used + byte_size,
+            updated_at=datetime.utcnow(),
+        )
+        .execution_options(synchronize_session=False)
+    )
+    if counted.rowcount != 1:
+        raise HTTPException(
+            status_code=402,
+            detail="Storage limit reached. Upgrade your plan or delete unused models.",
+        )
+
+
 def release_storage_bytes(db: Session, billing: UserBilling, byte_size: int) -> None:
     """Give back `byte_size` of storage, never below zero, in one UPDATE, so two deletes at once
     both count. Not committed: the caller commits it with what it deleted."""

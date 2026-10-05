@@ -4,12 +4,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { getSceneByViewerId, updateSceneByViewerId } from "@/features/scene";
 import { shouldPersistViewerScene, type ViewerShellVariant } from "@/features/viewer/domain/viewer-scene-persist";
 import type { SceneDetail, SceneLook } from "@/lib/api/scenes";
-import { sanitizeSlotSelections } from "@/lib/slot-materials/material-rules";
 import {
   buildModelConfigFromSlots,
   getDefaultSceneSettings,
 } from "@/lib/slot-materials/model-config";
 import { useMaterialPresetStore } from "@/stores/material-preset-store";
+import { lookSnapshot } from "../domain/look-snapshot";
 import { applySavedLook, resolveModelConfig } from "../domain/saved-look";
 
 type UseSavedSceneArgs = {
@@ -83,15 +83,9 @@ export function useSavedScene({ modelId, variant, initialScene }: UseSavedSceneA
     };
   }, [initialScene, modelId, replaceSceneSettings]);
 
+  // The look every export sends is built the same way (ADR 0005).
   const persistPayload = useMemo(
-    () => ({
-      material: preset,
-      lighting,
-      model_config: modelConfig,
-      slot_selections: sanitizeSlotSelections(slotSelections, modelConfig),
-      // The finish is saved with the look, so the embed shows it too.
-      scene_settings: { ...sceneSettings, finish },
-    }),
+    () => lookSnapshot({ preset, lighting, finish, slotSelections, sceneSettings }, modelConfig),
     [finish, lighting, modelConfig, preset, sceneSettings, slotSelections],
   );
 

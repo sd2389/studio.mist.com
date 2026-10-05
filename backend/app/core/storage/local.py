@@ -41,7 +41,15 @@ class LocalBackend:
             raise HTTPException(status_code=400, detail="Uploaded file is empty")
         return data
 
-    def presign_put(self, key: str, content_type: str, expires_in: int = 900) -> str:
+    def presign_put(
+        self,
+        key: str,
+        content_type: str,
+        expires_in: int = 900,
+        *,
+        content_length: int | None = None,
+        content_disposition: str | None = None,
+    ) -> str:
         raise HTTPException(
             status_code=503,
             detail="Presigned uploads require cloud storage (STORAGE_BACKEND=r2)",

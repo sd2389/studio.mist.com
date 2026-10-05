@@ -11,6 +11,29 @@ from fastapi import HTTPException
 
 from app.config import get_settings
 from app.core.adapters.errors import StorageObjectTooLargeError
+from app.core.cache_policy import cache_control_for_key
+
+
+def put_params(
+    bucket: str,
+    key: str,
+    content_type: str,
+    content_length: int | None = None,
+    content_disposition: str | None = None,
+) -> dict[str, Any]:
+    """What a signed PUT signs in: the type and cache policy always, the size and the download
+    name when given. The upload must send each of them as signed."""
+    params: dict[str, Any] = {
+        "Bucket": bucket,
+        "Key": key,
+        "ContentType": content_type,
+        "CacheControl": cache_control_for_key(key),
+    }
+    if content_length is not None:
+        params["ContentLength"] = content_length
+    if content_disposition is not None:
+        params["ContentDisposition"] = content_disposition
+    return params
 
 
 def create_s3_client() -> BaseClient:

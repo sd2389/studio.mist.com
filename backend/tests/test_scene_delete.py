@@ -1,5 +1,5 @@
 """Deleting a scene deletes its files (model, thumbnail, renders, published copies) and gives
-its owner back the storage its upload counted."""
+its owner back the storage its upload and its render jobs' outputs counted."""
 
 import base64
 import io
@@ -15,11 +15,12 @@ from app.core import storage
 from app.core.deps import get_current_user
 from app.core.storage.local import LocalBackend
 from app.database import get_db
-from app.features.billing.quota_service import get_or_create_billing
+from app.features.billing.quota_service import count_storage_bytes, get_or_create_billing
 from app.features.render import service as render_service
 from app.features.scene.service import delete_scene_by_id
 from app.features.upload import service as upload_service
 from app.main import app
+from app.models import Render, RenderJob
 from app.models.scene import Scene
 from app.models.user import User
 from app.schemas.render import RenderSaveRequest
@@ -148,6 +149,25 @@ def test_renders_go_too_but_give_back_nothing_they_never_counted(db, sample_user
 
     assert stored(files) == []
     assert storage_used(db, sample_user) == 0
+
+
+def test_a_render_jobs_outputs_give_back_the_storage_they_counted(db, sample_user, files):
+    """A job's outputs count toward storage when it completes, so deleting the scene gives them back."""
+    scene = upload(db, sample_user)
+    job = RenderJob(user_id=sample_user.id, scene_id=scene.id, status="completed", created_at=NOW, updated_at=NOW)
+    db.add(job)
+    db.commit()
+    for name in ("RING-front.png", "RING-top.png"):
+        key = f"customers/{sample_user.id}/renders/{job.id}/{name}"
+        files.put_bytes(key, b"png" * 100)
+        db.add(Render(scene_id=scene.id, job_id=job.id, key=key, bytes=300, kind="still", filename=name, created_at=NOW))
+    count_storage_bytes(db, sample_user.id, 600)
+    db.commit()
+    assert storage_used(db, sample_user) == len(REAL_GLB) + 600
+
+    delete_scene_by_id(db, scene.id, sample_user.id)
+
+    assert (storage_used(db, sample_user), stored(files)) == (0, [])
 
 
 def _legacy_scene(db, user_id: int, name: str, model_key: str, sku: str | None = None) -> Scene:

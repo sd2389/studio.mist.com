@@ -14,6 +14,8 @@ type DashboardShellProps = {
   initialBilling: UserBillingSnapshot | null;
   userEmail?: string | null;
   isAdmin?: boolean;
+  /** Link the Exports page (the `server_exports` flag). */
+  showExports?: boolean;
 };
 
 export function DashboardShell({
@@ -25,11 +27,20 @@ export function DashboardShell({
   initialBilling,
   userEmail,
   isAdmin,
+  showExports = false,
 }: DashboardShellProps) {
   const modelCredits = initialBilling?.balances.model_credits ?? 0;
   const modelTotal = initialBilling?.allotments.model_credits ?? 0;
   const aiCredits = initialBilling?.balances.ai_image_credits ?? 0;
   const aiTotal = initialBilling?.allotments.ai_image_credits ?? 0;
+  const addObjectLink = (
+    <Link
+      href="/upload-model"
+      className="self-start rounded-full bg-foreground px-6 py-4 font-mono text-[10px] uppercase tracking-[0.24em] text-background sm:self-auto"
+    >
+      ＋ Add new object
+    </Link>
+  );
 
   return (
     <div className="min-h-dvh bg-background text-foreground">
@@ -86,12 +97,19 @@ export function DashboardShell({
                 / Objects
               </h1>
             </div>
-            <Link
-              href="/upload-model"
-              className="self-start rounded-full bg-foreground px-6 py-4 font-mono text-[10px] uppercase tracking-[0.24em] text-background sm:self-auto"
-            >
-              ＋ Add new object
-            </Link>
+            {showExports ? (
+              <div className="flex flex-wrap gap-2 self-start sm:self-auto">
+                <Link
+                  href="/exports"
+                  className="rounded-full border border-foreground/20 px-6 py-4 font-mono text-[10px] uppercase tracking-[0.24em] text-foreground transition-colors hover:border-foreground/45"
+                >
+                  Exports
+                </Link>
+                {addObjectLink}
+              </div>
+            ) : (
+              addObjectLink
+            )}
           </header>
           <div className="mt-5">
             <DashboardClient

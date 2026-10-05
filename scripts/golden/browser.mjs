@@ -192,7 +192,7 @@ async function captureExport(id, outDir) {
       // Where it stopped: the page's last state, what reached the sink, and the page's own log.
       const seen = await page.evaluate(() => String(window.__HARNESS_STATE__)).catch(() => "unreadable");
       throw new Error(
-        `harness ${id}: ${error.message}\nstate: ${seen}\nsink progress: ${JSON.stringify(sink.progress.slice(-3))}, frames: ${sink.frames.length}\n${console_.slice(-40).join("\n")}`,
+        `harness ${id}: ${error.message}\nstate: ${seen}\nsink progress: ${JSON.stringify(sink.progress.map((entry, index) => ({ ...entry, at_ms: sink.progressAt[index] })).slice(-6))}, frames: ${sink.frames.length}\n${console_.slice(-40).join("\n")}`,
       );
     });
     if (state !== "done") throw new Error(`harness ${id}: ${state}`);

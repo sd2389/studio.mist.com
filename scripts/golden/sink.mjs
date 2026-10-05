@@ -38,6 +38,8 @@ export async function startSink({ model, origin, frameSize = null }) {
   const files = new Map();
   const frames = [];
   const progress = [];
+  const progressAt = [];
+  const startedAt = Date.now();
 
   const handle = async (request, response) => {
     response.setHeader("Access-Control-Allow-Origin", origin);
@@ -86,6 +88,8 @@ export async function startSink({ model, origin, frameSize = null }) {
     }
     if (request.method === "POST" && pathname === "/progress") {
       progress.push(JSON.parse((await readBody(request)).toString("utf8")));
+      // When each arrived, so a slow capture shows where the time went.
+      progressAt.push(Date.now() - startedAt);
       response.writeHead(204).end();
       return;
     }
@@ -106,6 +110,8 @@ export async function startSink({ model, origin, frameSize = null }) {
     files,
     /** Every frame the page posted, raw RGBA, in order. */
     frames,
+    /** When each progress post arrived, in ms since the sink started. */
+    progressAt,
     /** Every `{progress, stage}` the page posted, in order. */
     progress,
     close: () => new Promise((resolve) => server.close(resolve)),

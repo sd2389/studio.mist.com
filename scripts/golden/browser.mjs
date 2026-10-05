@@ -1,14 +1,16 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { chromium } from "playwright";
+import { PNG } from "pngjs";
 import { startSink } from "./sink.mjs";
 
 export const LIGHTING_IDS = ["studio", "soft", "dark", "catalog", "dramatic"];
 /**
  * Export-mode goldens: the job in `tests/goldens/fixtures/<id>.json`, rendered by the harness's
- * export mode on WebGPU, as the render worker renders it (ADR 0005). The golden is the file the
- * page hands the sink, not a screenshot.
+ * export mode as the render worker renders it (ADR 0005), on `EXPORT_BACKEND`. The golden is what
+ * the page hands the sink, not a screenshot: a still's file, or a turntable's raw frames side by
+ * side.
  */
-export const EXPORT_IDS = ["export-still"];
+export const EXPORT_IDS = ["export-still", "export-turntable"];
 export const GOLDEN_IDS = [...EXPORT_IDS, ...LIGHTING_IDS];
 /**
  * Frames the harness draws once the scene has loaded, before it reports ready. A render job takes
@@ -144,9 +146,36 @@ async function captureLighting(lighting, outDir) {
   }
 }
 
+/** A turntable's frames side by side, frame 0 on the left: the whole clip in one PNG. */
+function frameStrip(frames, { width, height }) {
+  const strip = new PNG({ width: width * frames.length, height });
+  const rowBytes = width * 4;
+  frames.forEach((frame, index) => {
+    for (let y = 0; y < height; y += 1) {
+      frame.copy(strip.data, (y * strip.width + index * width) * 4, y * rowBytes, (y + 1) * rowBytes);
+    }
+  });
+  return PNG.sync.write(strip);
+}
+
+/** What an export golden compares: the still's image, or the strip of a turntable's frames. */
+function exportedImage(id, payload, outputs, sink) {
+  if (sink.progress.at(-1)?.progress !== 1) throw new Error(`harness ${id}: the page never reported it had finished`);
+  if (payload.kind === "turntable") {
+    const { frames } = payload.spec;
+    if (sink.frames.length !== frames) throw new Error(`harness ${id}: the sink got ${sink.frames.length} of ${frames} frames`);
+    return frameStrip(sink.frames, payload.spec);
+  }
+  const file = sink.files.get(outputs[0]?.name);
+  if (!file) throw new Error(`harness ${id}: the sink did not get the finished image`);
+  return file.body;
+}
+
 async function captureExport(id, outDir) {
   const payload = JSON.parse(readFileSync(`tests/goldens/fixtures/${id}.json`, "utf8"));
-  const sink = await startSink({ model: readFileSync(FIXTURE_MODEL), origin: new URL(BASE_URL).origin });
+  // A turntable's frames come raw: the sink refuses any of another size.
+  const frameSize = payload.kind === "turntable" ? { width: payload.spec.width, height: payload.spec.height } : null;
+  const sink = await startSink({ model: readFileSync(FIXTURE_MODEL), origin: new URL(BASE_URL).origin, frameSize });
   const browser = EXPORT_BACKEND === "webgpu" ? await launchWebGpuBrowser() : await launchDeterministicBrowser();
   const console_ = [];
   try {
@@ -163,7 +192,7 @@ async function captureExport(id, outDir) {
       // Where it stopped: the page's last state, what reached the sink, and the page's own log.
       const seen = await page.evaluate(() => String(window.__HARNESS_STATE__)).catch(() => "unreadable");
       throw new Error(
-        `harness ${id}: ${error.message}\nstate: ${seen}\nsink progress: ${JSON.stringify(sink.progress.slice(-3))}\n${console_.slice(-40).join("\n")}`,
+        `harness ${id}: ${error.message}\nstate: ${seen}\nsink progress: ${JSON.stringify(sink.progress.slice(-3))}, frames: ${sink.frames.length}\n${console_.slice(-40).join("\n")}`,
       );
     });
     if (state !== "done") throw new Error(`harness ${id}: ${state}`);
@@ -173,9 +202,7 @@ async function captureExport(id, outDir) {
     if (!wanted) {
       throw new Error(`harness ${id}: drew with ${renderer.backend} on ${JSON.stringify(renderer.adapter)}, not ${EXPORT_BACKEND}`);
     }
-    const file = sink.files.get(outputs[0]?.name);
-    if (!file || sink.progress.at(-1)?.progress !== 1) throw new Error(`harness ${id}: the sink did not get the finished image`);
-    writeFileSync(`${outDir}/${id}.png`, file.body);
+    writeFileSync(`${outDir}/${id}.png`, exportedImage(id, payload, outputs, sink));
     console.log(`captured ${id} (${renderer.backend}, ${renderer.adapter?.architecture ?? "no WebGPU adapter"})`);
   } finally {
     await browser.close();

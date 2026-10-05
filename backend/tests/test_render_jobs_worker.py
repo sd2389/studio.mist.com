@@ -754,6 +754,20 @@ def test_a_local_upload_is_only_a_file_the_spec_names(db, files, owner, scene, m
     assert files.size(_key(job, name)) is None
 
 
+def test_a_local_upload_streams_to_staging_and_leaves_nothing_behind(db, files, owner, scene, monkeypatch):
+    """The body is written as it arrives; a refused one leaves no staging file."""
+    monkeypatch.setattr("app.features.render_jobs.specs.MAX_IMAGE_BYTES", 32)
+    _queue(db, owner, scene)
+    job = _claim(db)
+
+    assert _http_error(lambda: _put_local(db, job, "RING-1.png", "image/png", b"x" * 20, b"x" * 20)).status_code == 413
+    assert list(files.staging_dir().iterdir()) == []
+
+    _put_local(db, job, "RING-1.png", "image/png", *[bytes([n]) * 8 for n in range(4)])
+    assert files.get_bytes(_key(job, "RING-1.png")) == b"".join(bytes([n]) * 8 for n in range(4))
+    assert list(files.staging_dir().iterdir()) == []
+
+
 def test_on_cloud_storage_the_api_takes_no_uploads(db, cloud, owner, scene):
     _queue(db, owner, scene)
     job = _claim(db)

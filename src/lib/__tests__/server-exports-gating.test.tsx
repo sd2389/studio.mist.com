@@ -15,13 +15,23 @@ import { drawnButton, drawnButtons } from "@/test/recording-button";
  */
 
 const flag = vi.hoisted(() => ({ serverExports: false as boolean | null }));
-const browser = vi.hoisted(() => ({ exportStill: vi.fn(async () => {}) }));
+const browser = vi.hoisted(() => ({
+  exportStill: vi.fn(async () => {}),
+  renderAtResolution: vi.fn(async () => new Blob(["png"], { type: "image/png" })),
+  // What "Set as thumbnail" reads from the live canvas (src/features/render/lib/view-capture.ts).
+  captureViewThumbnail: vi.fn(async (): Promise<Blob | null> => new Blob(["webp"], { type: "image/webp" })),
+}));
 
 vi.mock("@/features/render/ui/useServerExports", () => ({ useServerExports: () => flag.serverExports }));
 vi.mock("@/features/render/ui/StillExportSettings", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/features/render/ui/StillExportSettings")>()),
   exportStill: browser.exportStill,
 }));
+vi.mock("@/lib/offscreen-render", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/offscreen-render")>()),
+  renderAtResolution: browser.renderAtResolution,
+}));
+vi.mock("@/features/render/lib/view-capture", () => ({ captureViewThumbnail: browser.captureViewThumbnail }));
 vi.mock("@/features/render/campaign-pack", () => ({ CampaignPackDialog: () => null, CampaignPackLauncher: () => null }));
 vi.mock("@/components/ui/button", async (importOriginal) =>
   (await import("@/test/recording-button")).recordingButtonModule(await importOriginal()),
@@ -42,6 +52,9 @@ vi.mock("@/components/ui/dialog", async () => {
 const { ExportSceneProvider, RenderJobButton } = await import("@/features/render");
 const { HiResExportModal } = await import("@/components/modals/HiResExportModal");
 const { EditorImageTab } = await import("@/features/editor/ui/EditorImageTab");
+const { EditorSettingsTab } = await import("@/features/editor/ui/EditorSettingsTab");
+const { ExportSharePanel } = await import("@/features/viewer/ui/ExportSharePanel");
+const { useScreenshotStore } = await import("@/stores/screenshot-store");
 
 const LOOK = { material: "platinum", lighting: "studio", slot_selections: { "Metal 1": "platinum" } } as unknown as LookSnapshot;
 const LIVE_VIEW = { view: { position: [0.5, 0.75, 2], target: [0, 0.1, 0] } };
@@ -65,12 +78,14 @@ const JOB = {
 
 let fetch: MockInstance<typeof globalThis.fetch>;
 
-/** The API's answers: a job for every create, nothing else. */
+/** The API's answers: a job for every create, a scene for a thumbnail, a saved render; nothing else. */
 function stubApi() {
   fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     const url = String(input);
     if (url === "/api/render-jobs") return Response.json(JOB, { status: 201 });
     if (url === "/api/render-jobs/bulk") return Response.json({ jobs: [JOB, { ...JOB, id: 4813 }] }, { status: 201 });
+    if (url === "/api/scenes/812/thumbnail") return Response.json({ id: 812, thumbnail_key: "customers/7/thumbnails/a.webp" });
+    if (url === "/api/render/save") return Response.json({ ok: true, key: "customers/7/renders/b.png" });
     return Response.json({ error: "Not stubbed" }, { status: 404 });
   });
 }
@@ -99,7 +114,10 @@ function inStudio(children: ReactNode, sceneId: number | null = 812) {
 beforeEach(() => {
   drawnButtons.length = 0;
   browser.exportStill.mockClear();
+  browser.renderAtResolution.mockClear();
+  browser.captureViewThumbnail.mockClear();
   stubApi();
+  useScreenshotStore.setState({ captureFn: () => "data:image/png;base64,iVBORw0KGgo=" });
   const { position, target } = LIVE_VIEW.view;
   useOrbitControlsStore.setState({
     controls: {
@@ -114,6 +132,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   useOrbitControlsStore.setState({ controls: null });
   useHiresExportStore.setState({ refs: null });
+  useScreenshotStore.setState({ captureFn: null });
 });
 
 describe("the still dialog", () => {
@@ -210,6 +229,120 @@ describe("the editor's Images tab", () => {
 
     expect(browser.exportStill).toHaveBeenCalledWith(expect.objectContaining({ resolution: "4k" }), "ring-abc-4K-16x9");
     expect(sent()).toEqual([]);
+  });
+});
+
+describe("Export & share", () => {
+  const panel = (
+    <ExportSharePanel
+      modelId="ring-abc"
+      sku="RING-7"
+      onOpenAi={() => {}}
+      onOpenExport={() => {}}
+      onOpenHiResExport={() => {}}
+      onOpenVideo360={() => {}}
+    />
+  );
+
+  it("with server exports on, offers a Quick still, Set as thumbnail and the scene's exports", () => {
+    flag.serverExports = true;
+    const html = inStudio(panel);
+
+    expect(html).toContain("Quick still");
+    expect(html).toContain("2048 px · 1 credit");
+    expect(html).toContain("Set as thumbnail");
+    expect(html).toContain('aria-label="Exports"');
+    expect(html).toContain('href="/exports"');
+    expect(html).not.toContain("Download PNG");
+    expect(html).not.toContain("Capture still");
+  });
+
+  it("starts a Quick still of the live view at the viewport's aspect ratio, 2048 px long, and renders nothing here", async () => {
+    flag.serverExports = true;
+    inStudio(panel);
+
+    drawnButton("Quick still").click();
+    await vi.waitFor(() => expect(sent()).toContain("POST /api/render-jobs"));
+
+    expect(sentBody("/api/render-jobs")).toEqual({
+      kind: "still",
+      scene_id: 812,
+      variant_id: null,
+      look: LOOK,
+      name: "ring-abc-render",
+      spec: { camera: LIVE_VIEW, width: 2048, height: 1152, format: "png", transparent: false },
+    });
+    expect(browser.renderAtResolution).not.toHaveBeenCalled();
+  });
+
+  it("sets the thumbnail from the view, saving no render", async () => {
+    flag.serverExports = true;
+    inStudio(panel);
+
+    drawnButton("Set as thumbnail").click();
+    await vi.waitFor(() => expect(sent()).toEqual(["PUT /api/scenes/812/thumbnail"]));
+
+    const [, init] = fetch.mock.calls[0]!;
+    expect(init?.body).toBeInstanceOf(Blob);
+    expect(new Headers(init?.headers).get("Content-Type")).toBe("image/webp");
+  });
+
+  it("with server exports off, downloads the PNG and captures the still as before", async () => {
+    flag.serverExports = false;
+    const html = inStudio(panel);
+    expect(html).toContain("Download PNG");
+    expect(html).toContain("Capture still");
+    expect(html).not.toContain('aria-label="Exports"');
+
+    drawnButton("Download PNG").click();
+    await vi.waitFor(() => expect(browser.renderAtResolution).toHaveBeenCalledTimes(1));
+    drawnButton("Capture still").click();
+    await vi.waitFor(() => expect(sent()).toContain("POST /api/render/save"));
+
+    expect(sent()).not.toContain("POST /api/render-jobs");
+    expect(sent()).not.toContain("PUT /api/scenes/812/thumbnail");
+    expect(browser.captureViewThumbnail).not.toHaveBeenCalled();
+  });
+
+  it("with server exports on and no saved scene, renders nothing at all", async () => {
+    flag.serverExports = true;
+    expect(inStudio(panel, null)).not.toContain('aria-label="Exports"');
+
+    drawnButton("Quick still").click();
+    drawnButton("Set as thumbnail").click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(sent().filter((request) => !request.startsWith("GET /api/billing"))).toEqual([]);
+    expect(browser.renderAtResolution).not.toHaveBeenCalled();
+  });
+});
+
+describe("the editor's Settings tab", () => {
+  const tab = (
+    <EditorSettingsTab
+      sceneId={812}
+      viewerId="ring-abc"
+      initialMetadata={{ name: "Ring", sku: "RING-7", category: "Ring", note: "" }}
+      preset="platinum"
+      lighting="studio"
+    />
+  );
+
+  it("with server exports on, sets the thumbnail from the view", async () => {
+    flag.serverExports = true;
+    inStudio(tab);
+
+    drawnButton("Set as thumbnail").click();
+    await vi.waitFor(() => expect(sent()).toEqual(["PUT /api/scenes/812/thumbnail"]));
+  });
+
+  it("with server exports off, updates the thumbnail as before", async () => {
+    flag.serverExports = false;
+    inStudio(tab);
+
+    drawnButton("Update Thumbnail").click();
+    await vi.waitFor(() => expect(sent()).toEqual(["POST /api/render/save"]));
+    expect(browser.captureViewThumbnail).not.toHaveBeenCalled();
   });
 });
 

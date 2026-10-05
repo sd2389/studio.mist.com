@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { LookSnapshot } from "@/features/viewer";
 import { DEFAULT_STILL_EXPORT } from "../ui/StillExportSettings";
-import { jobRetryRequest, stillJobRequest, stillJobSpec } from "./render-job-requests";
+import { jobRetryRequest, quickStillSpec, stillJobRequest, stillJobSpec } from "./render-job-requests";
 import type { RenderJob, RenderJobCamera } from "./render-jobs-api";
 
 const VIEW = { view: { position: [0.62, 0.88, 2.25], target: [0, 0, 0] } };
@@ -32,6 +32,25 @@ describe("stillJobSpec", () => {
 
     expect(stillJobSpec({ ...jpeg, jpegQuality: 0.7 }, LIVE_VIEW)).toMatchObject({ format: "jpeg", jpeg_quality: 0.8, transparent: true });
     expect(stillJobSpec({ ...jpeg, jpegQuality: 0.88 }, LIVE_VIEW).jpeg_quality).toBe(0.88);
+  });
+});
+
+describe("quickStillSpec", () => {
+  it("is a PNG of the viewport's aspect ratio, 2048 px on its longest side", () => {
+    expect(quickStillSpec({ width: 1600, height: 900 }, LIVE_VIEW)).toEqual({
+      camera: LIVE_VIEW,
+      width: 2048,
+      height: 1152,
+      format: "png",
+      transparent: false,
+    });
+    expect(quickStillSpec({ width: 750, height: 1334 }, LIVE_VIEW)).toMatchObject({ width: 1151, height: 2048 });
+    expect(quickStillSpec({ width: 1024, height: 1024 }, LIVE_VIEW)).toMatchObject({ width: 2048, height: 2048 });
+  });
+
+  it("stays within what a job renders, however narrow or unready the viewport", () => {
+    expect(quickStillSpec({ width: 4000, height: 20 }, LIVE_VIEW)).toMatchObject({ width: 2048, height: 64 });
+    expect(quickStillSpec({ width: 0, height: 0 }, LIVE_VIEW)).toMatchObject({ width: 2048, height: 2048 });
   });
 });
 

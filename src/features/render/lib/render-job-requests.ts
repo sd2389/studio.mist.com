@@ -10,6 +10,10 @@ import type { RenderJob, RenderJobCamera, RenderJobRequest, StillJobSpec } from 
 
 /** The lowest JPEG quality a job takes (backend/app/features/render_jobs/specs.py); the highest is 1. */
 export const JOB_JPEG_QUALITY_MIN = 0.8;
+/** A Quick still's longest side: 1 credit at any aspect ratio (ADR 0005). */
+export const QUICK_STILL_EDGE = 2048;
+/** The shortest side a job renders. */
+const MIN_JOB_EDGE = 64;
 
 /** Kinds whose `frames` the API counts itself; a video's or a spin's is the request's own setting. */
 const IMAGE_JOB_KINDS: ReadonlySet<string> = new Set(["still", "angle_set"]);
@@ -25,6 +29,19 @@ export function stillJobSpec(options: StillExportOptions, camera: RenderJobCamer
     jpeg_quality: Math.min(1, Math.max(JOB_JPEG_QUALITY_MIN, options.jpegQuality)),
     transparent: options.transparent,
   };
+}
+
+/**
+ * A Quick still's spec, which "Download PNG" becomes: the viewport's aspect ratio at 2048 px on
+ * its longest side, a PNG of the set as shown, seen from `camera`.
+ */
+export function quickStillSpec(viewport: { width: number; height: number }, camera: RenderJobCamera): StillJobSpec {
+  // A viewport with no size yet (hidden, or still laying out) gets a square.
+  const ratio = viewport.width > 0 && viewport.height > 0 ? viewport.width / viewport.height : 1;
+  const across = (side: number) => Math.max(MIN_JOB_EDGE, Math.round(side));
+  const [width, height] =
+    ratio >= 1 ? [QUICK_STILL_EDGE, across(QUICK_STILL_EDGE / ratio)] : [across(QUICK_STILL_EDGE * ratio), QUICK_STILL_EDGE];
+  return { camera, width, height, format: "png", transparent: false };
 }
 
 type StillJobTarget = {

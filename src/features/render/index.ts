@@ -45,8 +45,9 @@ export {
 export { isJobFinished, pollRenderJob } from "./lib/render-job-polling";
 export { useServerExports } from "./ui/useServerExports";
 export { ExportSceneProvider, useExportScene, type ExportScene } from "./ui/export-scene";
-export { JOB_JPEG_QUALITY_MIN, stillJobRequest, stillJobSpec } from "./lib/render-job-requests";
+export { JOB_JPEG_QUALITY_MIN, quickStillSpec, stillJobRequest, stillJobSpec } from "./lib/render-job-requests";
 export { liveViewCamera } from "./lib/live-view-camera";
+export { setThumbnailFromView } from "./lib/view-thumbnail";
 export { useRenderJob } from "./ui/useRenderJob";
 export { useRenderJobQuote } from "./ui/useRenderJobQuote";
 export { useStartedRenderJobs } from "./ui/useStartedRenderJobs";

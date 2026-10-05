@@ -1,14 +1,16 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { chromium } from "playwright";
+import { PNG } from "pngjs";
 import { startSink } from "./sink.mjs";
 
 export const LIGHTING_IDS = ["studio", "soft", "dark", "catalog", "dramatic"];
 /**
  * Export-mode goldens: the job in `tests/goldens/fixtures/<id>.json`, rendered by the harness's
- * export mode on WebGPU, as the render worker renders it (ADR 0005). The golden is the file the
- * page hands the sink, not a screenshot.
+ * export mode as the render worker renders it (ADR 0005), on `EXPORT_BACKEND`. The golden is what
+ * the page hands the sink, not a screenshot: a still's file, or a turntable's raw frames side by
+ * side.
  */
-export const EXPORT_IDS = ["export-still"];
+export const EXPORT_IDS = ["export-still", "export-turntable"];
 export const GOLDEN_IDS = [...EXPORT_IDS, ...LIGHTING_IDS];
 /**
  * Frames the harness draws once the scene has loaded, before it reports ready. A render job takes
@@ -32,9 +34,15 @@ const FIXTURE_MODEL = "public/test-fixtures/PDR-2413.glb";
  * Captures running at once, each in its own browser: SwiftShader draws every page of one browser
  * in its single GPU process, one draw after another, so pages sharing a browser barely overlap.
  */
-const CONCURRENCY = Number(process.env.GOLDEN_CONCURRENCY) || GOLDEN_IDS.length;
+const CONCURRENCY = Number(process.env.GOLDEN_CONCURRENCY) || LIGHTING_IDS.length;
 /** Loading plus the warm-up frames on a slow runner, with every capture running at once. */
 const CAPTURE_TIMEOUT_MS = 5 * 60 * 1000;
+/**
+ * An export capture loads the job, warms up 60 frames and then renders, all on the CPU: on a
+ * 4-core runner sharing it with the lighting captures that took nearly 5 minutes before the
+ * first frame. They now run after the lighting goldens, one at a time, with room to spare.
+ */
+const EXPORT_CAPTURE_TIMEOUT_MS = 8 * 60 * 1000;
 
 /** Headless Chromium on SwiftShader. WebGPU gets no adapter here, so three.js draws with WebGL 2. */
 export async function launchDeterministicBrowser() {
@@ -144,14 +152,41 @@ async function captureLighting(lighting, outDir) {
   }
 }
 
+/** A turntable's frames side by side, frame 0 on the left: the whole clip in one PNG. */
+function frameStrip(frames, { width, height }) {
+  const strip = new PNG({ width: width * frames.length, height });
+  const rowBytes = width * 4;
+  frames.forEach((frame, index) => {
+    for (let y = 0; y < height; y += 1) {
+      frame.copy(strip.data, (y * strip.width + index * width) * 4, y * rowBytes, (y + 1) * rowBytes);
+    }
+  });
+  return PNG.sync.write(strip);
+}
+
+/** What an export golden compares: the still's image, or the strip of a turntable's frames. */
+function exportedImage(id, payload, outputs, sink) {
+  if (sink.progress.at(-1)?.progress !== 1) throw new Error(`harness ${id}: the page never reported it had finished`);
+  if (payload.kind === "turntable") {
+    const { frames } = payload.spec;
+    if (sink.frames.length !== frames) throw new Error(`harness ${id}: the sink got ${sink.frames.length} of ${frames} frames`);
+    return frameStrip(sink.frames, payload.spec);
+  }
+  const file = sink.files.get(outputs[0]?.name);
+  if (!file) throw new Error(`harness ${id}: the sink did not get the finished image`);
+  return file.body;
+}
+
 async function captureExport(id, outDir) {
   const payload = JSON.parse(readFileSync(`tests/goldens/fixtures/${id}.json`, "utf8"));
-  const sink = await startSink({ model: readFileSync(FIXTURE_MODEL), origin: new URL(BASE_URL).origin });
+  // A turntable's frames come raw: the sink refuses any of another size.
+  const frameSize = payload.kind === "turntable" ? { width: payload.spec.width, height: payload.spec.height } : null;
+  const sink = await startSink({ model: readFileSync(FIXTURE_MODEL), origin: new URL(BASE_URL).origin, frameSize });
   const browser = EXPORT_BACKEND === "webgpu" ? await launchWebGpuBrowser() : await launchDeterministicBrowser();
   const console_ = [];
   try {
     const page = await browser.newPage({ viewport: { width: 800, height: 800 }, deviceScaleFactor: 1 });
-    page.setDefaultTimeout(CAPTURE_TIMEOUT_MS);
+    page.setDefaultTimeout(EXPORT_CAPTURE_TIMEOUT_MS);
     page.on("console", (message) => console_.push(`[${message.type()}] ${message.text()}`));
     page.on("pageerror", (error) => console_.push(`[pageerror] ${error.message}`));
     // As the worker hands a job over: set before the page loads, never in the URL.
@@ -163,7 +198,7 @@ async function captureExport(id, outDir) {
       // Where it stopped: the page's last state, what reached the sink, and the page's own log.
       const seen = await page.evaluate(() => String(window.__HARNESS_STATE__)).catch(() => "unreadable");
       throw new Error(
-        `harness ${id}: ${error.message}\nstate: ${seen}\nsink progress: ${JSON.stringify(sink.progress.slice(-3))}\n${console_.slice(-40).join("\n")}`,
+        `harness ${id}: ${error.message}\nstate: ${seen}\nsink progress: ${JSON.stringify(sink.progress.map((entry, index) => ({ ...entry, at_ms: sink.progressAt[index] })).slice(-6))}, frames: ${sink.frames.length}\n${console_.slice(-40).join("\n")}`,
       );
     });
     if (state !== "done") throw new Error(`harness ${id}: ${state}`);
@@ -173,9 +208,7 @@ async function captureExport(id, outDir) {
     if (!wanted) {
       throw new Error(`harness ${id}: drew with ${renderer.backend} on ${JSON.stringify(renderer.adapter)}, not ${EXPORT_BACKEND}`);
     }
-    const file = sink.files.get(outputs[0]?.name);
-    if (!file || sink.progress.at(-1)?.progress !== 1) throw new Error(`harness ${id}: the sink did not get the finished image`);
-    writeFileSync(`${outDir}/${id}.png`, file.body);
+    writeFileSync(`${outDir}/${id}.png`, exportedImage(id, payload, outputs, sink));
     console.log(`captured ${id} (${renderer.backend}, ${renderer.adapter?.architecture ?? "no WebGPU adapter"})`);
   } finally {
     await browser.close();
@@ -185,11 +218,14 @@ async function captureExport(id, outDir) {
 
 export async function captureAll(outDir) {
   mkdirSync(outDir, { recursive: true });
-  const pending = GOLDEN_IDS.map((id) => (EXPORT_IDS.includes(id) ? () => captureExport(id, outDir) : () => captureLighting(id, outDir)));
+  // The lighting goldens side by side, each in its own browser; then the export goldens, which
+  // cost the most, one after another so they don't starve each other of CPU.
+  const pending = LIGHTING_IDS.filter((id) => GOLDEN_IDS.includes(id)).map((id) => () => captureLighting(id, outDir));
   const captureNext = async () => {
     for (let capture = pending.shift(); capture; capture = pending.shift()) {
       await capture();
     }
   };
   await Promise.all(Array.from({ length: Math.min(CONCURRENCY, pending.length) }, captureNext));
+  for (const id of EXPORT_IDS) await captureExport(id, outDir);
 }

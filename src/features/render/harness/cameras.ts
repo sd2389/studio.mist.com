@@ -3,7 +3,7 @@ import { findPoseById, mergePoses, VIEWER_FOV_DEG, VIEWER_START_POSITION } from 
 import { BUILT_IN_ANGLES, DEFAULT_CAMPAIGN_PACK_CONFIG } from "../campaign-pack/domain/defaults";
 import type { ModelBounds } from "../campaign-pack/domain/framing";
 import type { Vec3 } from "../campaign-pack/domain/types";
-import { stillCamera, type ShotCamera } from "../campaign-pack/engine/pack-camera";
+import { stillCamera, type FramingContext, type ShotCamera } from "../campaign-pack/engine/pack-camera";
 import type { AngleCamera, CameraSpec } from "./job-payload";
 
 const ORIGIN: Vec3 = [0, 0, 0];
@@ -25,25 +25,26 @@ function viewerShot(position: Vec3, target: Vec3): ShotCamera {
 }
 
 /**
- * Framed the way the Campaign Pack frames its stills. With nothing visible to frame, the angle
- * is seen from the viewer's opening distance through the viewer's lens.
+ * How the Campaign Pack frames a shot of the model: auto-framed on its bounds with the pack's
+ * lens, inside a margin (the pack's 8% unless given). With nothing visible to frame, the shot is
+ * taken from the viewer's opening distance through the viewer's lens.
  */
+export function packFraming(context: CameraContext, marginPct = DEFAULT_CAMPAIGN_PACK_CONFIG.marginPct): FramingContext {
+  return {
+    autoFrame: true,
+    margin: marginPct / 100,
+    bounds: context.bounds,
+    orbitTarget: ORIGIN,
+    livePosition: VIEWER_START_POSITION,
+    liveFovDeg: VIEWER_FOV_DEG,
+  };
+}
+
+/** Framed the way the Campaign Pack frames its stills. */
 function angleShot(camera: AngleCamera, context: CameraContext): ShotCamera {
   const angle = BUILT_IN_ANGLES.find((built) => built.id === camera.angle);
   if (!angle) throw new Error(`Unknown camera angle "${camera.angle}".`);
-  const marginPct = camera.margin_pct ?? DEFAULT_CAMPAIGN_PACK_CONFIG.marginPct;
-  return stillCamera(
-    { kind: "preset", ...angle, slug: angle.id },
-    {
-      autoFrame: true,
-      margin: marginPct / 100,
-      bounds: context.bounds,
-      orbitTarget: ORIGIN,
-      livePosition: VIEWER_START_POSITION,
-      liveFovDeg: VIEWER_FOV_DEG,
-    },
-    context.aspect,
-  );
+  return stillCamera({ kind: "preset", ...angle, slug: angle.id }, packFraming(context, camera.margin_pct), context.aspect);
 }
 
 /** Where a job's camera stands, where it looks and through which lens. */

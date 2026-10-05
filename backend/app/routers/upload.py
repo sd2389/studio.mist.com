@@ -40,7 +40,7 @@ async def presign_upload(
     body: PresignRequest,
     _user: User = Depends(get_current_user),
     _rate: Annotated[None, Depends(_presign_limit)] = None,
-) -> dict[str, str | int]:
+) -> dict[str, str | int | dict[str, str]]:
     log_event(
         logger,
         "upload.presign",

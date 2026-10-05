@@ -35,22 +35,78 @@ export async function launchDeterministicBrowser() {
   });
 }
 
+const WEBGPU_ARGS = [
+  "--enable-unsafe-webgpu",
+  "--use-webgpu-adapter=swiftshader",
+  "--use-angle=swiftshader",
+  "--force-color-profile=srgb",
+  "--hide-scrollbars",
+];
+
 /**
- * Headless Chromium with WebGPU on SwiftShader, whatever GPU the machine has: the backend server
- * exports draw with (the worker's `swiftshader` profile in ADR 0005). It keeps the GPU process,
- * which `--disable-gpu` would take away: WebGPU then gets an adapter but loses its device.
+ * Ways to get WebGPU on SwiftShader, whatever GPU the machine has: the backend server exports
+ * draw with (the worker's `swiftshader` profile in ADR 0005). None passes `--disable-gpu`, which
+ * takes the GPU process away (WebGPU then gets an adapter but loses its device). What works
+ * differs by platform: on Linux, Playwright's default headless shell loses the device, so new
+ * headless (`channel: "chromium"`) and Vulkan SwiftShader are tried too. The first that passes
+ * a smoke test is used, and every result is logged.
  */
-export async function launchWebGpuBrowser() {
-  return chromium.launch({
-    headless: true,
-    args: [
-      "--enable-unsafe-webgpu",
-      "--use-webgpu-adapter=swiftshader",
-      "--use-angle=swiftshader",
-      "--force-color-profile=srgb",
-      "--hide-scrollbars",
-    ],
+const WEBGPU_LAUNCHES = [
+  { name: "new headless, Vulkan SwiftShader", options: { channel: "chromium", args: [...WEBGPU_ARGS, "--enable-features=Vulkan", "--use-vulkan=swiftshader"] } },
+  { name: "new headless", options: { channel: "chromium", args: WEBGPU_ARGS } },
+  { name: "headless shell", options: { args: WEBGPU_ARGS } },
+];
+
+/** A device that survives a mapped buffer and a submit: what the exporter's first frame needs. */
+async function webGpuSmokeTest() {
+  const adapter = await navigator.gpu?.requestAdapter();
+  if (!adapter) return { ok: false, failed: "no adapter" };
+  const device = await adapter.requestDevice();
+  let lost = null;
+  device.lost.then((info) => {
+    lost = info.message || String(info.reason);
   });
+  device.pushErrorScope("validation");
+  const buffer = device.createBuffer({ size: 48, usage: GPUBufferUsage.VERTEX, mappedAtCreation: true });
+  new Float32Array(buffer.getMappedRange()).fill(1);
+  buffer.unmap();
+  device.queue.submit([device.createCommandEncoder().finish()]);
+  await device.queue.onSubmittedWorkDone();
+  const error = await device.popErrorScope();
+  return { ok: !error && !lost, architecture: adapter.info?.architecture, error: error?.message, lost };
+}
+
+let chosenLaunch;
+
+/** The first launch whose WebGPU passes the smoke test on this machine, tried once per run. */
+async function webGpuLaunch() {
+  chosenLaunch ??= (async () => {
+    for (const launch of WEBGPU_LAUNCHES) {
+      let result;
+      try {
+        const browser = await chromium.launch({ headless: true, ...launch.options });
+        try {
+          const page = await browser.newPage();
+          // A secure origin, as WebGPU needs; the probe page loads nothing heavy.
+          await page.goto(`${BASE_URL}/render-harness?mode=probe`, { waitUntil: "domcontentloaded" });
+          result = await page.evaluate(webGpuSmokeTest);
+        } finally {
+          await browser.close();
+        }
+      } catch (error) {
+        result = { ok: false, failed: error.message.split("\n")[0] };
+      }
+      console.log(`WebGPU ${launch.name}: ${JSON.stringify(result)}`);
+      if (result.ok) return launch;
+    }
+    throw new Error("WebGPU on SwiftShader failed the smoke test with every launch tried (see above)");
+  })();
+  return chosenLaunch;
+}
+
+export async function launchWebGpuBrowser() {
+  const launch = await webGpuLaunch();
+  return chromium.launch({ headless: true, ...launch.options });
 }
 
 async function waitForHarness(page, done) {

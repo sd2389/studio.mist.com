@@ -339,7 +339,7 @@ def test_a_quote_prices_a_job_without_holding_anything(client, db, owner, scene)
     assert res.status_code == 200
     quote = res.json()
     assert (quote["credits"], quote["width"], quote["height"], quote["frames"]) == (2, 2000, 2000, 2)
-    assert quote["output_names"] == ["RING-1-front.jpg", "RING-1-pose-hero.jpg"]
+    assert quote["outputs"] == ["RING-1-front.jpg", "RING-1-pose-hero.jpg"]
     assert quote["watermark"] is True
     assert len(quote["warnings"]) == 1
     assert _job_rows(db) == []

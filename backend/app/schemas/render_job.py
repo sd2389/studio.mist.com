@@ -90,7 +90,7 @@ class RenderJobQuote(BaseModel):
     width: int
     height: int
     frames: int
-    output_names: list[str]
+    outputs: list[str]  # the file names, as the spec keeps them in output_names
     watermark: bool
     warnings: list[str]
 

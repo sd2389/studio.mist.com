@@ -242,7 +242,7 @@ def quote_job(db: Session, user: User, body: RenderJobCreate) -> RenderJobQuote:
         width=planned.spec["width"],
         height=planned.spec["height"],
         frames=planned.spec["frames"],
-        output_names=planned.spec["output_names"],
+        outputs=planned.spec["output_names"],
         watermark=get_quotas(normalize_tier(billing.plan_tier)).watermark_exports,
         warnings=warnings,
     )

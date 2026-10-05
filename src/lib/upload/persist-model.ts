@@ -51,11 +51,13 @@ async function presignAndPut(
     upload_url: string;
     key: string;
     method?: string;
+    /** What the URL signs (type and cache policy); the PUT must send exactly these. */
+    headers?: Record<string, string>;
   };
   const put = await fetch(p.upload_url, {
     method: p.method || "PUT",
     body,
-    headers: { "Content-Type": contentType },
+    headers: p.headers ?? { "Content-Type": contentType },
   });
   if (!put.ok) {
     throw new Error(`Direct upload failed (${put.status})`);

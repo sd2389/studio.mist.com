@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { applySavedLook, resolveModelConfig, useFixedClockWarmup, useLookStage, ViewerStage } from "@/features/viewer";
 import { getHiresRefs } from "@/stores/hires-export-store";
+import { pinExportQuality } from "./export-quality";
 import {
   jobImageSize,
   readHarnessJob,
@@ -88,6 +89,7 @@ export function HarnessExport() {
       await sink.postProgress(0, "loading");
       const model = await sink.fetchModel();
       if (cancelled) return;
+      pinExportQuality();
       applySavedLook(job.payload.look, job.payload.look_items);
       modelUrl = URL.createObjectURL(model);
       setLoaded({ job, modelUrl });

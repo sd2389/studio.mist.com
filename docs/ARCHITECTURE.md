@@ -45,6 +45,8 @@ Reuse these instead of rebuilding them per page:
 | Turntable recording options | `turntableCaptureOptions`, `videoSizeLabel` (`@/features/render`) |
 | A video resolution picker | `VideoResolutionField` (`@/features/render`) |
 | What the plan lets an export be (size cap, watermark, Campaign Pack) | `loadExportPlan`, `useExportPlan`, `ExportPlanNote` (`@/features/render`); offscreen sessions take `ExportLimits` (`src/lib/export-limits.ts`), refuse larger sizes and draw the watermark (`src/lib/export-watermark.ts`) on every frame |
+| An export rendered on the server: start it, price it first, follow it, cancel or download it | `createRenderJob` / `createRenderJobs`, `useRenderJobQuote` with `RenderJobCost` (the quoted credits by a Render button), `useRenderJob` (polls until the job ends), `ExportJobsPanel` (a scene's jobs, or all of them on `/exports`) (`@/features/render`), behind the `server_exports` flag ([ADR 0005](adr/0005-server-exports.md)) |
+| The look an export renders | `lookSnapshot` (`@/features/viewer`), the same look the studio autosaves |
 | An upgrade prompt for a locked option or feature | `UpgradePrompt`, `UpgradeButton` (`src/components/billing/UpgradePrompt.tsx`) |
 | An option pill | `Chip` (`src/components/ui/chip.tsx`) |
 | A price for a design | `quoteDesign` (`src/lib/pricing/quote.ts`) |

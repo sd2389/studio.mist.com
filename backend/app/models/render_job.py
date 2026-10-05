@@ -30,22 +30,21 @@ class RenderJob(Base):
     kind: Mapped[str] = mapped_column(String(24), default="still")
     spec: Mapped[dict] = mapped_column(JSON, default=dict)  # normalised, with its frame count and output names
     look: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # validated and frozen at creation
+    # What else the request named, so a client can ask for the same job again.
+    variant_id: Mapped[str | None] = mapped_column(String(64), nullable=True)  # the saved variant it asked for
+    name: Mapped[str | None] = mapped_column(String(255), nullable=True)  # the file stem it gave
     watermark: Mapped[bool] = mapped_column(Boolean, default=True)  # the owner's plan at creation
     priority: Mapped[int] = mapped_column(SmallInteger, default=100)  # 100 from the studio, 10 for batches
     max_running: Mapped[int] = mapped_column(SmallInteger, default=1)  # the owner's running cap at creation
-    # The protocol before ADR 0005 reads these; A2 drops them with result_key.
-    model_ref: Mapped[str] = mapped_column(String(1024))  # storage model key, or absolute URL (dev/smoke)
-    lighting: Mapped[str] = mapped_column(String(32), default="studio")
-    preset: Mapped[str] = mapped_column(String(64), default="gold-18k-yellow")
-    width: Mapped[int] = mapped_column(Integer, default=2048)
-    height: Mapped[int] = mapped_column(Integer, default=2048)
     status: Mapped[str] = mapped_column(String(16), default="queued", index=True)
     attempts: Mapped[int] = mapped_column(Integer, default=0)
     max_attempts: Mapped[int] = mapped_column(SmallInteger, default=3)
     run_after: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # retry backoff
     worker_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    worker_token: Mapped[str] = mapped_column(String(64), default=lambda: uuid4().hex)  # reissued on every claim
-    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # set on every claim
+    # Reissued on every claim, and when a lapsed lease is taken back.
+    worker_token: Mapped[str] = mapped_column(String(64), default=lambda: uuid4().hex)
+    # Set by every claim, extended by every heartbeat within the kind's run time.
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     progress: Mapped[float] = mapped_column(Float, default=0.0)  # 0 to 1
     stage: Mapped[str | None] = mapped_column(String(16), nullable=True)
@@ -55,11 +54,11 @@ class RenderJob(Base):
     billing_period_start: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # when it was held
     idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
     request_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)  # SHA-256 of the request
-    result_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
     error: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     error_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
     renderer: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # browser, backend, adapter
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    # When the current attempt was claimed; its kind's run time limit counts from it.
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

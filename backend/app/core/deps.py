@@ -69,15 +69,19 @@ def get_admin_user(user: User = Depends(get_current_user)) -> User:
     return user
 
 
-def require_feature(key: str):
-    """Block the route when an admin-disabled product feature is off."""
+def require_feature(key: str, *, hidden: bool = False):
+    """Block the route when an admin-disabled product feature is off: 503, or for a `hidden`
+    feature 404, as if the route weren't there (the web app's proxies answer the same)."""
 
     def _check(
         db: Session = Depends(get_db),
     ) -> None:
         from app.features.feature_flags import service as feature_flag_service
 
-        if not feature_flag_service.is_enabled(db, key):
-            raise HTTPException(status_code=503, detail=f"Feature '{key}' is temporarily unavailable")
+        if feature_flag_service.is_enabled(db, key):
+            return
+        if hidden:
+            raise HTTPException(status_code=404, detail="Not Found")
+        raise HTTPException(status_code=503, detail=f"Feature '{key}' is temporarily unavailable")
 
     return _check

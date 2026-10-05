@@ -52,6 +52,16 @@ def render_key(user_id: int, ext: str) -> str:
     return f"{customer_renders_prefix(user_id)}/{uuid4().hex}.{normalized}"
 
 
+def render_job_prefix(user_id: int, job_id: int) -> str:
+    """Where a render job's outputs live; a worker may write only under its own job's."""
+    return f"{customer_renders_prefix(user_id)}/{job_id}/"
+
+
+def render_job_output_key(user_id: int, job_id: int, filename: str) -> str:
+    """One output of a render job, under the job's prefix, by its file name (already cleaned)."""
+    return f"{render_job_prefix(user_id, job_id)}{filename}"
+
+
 def ai_render_key(user_id: int, ext: str = "png") -> str:
     normalized = ext.lstrip(".").lower() or "png"
     return f"{customer_ai_prefix(user_id)}/{uuid4().hex}.{normalized}"

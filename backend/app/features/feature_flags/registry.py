@@ -94,6 +94,14 @@ FEATURE_REGISTRY: tuple[FeatureDefinition, ...] = (
         description="Public /pricing plan comparison page.",
         category="Marketing",
     ),
+    FeatureDefinition(
+        key="server_exports",
+        label="Server exports",
+        description="Render exports as jobs on GPU workers instead of in the browser (ADR 0005).",
+        category="Editor",
+        # Off until the studio's export screens create jobs; while off, creating or quoting one is 404.
+        default_enabled=False,
+    ),
 )
 
 _REGISTRY_BY_KEY = {feature.key: feature for feature in FEATURE_REGISTRY}

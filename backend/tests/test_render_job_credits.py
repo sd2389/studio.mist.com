@@ -16,7 +16,7 @@ from app.features.billing.quota_service import (
 )
 from app.features.render_jobs.service import cancel_job, create_job, create_jobs
 from app.models import Base, RenderJob, Scene, User
-from app.schemas.render_job import RenderJobCreate
+from app.schemas.render_job import RenderJobBulkCreate, RenderJobCreate
 
 FOUR_K = {"camera": {"pose": "pose-default"}, "width": 3840, "height": 2160}  # 2 credits
 
@@ -113,13 +113,13 @@ def test_two_creates_at_once_cant_overspend(tmp_path):
 def test_a_bulk_request_holds_the_sum_or_nothing(db, sample_user, scene):
     _set_billing(db, sample_user, plan_tier="grow", render_credits_balance=10)
 
-    jobs = create_jobs(db, sample_user, [_still(scene), _still(scene, width=2048, height=2048)])
+    jobs, _ = create_jobs(db, sample_user, RenderJobBulkCreate(jobs=[_still(scene), _still(scene, width=2048, height=2048)]))
 
     assert [job.credits for job in jobs] == [2, 1]
     assert _balance(db, sample_user) == 7
 
     with pytest.raises(HTTPException) as exc:
-        create_jobs(db, sample_user, [_still(scene)] * 4)  # 8 credits, 7 left
+        create_jobs(db, sample_user, RenderJobBulkCreate(jobs=[_still(scene)] * 4))  # 8 credits, 7 left
     assert exc.value.status_code == 402
     assert _balance(db, sample_user) == 7
     assert len(db.execute(select(RenderJob)).all()) == 2
@@ -195,7 +195,7 @@ def test_hold_and_refund_leave_the_commit_to_the_caller(db, sample_user):
     db.rollback()
     assert _balance(db, sample_user) == 5
 
-    job = RenderJob(user_id=sample_user.id, model_ref="m.glb", credits=4, credit_state="held")
+    job = RenderJob(user_id=sample_user.id, credits=4, credit_state="held")
     db.add(job)
     db.commit()
     refund_render_job(db, job)

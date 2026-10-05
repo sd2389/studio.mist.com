@@ -7,6 +7,8 @@ of the files it makes. Kinds whose phase hasn't shipped answer 400.
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Any, Literal
 
 from fastapi import HTTPException
@@ -159,12 +161,61 @@ def output_names(spec: Spec, stem: str) -> list[str]:
     return names
 
 
-def normalised_spec(spec: Spec, outputs: list[str]) -> dict[str, Any]:
+def normalised_spec(spec: Spec, output_names: list[str]) -> dict[str, Any]:
     """What the job keeps: the validated spec, its frame count and its output names."""
-    return {**spec.model_dump(mode="json", exclude_none=True), "frames": len(outputs), "outputs": outputs}
+    return {
+        **spec.model_dump(mode="json", exclude_none=True),
+        "frames": len(output_names),
+        "output_names": output_names,
+    }
 
 
 def spec_warnings(spec: Spec) -> list[str]:
     if spec.transparent and spec.format == "jpeg":
         return ["A JPEG can't be transparent, so the cutout gets a white background. Choose PNG to keep it."]
     return []
+
+
+# What a job's images are stored as, by the spec's format.
+IMAGE_CONTENT_TYPES = {"png": "image/png", "jpeg": "image/jpeg"}
+# The largest file one image may be. A 36 MP frame takes 144 MB even stored raw.
+MAX_IMAGE_BYTES = 256 * 1024 * 1024
+
+
+@dataclass(frozen=True)
+class PlannedOutput:
+    """One file a job makes, as the spec it keeps names it."""
+
+    name: str
+    render_kind: str  # the kind of the render it becomes
+    content_type: str
+    max_bytes: int
+    width: int | None
+    height: int | None
+    # The camera's angle or pose id, as the harness labels the file; none for a live view.
+    label: str | None
+
+
+def planned_outputs(kind: str, spec: Mapping[str, Any]) -> list[PlannedOutput]:
+    """The files a job makes, in camera order, read from its normalised spec."""
+    if kind not in SPEC_MODELS:
+        raise ValueError(f"No outputs for a '{kind}' job")
+    cameras = [spec["camera"]] if kind == "still" else spec["cameras"]
+    content_type = IMAGE_CONTENT_TYPES[spec["format"]]
+    return [
+        PlannedOutput(
+            name=name,
+            render_kind="still",
+            content_type=content_type,
+            max_bytes=MAX_IMAGE_BYTES,
+            width=spec["width"],
+            height=spec["height"],
+            label=camera.get("angle") or camera.get("pose"),
+        )
+        for name, camera in zip(spec["output_names"], cameras, strict=True)
+    ]
+
+
+def longest_edge(spec: Mapping[str, Any]) -> int:
+    """The longest side a job renders: what its owner's plan allowed when the job was created."""
+    return max(spec["width"], spec["height"])

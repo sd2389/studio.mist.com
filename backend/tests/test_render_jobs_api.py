@@ -1,5 +1,6 @@
 """The render job endpoints for users, over HTTP: create (with Idempotency-Key), bulk, quote,
-list, get, cancel and download (docs/adr/0005-server-exports.md)."""
+list, get, cancel and download (docs/adr/0005-server-exports.md). Creating and quoting need the
+server_exports flag, which these tests turn on."""
 
 from datetime import datetime, timedelta
 from unittest.mock import patch
@@ -12,7 +13,7 @@ from app.core.public_urls import public_file_url
 from app.core.storage.local import LocalBackend
 from app.features.billing.quota_service import get_or_create_billing, reset_allotments
 from app.main import app
-from app.models import Render, RenderJob, Scene, User, UserAsset
+from app.models import FeatureFlag, Render, RenderJob, Scene, User, UserAsset
 from app.models.user import Session as DbSession
 
 VIEW = {"view": {"position": [0.62, 0.88, 2.25], "target": [0, 0, 0]}}
@@ -42,6 +43,11 @@ def _job_rows(db) -> list[RenderJob]:
     return db.query(RenderJob).order_by(RenderJob.id).all()
 
 
+def _set_server_exports(db, enabled: bool) -> None:
+    db.merge(FeatureFlag(key="server_exports", enabled=enabled, updated_at=datetime.utcnow()))
+    db.commit()
+
+
 @pytest.fixture()
 def client(db, tmp_path, monkeypatch):
     from app.database import get_db
@@ -50,6 +56,7 @@ def client(db, tmp_path, monkeypatch):
         yield db
 
     monkeypatch.setattr(storage_mod, "get_storage", lambda: LocalBackend(tmp_path))
+    _set_server_exports(db, True)
     app.dependency_overrides[get_db] = _override_db
     yield TestClient(app)
     app.dependency_overrides.clear()
@@ -113,16 +120,13 @@ def test_create_queues_a_still_and_holds_its_price(client, db, owner, scene):
     job = res.json()
     assert (job["kind"], job["status"], job["scene_id"]) == ("still", "queued", scene.id)
     assert (job["credits"], job["credit_state"], job["watermark"]) == (2, "held", True)
-    assert job["spec"]["outputs"] == ["Solitaire-4K.png"]
+    assert job["spec"]["output_names"] == ["Solitaire-4K.png"]
     assert job["spec"]["frames"] == 1
     assert job["outputs"] == []
     assert _balance(db, user) == 23
     row = _job_rows(db)[0]
     assert (row.priority, row.max_running, row.max_attempts) == (100, 1, 3)
-    # What the worker protocol before A2 reads.
-    assert (row.model_ref, row.lighting, row.preset, row.width, row.height) == (
-        "customers/1/models/ring.glb", "soft", "platinum", 3840, 2160
-    )
+    assert (row.look["material"], row.look["lighting"]) == ("platinum", "soft")
 
 
 def test_a_free_8k_still_is_402(client, db, owner, scene):
@@ -168,6 +172,32 @@ def test_a_bad_spec_or_look_is_400_naming_the_field(client, db, owner, scene, bo
     assert _balance(db, user) == 25
 
 
+def test_creating_and_quoting_are_404_while_server_exports_is_off(client, db, owner, scene):
+    user, headers = owner
+    job_id = _create(client, headers, scene).json()["id"]
+    _set_server_exports(db, False)
+    body = {"kind": "still", "scene_id": scene.id, "spec": FOUR_K}
+
+    created = client.post("/render-jobs", headers=headers, json=body)
+    bulk = client.post("/render-jobs/bulk", headers=headers, json={"jobs": [body]})
+    quote = client.post("/render-jobs/quote", headers=headers, json=body)
+    bulk_quote = client.post("/render-jobs/bulk/quote", headers=headers, json={"jobs": [body]})
+    signed_out = client.post("/render-jobs", json=body)
+
+    assert [res.status_code for res in (created, bulk, quote, bulk_quote, signed_out)] == [404] * 5
+    assert len(_job_rows(db)) == 1
+    # A job made before stays its owner's to read and cancel.
+    assert client.get(f"/render-jobs/{job_id}", headers=headers).status_code == 200
+    assert client.post(f"/render-jobs/{job_id}/cancel", headers=headers).status_code == 200
+
+
+def test_server_exports_is_off_until_an_admin_turns_it_on(client, db, owner, scene):
+    db.query(FeatureFlag).delete()
+    db.commit()
+
+    assert _create(client, owner[1], scene).status_code == 404
+
+
 def test_another_users_scene_is_404(client, db, other, scene):
     assert _create(client, other[1], scene).status_code == 404
     assert _job_rows(db) == []
@@ -208,6 +238,26 @@ def test_a_saved_background_image_of_the_owner_is_kept_by_id(client, db, owner, 
 
     assert res.status_code == 201
     assert _job_rows(db)[0].look["scene_settings"]["customBackground"] == {"type": "image", "asset_id": asset.id}
+    # The job answers the look it keeps: never the image's address.
+    assert res.json()["look"]["scene_settings"]["customBackground"] == {"type": "image", "asset_id": asset.id}
+
+
+def test_a_job_answers_what_its_request_asked_for_so_it_can_be_asked_for_again(client, db, owner, scene):
+    headers = owner[1]
+    first = _create(client, headers, scene, name="Rose 4K", variant_id="v-rose").json()
+    assert (first["name"], first["variant_id"], first["look"]["material"]) == ("Rose 4K", "v-rose", "gold-18k-rose")
+
+    # A Retry: the same request, from what the job answers. The API adds frames and output_names.
+    spec = {key: value for key, value in first["spec"].items() if key not in ("frames", "output_names")}
+    request = {key: first[key] for key in ("kind", "scene_id", "variant_id", "look", "name")}
+    again = client.post("/render-jobs", headers=headers, json={**request, "spec": spec})
+
+    assert again.status_code == 201
+    retried = again.json()
+    assert retried["id"] != first["id"]
+    assert [retried[key] for key in ("spec", "look", "name", "variant_id", "credits")] == [
+        first[key] for key in ("spec", "look", "name", "variant_id", "credits")
+    ]
 
 
 def test_the_queue_is_capped_by_the_plan(client, db, owner, scene):
@@ -316,18 +366,48 @@ def test_one_bad_job_queues_none_of_the_bulk(client, db, grower, scene):
     assert _balance(db, user) == 300
 
 
-def test_bulk_takes_no_idempotency_key_and_at_most_100_jobs(client, db, grower, scene):
+def test_bulk_takes_at_most_100_jobs_and_a_well_formed_key(client, db, grower, scene):
     headers = grower[1]
 
-    keyed = client.post(
-        "/render-jobs/bulk",
-        headers={**headers, "Idempotency-Key": "k"},
-        json={"jobs": [{"kind": "still", "scene_id": scene.id, "spec": FOUR_K}]},
-    )
     too_many = _bulk(client, headers, scene, *([{}] * 101))
+    bad_key = _bulk(client, {**headers, "Idempotency-Key": "has spaces"}, scene, {})
 
-    assert (keyed.status_code, too_many.status_code) == (400, 400)
+    assert (too_many.status_code, bad_key.status_code) == (400, 400)
     assert _job_rows(db) == []
+
+
+def test_a_repeated_bulk_key_returns_the_same_jobs_and_holds_once(client, db, grower, scene):
+    user, headers = grower
+    keyed = {**headers, "Idempotency-Key": "k" * 128}  # a digest of it fits each job's key
+
+    first = _bulk(client, keyed, scene, {}, {"variant_id": "v-rose"})
+    again = _bulk(client, keyed, scene, {}, {"variant_id": "v-rose"})
+
+    assert (first.status_code, again.status_code) == (201, 200)
+    assert [job["id"] for job in again.json()["jobs"]] == [job["id"] for job in first.json()["jobs"]]
+    assert len(_job_rows(db)) == 2
+    assert _balance(db, user) == 296
+
+
+def test_a_bulk_key_reused_with_another_body_is_409(client, db, grower, scene):
+    user, headers = grower
+    keyed = {**headers, "Idempotency-Key": "bulk-1"}
+    _bulk(client, keyed, scene, {}, {})
+
+    other_body = _bulk(client, keyed, scene, {})
+    single = _create(client, keyed, scene)
+
+    assert (other_body.status_code, single.status_code) == (409, 409)
+    assert len(_job_rows(db)) == 2
+    assert _balance(db, user) == 296
+
+
+def test_a_key_one_create_used_cant_make_a_bulk_request(client, db, grower, scene):
+    keyed = {**grower[1], "Idempotency-Key": "one-job"}
+    _create(client, keyed, scene)
+
+    assert _bulk(client, keyed, scene, {}).status_code == 409
+    assert len(_job_rows(db)) == 1
 
 
 def test_a_quote_prices_a_job_without_holding_anything(client, db, owner, scene):
@@ -359,6 +439,53 @@ def test_a_quote_says_when_the_balance_is_short_and_refuses_what_the_plan_does(c
 
     assert short.json()["warnings"] == ["This needs 2 render credits and 1 are left."]
     assert eight_k.status_code == 402
+
+
+def _bulk_quote(client, headers, scene, *jobs: dict):
+    bodies = [{"kind": "still", "scene_id": scene.id, "spec": FOUR_K, **job} for job in jobs]
+    return client.post("/render-jobs/bulk/quote", headers=headers, json={"jobs": bodies})
+
+
+def test_a_bulk_quote_prices_each_job_and_says_which_ones_are_refused(client, db, owner, scene):
+    user, headers = owner
+    angles = {"cameras": [{"angle": "front"}, {"angle": "top"}], "width": 2048, "height": 2048}
+
+    res = _bulk_quote(
+        client, headers, scene,
+        {},  # 2 credits
+        {"spec": EIGHT_K},  # above Free's cap
+        {"variant_id": "v-gone"},
+        {"kind": "angle_set", "spec": angles},  # 1 credit an image
+    )
+
+    assert res.status_code == 200
+    quote = res.json()
+    assert quote["credits"] == 4
+    assert [item["quote"] and item["quote"]["credits"] for item in quote["items"]] == [2, None, None, 2]
+    assert [item["refused"] and item["refused"]["status"] for item in quote["items"]] == [None, 402, 404, None]
+    assert quote["items"][1]["refused"]["detail"].startswith("Resolution limit exceeded for Free")
+    assert quote["items"][3]["quote"]["outputs"] == ["RING-1-front.png", "RING-1-top.png"]
+    # Free has no bulk requests at all; the studio shows the price with an upgrade prompt.
+    assert quote["refused"] == {
+        "status": 402, "detail": "Rendering several scenes or variants at once is part of Grow and Studio, not Free.",
+    }
+    assert (quote["warnings"], _job_rows(db), _balance(db, user)) == ([], [], 25)
+
+
+def test_a_bulk_quote_says_when_the_balance_is_short_for_the_total(client, db, grower, scene):
+    user, headers = grower
+    get_or_create_billing(db, user).render_credits_balance = 3
+    db.commit()
+
+    quote = _bulk_quote(client, headers, scene, {}, {}).json()
+
+    assert (quote["credits"], quote["refused"]) == (4, None)
+    assert quote["warnings"] == ["This needs 4 render credits and 3 are left."]
+    assert [item["quote"]["warnings"] for item in quote["items"]] == [[], []]
+
+
+def test_a_bulk_quote_takes_at_most_100_jobs(client, db, grower, scene):
+    assert _bulk_quote(client, grower[1], scene, *([{}] * 101)).status_code == 400
 
 
 # ---------------------------------------------------------------------------

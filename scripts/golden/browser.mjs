@@ -16,6 +16,15 @@ export const GOLDEN_IDS = [...EXPORT_IDS, ...LIGHTING_IDS];
  * SwiftShader every frame costs CI time.
  */
 export const WARMUP_FRAMES = 24;
+/**
+ * What the export goldens draw with. CI uses WebGL 2, like the lighting goldens: on Linux, headless
+ * Chromium's SwiftShader WebGPU either lost its device (the headless shell) or drew the live stage
+ * into a canvas left at the default 300x150 (new headless), so frames went invalid and the readback
+ * never returned. The export pipeline (cameras, sink, watermark, outputs) is the same either way;
+ * WebGPU is checked by the worker's self-check on the GPU host. `GOLDEN_EXPORT_BACKEND=webgpu`
+ * runs them on SwiftShader WebGPU instead.
+ */
+const EXPORT_BACKEND = process.env.GOLDEN_EXPORT_BACKEND === "webgpu" ? "webgpu" : "webgl";
 export const BASE_URL = process.env.HARNESS_BASE_URL ?? "http://localhost:3000";
 /** The model every golden draws; export jobs get it from the sink, as the worker serves it. */
 const FIXTURE_MODEL = "public/test-fixtures/PDR-2413.glb";
@@ -138,7 +147,7 @@ async function captureLighting(lighting, outDir) {
 async function captureExport(id, outDir) {
   const payload = JSON.parse(readFileSync(`tests/goldens/fixtures/${id}.json`, "utf8"));
   const sink = await startSink({ model: readFileSync(FIXTURE_MODEL), origin: new URL(BASE_URL).origin });
-  const browser = await launchWebGpuBrowser();
+  const browser = EXPORT_BACKEND === "webgpu" ? await launchWebGpuBrowser() : await launchDeterministicBrowser();
   const console_ = [];
   try {
     const page = await browser.newPage({ viewport: { width: 800, height: 800 }, deviceScaleFactor: 1 });
@@ -159,9 +168,10 @@ async function captureExport(id, outDir) {
     });
     if (state !== "done") throw new Error(`harness ${id}: ${state}`);
     const { renderer, outputs } = await page.evaluate(() => window.__RENDER_RESULT__);
-    // What this golden is for: the WebGPU backend server exports use, not the WebGL 2 fallback.
-    if (renderer.backend !== "webgpu" || renderer.adapter?.architecture !== "swiftshader") {
-      throw new Error(`harness ${id}: drew with ${renderer.backend} on ${JSON.stringify(renderer.adapter)}, not WebGPU on SwiftShader`);
+    // The backend the run asked for, so a baseline never mixes the two.
+    const wanted = EXPORT_BACKEND === "webgpu" ? renderer.backend === "webgpu" && renderer.adapter?.architecture === "swiftshader" : renderer.backend !== "webgpu";
+    if (!wanted) {
+      throw new Error(`harness ${id}: drew with ${renderer.backend} on ${JSON.stringify(renderer.adapter)}, not ${EXPORT_BACKEND}`);
     }
     const file = sink.files.get(outputs[0]?.name);
     if (!file || sink.progress.at(-1)?.progress !== 1) throw new Error(`harness ${id}: the sink did not get the finished image`);

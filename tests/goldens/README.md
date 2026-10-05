@@ -13,7 +13,7 @@ with `BUILD_TARGET=worker`, or run `BUILD_TARGET=worker npm run dev`. The public
 | Golden | What it captures | Backend |
 |---|---|---|
 | `studio`, `soft`, `dark`, `catalog`, `dramatic` | The harness's golden mode: the live canvas under each lighting setup, screenshotted | WebGL 2 (SwiftShader gives WebGPU no adapter with these flags) |
-| `export-still` | The harness's export mode: the job in `fixtures/export-still.json` (a still from a Campaign Pack angle, with a saved look and a CSS gradient backdrop), rendered as the render worker renders it; the golden is the PNG the page hands the sink | WebGPU on SwiftShader (`--enable-unsafe-webgpu`); the capture fails if three.js fell back to WebGL 2 |
+| `export-still` | The harness's export mode: the job in `fixtures/export-still.json` (a still from a Campaign Pack angle, with a saved look and a CSS gradient backdrop), rendered as the render worker renders it; the golden is the PNG the page hands the sink | WebGL 2 in CI, like the lighting goldens: on Linux, headless Chromium's SwiftShader WebGPU lost its device (headless shell) or drew into a canvas left at 300x150 (new headless). The export pipeline is the same on either backend; WebGPU is covered by the render worker's self-check on its GPU host. `GOLDEN_EXPORT_BACKEND=webgpu` runs it on SwiftShader WebGPU instead, and the capture then fails if three.js fell back to WebGL 2 |
 
 Once the scene has loaded, the harness draws a fixed number of frames on a fixed clock (frame N
 at N/60 s) and stops drawing. The lighting goldens draw `WARMUP_FRAMES` (24, in

@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.core import storage
+from app.core.cache_policy import cache_control_for_key
 from app.core import storage_keys as keys
 from app.core.adapters.errors import StorageObjectTooLargeError
 from app.core.observability import get_logger, log_event
@@ -406,7 +407,7 @@ def save_direct_multipart(
 
 def presign_upload_url(
     user_id: int, filename: str, content_type: str | None
-) -> dict[str, str | int]:
+) -> dict[str, str | int | dict[str, str]]:
     is_image = bool(content_type and content_type.startswith("image/"))
     if is_image:
         safe = safe_thumbnail_filename(filename)
@@ -418,4 +419,6 @@ def presign_upload_url(
         key = keys.model_key(user_id, safe)
         ctype = content_type or "model/gltf-binary"
     url = storage.presign_put(key, ctype, expires_in=900)
-    return {"upload_url": url, "key": key, "method": "PUT", "expires_in": 900}
+    # The upload must send exactly what the URL signs, or the storage refuses it.
+    headers = {"Content-Type": ctype, "Cache-Control": cache_control_for_key(key)}
+    return {"upload_url": url, "key": key, "method": "PUT", "expires_in": 900, "headers": headers}

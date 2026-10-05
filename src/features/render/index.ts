@@ -43,6 +43,8 @@ export {
   type RenderJobStatus,
 } from "./lib/render-jobs-api";
 export { isJobFinished, pollRenderJob } from "./lib/render-job-polling";
+export { useServerExports } from "./ui/useServerExports";
+export { ExportSceneProvider, useExportScene, type ExportScene } from "./ui/export-scene";
 export { useRenderJob } from "./ui/useRenderJob";
 export { useRenderJobQuote } from "./ui/useRenderJobQuote";
 export { RenderJobCost } from "./ui/RenderJobCost";

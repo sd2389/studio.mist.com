@@ -38,6 +38,8 @@ export function useSavedScene({ modelId, variant, initialScene }: UseSavedSceneA
   const [sceneSku, setSceneSku] = useState<string | null>(
     initialScene?.sku ?? null,
   );
+  // The bundled demo's id is 0: it is no saved scene.
+  const [sceneId, setSceneId] = useState<number | null>(initialScene?.id || null);
   const [sceneLook, setSceneLook] = useState<SceneLook | null>(initialScene?.look ?? null);
   const [sceneLoaded, setSceneLoaded] = useState(Boolean(initialScene));
   const applyingPersistedState = useRef(false);
@@ -61,6 +63,7 @@ export function useSavedScene({ modelId, variant, initialScene }: UseSavedSceneA
         applySavedLook(scene, scene.look);
         setModelConfig(resolveModelConfig(scene));
         setSceneSku(scene.sku ?? null);
+        setSceneId(scene.id || null);
         setSceneLook(scene.look ?? null);
       })
       .catch(() => {
@@ -101,5 +104,5 @@ export function useSavedScene({ modelId, variant, initialScene }: UseSavedSceneA
     }, 350);
   }, [modelId, persistPayload, sceneLoaded, variant]);
 
-  return { modelConfig, setModelConfig, sceneSku, sceneLook };
+  return { modelConfig, setModelConfig, sceneId, sceneSku, sceneLook };
 }

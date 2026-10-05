@@ -58,6 +58,9 @@ class PlannedJob:
     look: dict[str, Any]
     credits: int
     warnings: list[str]
+    # What else the request named, kept on the job so the same job can be asked for again.
+    variant_id: str | None
+    name: str | None
 
 
 def _look_to_render(scene: Scene, body: RenderJobCreate) -> dict[str, Any]:
@@ -91,6 +94,8 @@ def plan_job(db: Session, user: User, body: RenderJobCreate) -> PlannedJob:
         look=look,
         credits=render_job_cost(body.kind, spec),
         warnings=spec_warnings(spec),
+        variant_id=body.variant_id,
+        name=body.name,
     )
 
 
@@ -136,6 +141,8 @@ def _queue_jobs(
                 kind=job.kind,
                 spec=job.spec,
                 look=job.look,
+                variant_id=job.variant_id,
+                name=job.name,
                 watermark=quotas.watermark_exports,
                 priority=STUDIO_PRIORITY,
                 max_running=quotas.max_running_jobs,

@@ -30,6 +30,9 @@ class RenderJob(Base):
     kind: Mapped[str] = mapped_column(String(24), default="still")
     spec: Mapped[dict] = mapped_column(JSON, default=dict)  # normalised, with its frame count and output names
     look: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # validated and frozen at creation
+    # What else the request named, so a client can ask for the same job again.
+    variant_id: Mapped[str | None] = mapped_column(String(64), nullable=True)  # the saved variant it asked for
+    name: Mapped[str | None] = mapped_column(String(255), nullable=True)  # the file stem it gave
     watermark: Mapped[bool] = mapped_column(Boolean, default=True)  # the owner's plan at creation
     priority: Mapped[int] = mapped_column(SmallInteger, default=100)  # 100 from the studio, 10 for batches
     max_running: Mapped[int] = mapped_column(SmallInteger, default=1)  # the owner's running cap at creation

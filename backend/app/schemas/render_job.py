@@ -57,6 +57,12 @@ class RenderJobOut(BaseModel):
     scene_id: int | None
     batch_id: int | None
     spec: dict[str, Any]
+    # What else the request named. With the spec (less `frames` and `output_names`, which the
+    # API adds) they make the same job again: the look is the stored snapshot, a background
+    # image kept as {"type": "image", "asset_id"}.
+    look: dict[str, Any] | None
+    variant_id: str | None
+    name: str | None
     watermark: bool
     credits: int
     credit_state: str

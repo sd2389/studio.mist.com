@@ -1,5 +1,6 @@
 """The worker protocol migration drops the columns the old protocol read and moves the output
-names to where the harness reads them; its downgrade puts both back. Steps on SQLite."""
+names to where the harness reads them; its downgrade puts both back. The next one keeps the
+variant and the name a job's request gave. Steps on SQLite."""
 
 import json
 from datetime import datetime
@@ -91,4 +92,17 @@ def test_render_job_worker_protocol_migration_round_trip(sqlite_url):
     assert {key: jobs[3][key] for key in OLD_COLUMNS} == {
         "model_ref": "", "lighting": "dark", "preset": "rose", "width": 512, "height": 256, "result_key": None,
     }
+    engine.dispose()
+
+
+def test_jobs_keep_the_variant_and_the_name_their_request_gave(sqlite_url):
+    config = alembic_config()
+    engine = schema_at_head(sqlite_url)
+
+    command.downgrade(config, previous_revision("f388c20848d8"))
+    assert {"variant_id", "name"}.isdisjoint(columns(engine, "render_jobs"))
+    command.upgrade(config, "head")
+
+    assert {"variant_id", "name"} <= columns(engine, "render_jobs")
+    assert model_diffs(engine) == []
     engine.dispose()

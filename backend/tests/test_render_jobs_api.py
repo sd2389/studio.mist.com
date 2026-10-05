@@ -238,6 +238,26 @@ def test_a_saved_background_image_of_the_owner_is_kept_by_id(client, db, owner, 
 
     assert res.status_code == 201
     assert _job_rows(db)[0].look["scene_settings"]["customBackground"] == {"type": "image", "asset_id": asset.id}
+    # The job answers the look it keeps: never the image's address.
+    assert res.json()["look"]["scene_settings"]["customBackground"] == {"type": "image", "asset_id": asset.id}
+
+
+def test_a_job_answers_what_its_request_asked_for_so_it_can_be_asked_for_again(client, db, owner, scene):
+    headers = owner[1]
+    first = _create(client, headers, scene, name="Rose 4K", variant_id="v-rose").json()
+    assert (first["name"], first["variant_id"], first["look"]["material"]) == ("Rose 4K", "v-rose", "gold-18k-rose")
+
+    # A Retry: the same request, from what the job answers. The API adds frames and output_names.
+    spec = {key: value for key, value in first["spec"].items() if key not in ("frames", "output_names")}
+    request = {key: first[key] for key in ("kind", "scene_id", "variant_id", "look", "name")}
+    again = client.post("/render-jobs", headers=headers, json={**request, "spec": spec})
+
+    assert again.status_code == 201
+    retried = again.json()
+    assert retried["id"] != first["id"]
+    assert [retried[key] for key in ("spec", "look", "name", "variant_id", "credits")] == [
+        first[key] for key in ("spec", "look", "name", "variant_id", "credits")
+    ]
 
 
 def test_the_queue_is_capped_by_the_plan(client, db, owner, scene):

@@ -40,7 +40,7 @@ RENDER_CREDITS_GRANT = 5
 SMOKE_SPEC = {"camera": {"pose": "pose-default"}, "width": 1024, "height": 1024}
 
 
-def _get_or_create_smoke_user(db) -> User:
+def get_or_create_smoke_user(db) -> User:
     user = db.execute(
         select(User).where(User.email == SMOKE_EMAIL)
     ).scalars().first()
@@ -66,7 +66,7 @@ def _get_or_create_smoke_user(db) -> User:
     return user
 
 
-def _ensure_render_credits(db, user: User, amount: int) -> int:
+def ensure_render_credits(db, user: User, amount: int) -> int:
     """Ensure billing row exists and set render_credits_balance to `amount`.
 
     Returns the balance after the operation.
@@ -79,7 +79,7 @@ def _ensure_render_credits(db, user: User, amount: int) -> int:
     return billing.render_credits_balance
 
 
-def _get_or_create_smoke_scene(db, user: User, bogus: bool) -> Scene:
+def get_or_create_smoke_scene(db, user: User, bogus: bool) -> Scene:
     """The smoke user's scene of the demo ring: its model is stored under the user's prefix,
     except with --bogus, whose scene names a model file that was never stored."""
     model_key = f"customers/{user.id}/models/{'missing' if bogus else 'smoke'}-ring.glb"
@@ -134,9 +134,9 @@ def main() -> None:
         token = "(could not read settings)"
 
     with SessionLocal() as db:
-        user = _get_or_create_smoke_user(db)
-        balance = _ensure_render_credits(db, user, RENDER_CREDITS_GRANT)
-        scene = _get_or_create_smoke_scene(db, user, args.bogus)
+        user = get_or_create_smoke_user(db)
+        balance = ensure_render_credits(db, user, RENDER_CREDITS_GRANT)
+        scene = get_or_create_smoke_scene(db, user, args.bogus)
         job = _enqueue_job(db, user, scene)
         # Capture all values inside the session to avoid DetachedInstanceError
         user_id = user.id

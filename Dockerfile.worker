@@ -15,7 +15,8 @@ ENV NEXT_PUBLIC_SOURCE_ASSET_ORIGIN=${NEXT_PUBLIC_SOURCE_ASSET_ORIGIN} \
     NEXT_TELEMETRY_DISABLED=1
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --no-audit --no-fund
+# As CI installs them: from the lockfile, with no install scripts.
+RUN npm ci --ignore-scripts --no-audit --no-fund
 COPY . .
 RUN BUILD_TARGET=worker npm run build
 

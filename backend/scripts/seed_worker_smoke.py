@@ -20,7 +20,7 @@ from app.database import SessionLocal, engine
 from app.models import Base
 from app.models.feature_flag import FeatureFlag
 from app.models.user import Session as DbSession
-from scripts.seed_smoke_job import _ensure_render_credits, _get_or_create_smoke_scene, _get_or_create_smoke_user
+from scripts.seed_smoke_job import ensure_render_credits, get_or_create_smoke_scene, get_or_create_smoke_user
 
 RENDER_CREDITS = 10
 SESSION_HOURS = 2
@@ -32,9 +32,9 @@ def main() -> None:
         now = datetime.utcnow()
         db.merge(FeatureFlag(key="server_exports", enabled=True, updated_at=now))
         db.commit()
-        user = _get_or_create_smoke_user(db)
-        _ensure_render_credits(db, user, RENDER_CREDITS)
-        scene = _get_or_create_smoke_scene(db, user, bogus=False)
+        user = get_or_create_smoke_user(db)
+        ensure_render_credits(db, user, RENDER_CREDITS)
+        scene = get_or_create_smoke_scene(db, user, bogus=False)
         token = secrets.token_urlsafe(32)
         db.add(DbSession(token=token, user_id=user.id, expires_at=now + timedelta(hours=SESSION_HOURS), created_at=now))
         db.commit()

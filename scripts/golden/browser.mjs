@@ -34,9 +34,15 @@ const FIXTURE_MODEL = "public/test-fixtures/PDR-2413.glb";
  * Captures running at once, each in its own browser: SwiftShader draws every page of one browser
  * in its single GPU process, one draw after another, so pages sharing a browser barely overlap.
  */
-const CONCURRENCY = Number(process.env.GOLDEN_CONCURRENCY) || GOLDEN_IDS.length;
+const CONCURRENCY = Number(process.env.GOLDEN_CONCURRENCY) || LIGHTING_IDS.length;
 /** Loading plus the warm-up frames on a slow runner, with every capture running at once. */
 const CAPTURE_TIMEOUT_MS = 5 * 60 * 1000;
+/**
+ * An export capture loads the job, warms up 60 frames and then renders, all on the CPU: on a
+ * 4-core runner sharing it with the lighting captures that took nearly 5 minutes before the
+ * first frame. They now run after the lighting goldens, one at a time, with room to spare.
+ */
+const EXPORT_CAPTURE_TIMEOUT_MS = 8 * 60 * 1000;
 
 /** Headless Chromium on SwiftShader. WebGPU gets no adapter here, so three.js draws with WebGL 2. */
 export async function launchDeterministicBrowser() {
@@ -180,7 +186,7 @@ async function captureExport(id, outDir) {
   const console_ = [];
   try {
     const page = await browser.newPage({ viewport: { width: 800, height: 800 }, deviceScaleFactor: 1 });
-    page.setDefaultTimeout(CAPTURE_TIMEOUT_MS);
+    page.setDefaultTimeout(EXPORT_CAPTURE_TIMEOUT_MS);
     page.on("console", (message) => console_.push(`[${message.type()}] ${message.text()}`));
     page.on("pageerror", (error) => console_.push(`[pageerror] ${error.message}`));
     // As the worker hands a job over: set before the page loads, never in the URL.
@@ -212,11 +218,14 @@ async function captureExport(id, outDir) {
 
 export async function captureAll(outDir) {
   mkdirSync(outDir, { recursive: true });
-  const pending = GOLDEN_IDS.map((id) => (EXPORT_IDS.includes(id) ? () => captureExport(id, outDir) : () => captureLighting(id, outDir)));
+  // The lighting goldens side by side, each in its own browser; then the export goldens, which
+  // cost the most, one after another so they don't starve each other of CPU.
+  const pending = LIGHTING_IDS.filter((id) => GOLDEN_IDS.includes(id)).map((id) => () => captureLighting(id, outDir));
   const captureNext = async () => {
     for (let capture = pending.shift(); capture; capture = pending.shift()) {
       await capture();
     }
   };
   await Promise.all(Array.from({ length: Math.min(CONCURRENCY, pending.length) }, captureNext));
+  for (const id of EXPORT_IDS) await captureExport(id, outDir);
 }

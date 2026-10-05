@@ -176,7 +176,7 @@ async function captureExport(id, outDir) {
     const file = sink.files.get(outputs[0]?.name);
     if (!file || sink.progress.at(-1)?.progress !== 1) throw new Error(`harness ${id}: the sink did not get the finished image`);
     writeFileSync(`${outDir}/${id}.png`, file.body);
-    console.log(`captured ${id} (${renderer.backend}, ${renderer.adapter.architecture})`);
+    console.log(`captured ${id} (${renderer.backend}, ${renderer.adapter?.architecture ?? "no WebGPU adapter"})`);
   } finally {
     await browser.close();
     await sink.close();

@@ -95,6 +95,30 @@ class RenderJobQuote(BaseModel):
     warnings: list[str]
 
 
+class RenderJobRefusal(BaseModel):
+    """Why a job or a request can't be made: the status creating it would answer, and its reason."""
+
+    status: int
+    detail: str
+
+
+class RenderJobBulkQuoteItem(BaseModel):
+    """One job of a bulk quote: what it would cost and make, or why it can't be made."""
+
+    quote: RenderJobQuote | None = None
+    refused: RenderJobRefusal | None = None
+
+
+class RenderJobBulkQuote(BaseModel):
+    """What a bulk request would cost and make, job by job, before anything is spent."""
+
+    credits: int  # the jobs that can be made, together
+    items: list[RenderJobBulkQuoteItem]  # in the request's order
+    # Why the plan refuses the request as a whole (Free has no bulk requests); its jobs are still priced.
+    refused: RenderJobRefusal | None
+    warnings: list[str]
+
+
 # ---------------------------------------------------------------------------
 # The worker protocol (docs/adr/0005-server-exports.md, "Endpoints for workers")
 # ---------------------------------------------------------------------------

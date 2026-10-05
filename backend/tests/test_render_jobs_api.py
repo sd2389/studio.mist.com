@@ -181,9 +181,10 @@ def test_creating_and_quoting_are_404_while_server_exports_is_off(client, db, ow
     created = client.post("/render-jobs", headers=headers, json=body)
     bulk = client.post("/render-jobs/bulk", headers=headers, json={"jobs": [body]})
     quote = client.post("/render-jobs/quote", headers=headers, json=body)
+    bulk_quote = client.post("/render-jobs/bulk/quote", headers=headers, json={"jobs": [body]})
     signed_out = client.post("/render-jobs", json=body)
 
-    assert [res.status_code for res in (created, bulk, quote, signed_out)] == [404, 404, 404, 404]
+    assert [res.status_code for res in (created, bulk, quote, bulk_quote, signed_out)] == [404] * 5
     assert len(_job_rows(db)) == 1
     # A job made before stays its owner's to read and cancel.
     assert client.get(f"/render-jobs/{job_id}", headers=headers).status_code == 200
@@ -418,6 +419,53 @@ def test_a_quote_says_when_the_balance_is_short_and_refuses_what_the_plan_does(c
 
     assert short.json()["warnings"] == ["This needs 2 render credits and 1 are left."]
     assert eight_k.status_code == 402
+
+
+def _bulk_quote(client, headers, scene, *jobs: dict):
+    bodies = [{"kind": "still", "scene_id": scene.id, "spec": FOUR_K, **job} for job in jobs]
+    return client.post("/render-jobs/bulk/quote", headers=headers, json={"jobs": bodies})
+
+
+def test_a_bulk_quote_prices_each_job_and_says_which_ones_are_refused(client, db, owner, scene):
+    user, headers = owner
+    angles = {"cameras": [{"angle": "front"}, {"angle": "top"}], "width": 2048, "height": 2048}
+
+    res = _bulk_quote(
+        client, headers, scene,
+        {},  # 2 credits
+        {"spec": EIGHT_K},  # above Free's cap
+        {"variant_id": "v-gone"},
+        {"kind": "angle_set", "spec": angles},  # 1 credit an image
+    )
+
+    assert res.status_code == 200
+    quote = res.json()
+    assert quote["credits"] == 4
+    assert [item["quote"] and item["quote"]["credits"] for item in quote["items"]] == [2, None, None, 2]
+    assert [item["refused"] and item["refused"]["status"] for item in quote["items"]] == [None, 402, 404, None]
+    assert quote["items"][1]["refused"]["detail"].startswith("Resolution limit exceeded for Free")
+    assert quote["items"][3]["quote"]["outputs"] == ["RING-1-front.png", "RING-1-top.png"]
+    # Free has no bulk requests at all; the studio shows the price with an upgrade prompt.
+    assert quote["refused"] == {
+        "status": 402, "detail": "Rendering several scenes or variants at once is part of Grow and Studio, not Free.",
+    }
+    assert (quote["warnings"], _job_rows(db), _balance(db, user)) == ([], [], 25)
+
+
+def test_a_bulk_quote_says_when_the_balance_is_short_for_the_total(client, db, grower, scene):
+    user, headers = grower
+    get_or_create_billing(db, user).render_credits_balance = 3
+    db.commit()
+
+    quote = _bulk_quote(client, headers, scene, {}, {}).json()
+
+    assert (quote["credits"], quote["refused"]) == (4, None)
+    assert quote["warnings"] == ["This needs 4 render credits and 3 are left."]
+    assert [item["quote"]["warnings"] for item in quote["items"]] == [[], []]
+
+
+def test_a_bulk_quote_takes_at_most_100_jobs(client, db, grower, scene):
+    assert _bulk_quote(client, grower[1], scene, *([{}] * 101)).status_code == 400
 
 
 # ---------------------------------------------------------------------------

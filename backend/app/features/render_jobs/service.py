@@ -1,4 +1,4 @@
-"""Render jobs for users: create, bulk create, quote, list, get, cancel and download.
+"""Render jobs for users: create, bulk create, list, get, cancel and download (quotes.py prices them).
 
 docs/adr/0005-server-exports.md. A job is validated, priced and its credits held before it
 queues. It copies its look and the owner's watermark when it is created, so a retry renders
@@ -40,13 +40,7 @@ from app.features.scene.look import saved_look, validate_look, variant_look
 from app.features.scene.service import require_owned_scene
 from app.models import Render, RenderJob, Scene
 from app.models.user import User
-from app.schemas.render_job import (
-    RenderJobBulkCreate,
-    RenderJobCreate,
-    RenderJobOut,
-    RenderJobOutput,
-    RenderJobQuote,
-)
+from app.schemas.render_job import RenderJobBulkCreate, RenderJobCreate, RenderJobOut, RenderJobOutput
 
 MAX_ATTEMPTS = 3
 STUDIO_PRIORITY = 100
@@ -205,17 +199,24 @@ def create_job(
     return job, created
 
 
+def check_bulk_size(count: int) -> None:
+    if count > MAX_BULK_RENDER_JOBS:
+        raise HTTPException(status_code=400, detail=f"jobs: at most {MAX_BULK_RENDER_JOBS} a request")
+
+
+def bulk_refusal(tier: PlanTier) -> str | None:
+    """Why the plan can't render several scenes or variants in one request; None when it can."""
+    if get_quotas(tier).batch_export:
+        return None
+    return f"Rendering several scenes or variants at once is part of Grow and Studio, not {PLAN_LABELS[tier]}."
+
+
 def plan_bulk(db: Session, user: User, bodies: list[RenderJobCreate]) -> list[PlannedJob]:
     """Several create requests at once (Grow and Studio), each validated and priced; 400 or 402
     naming the first one that can't be made."""
-    if len(bodies) > MAX_BULK_RENDER_JOBS:
-        raise HTTPException(status_code=400, detail=f"jobs: at most {MAX_BULK_RENDER_JOBS} a request")
-    tier = normalize_tier(get_or_create_billing(db, user).plan_tier)
-    if not get_quotas(tier).batch_export:
-        raise HTTPException(
-            status_code=402,
-            detail=f"Rendering several scenes or variants at once is part of Grow and Studio, not {PLAN_LABELS[tier]}.",
-        )
+    check_bulk_size(len(bodies))
+    if refusal := bulk_refusal(normalize_tier(get_or_create_billing(db, user).plan_tier)):
+        raise HTTPException(status_code=402, detail=refusal)
     planned: list[PlannedJob] = []
     for index, body in enumerate(bodies):
         try:
@@ -231,26 +232,6 @@ def create_jobs(
     """Queue jobs for several scenes or variants at once, all of them or none, and say whether
     they are new (see _queue_once for an Idempotency-Key)."""
     return _queue_once(db, user, lambda: plan_bulk(db, user, body.jobs), idempotency_key, body)
-
-
-def quote_job(db: Session, user: User, body: RenderJobCreate) -> RenderJobQuote:
-    """What a create request would cost and make; nothing is held or queued."""
-    planned = plan_job(db, user, body)
-    billing = get_or_create_billing(db, user)
-    warnings = list(planned.warnings)
-    if billing.render_credits_balance < planned.credits:
-        warnings.append(
-            f"This needs {planned.credits} render credits and {billing.render_credits_balance} are left."
-        )
-    return RenderJobQuote(
-        credits=planned.credits,
-        width=planned.spec["width"],
-        height=planned.spec["height"],
-        frames=planned.spec["frames"],
-        outputs=planned.spec["output_names"],
-        watermark=get_quotas(normalize_tier(billing.plan_tier)).watermark_exports,
-        warnings=warnings,
-    )
 
 
 def get_job_for_user(db: Session, user: User, job_id: int) -> RenderJob:

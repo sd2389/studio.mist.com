@@ -12,12 +12,14 @@ from app.core.rate_limit import rate_limit_dependency
 from app.database import get_db
 from app.features.render_jobs import outputs as render_job_outputs
 from app.features.render_jobs import payload as render_job_payload
+from app.features.render_jobs import quotes as render_job_quotes
 from app.features.render_jobs import service as render_job_service
 from app.features.render_jobs import worker as render_job_worker
 from app.models.user import User
 from app.schemas.render_job import (
     RenderJobBulkCreate,
     RenderJobBulkOut,
+    RenderJobBulkQuote,
     RenderJobClaim,
     RenderJobClaimRequest,
     RenderJobCompleteRequest,
@@ -119,7 +121,17 @@ def quote_render_job(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> RenderJobQuote:
-    return render_job_service.quote_job(db, user, body)
+    return render_job_quotes.quote_job(db, user, body)
+
+
+@router.post("/bulk/quote", response_model=RenderJobBulkQuote, dependencies=_server_exports)
+def quote_render_jobs(
+    body: RenderJobBulkCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> RenderJobBulkQuote:
+    """Each job's price, or why it can't be made, and the total; nothing is held or queued."""
+    return render_job_quotes.quote_jobs(db, user, body.jobs)
 
 
 @router.get("", response_model=RenderJobPage)

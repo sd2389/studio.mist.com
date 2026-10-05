@@ -5,6 +5,8 @@ export type SinkClient = {
   fetchModel(): Promise<Blob>;
   /** Hands over one encoded file. Resolves once the worker has it, so the next one waits (backpressure). */
   postFile(name: string, file: Blob): Promise<void>;
+  /** Hands over frame `index` of a video as raw RGBA, frames in order from 0. Resolves once the worker has it. */
+  postFrame(index: number, pixels: Uint8ClampedArray<ArrayBuffer>): Promise<void>;
   postProgress(progress: number, stage: RenderStage): Promise<void>;
 };
 
@@ -12,7 +14,8 @@ type SinkRequest = { method?: "GET" | "POST"; body?: BodyInit; headers?: Record<
 
 /**
  * The page's side of the worker's loopback sink (ADR 0005): `GET /inputs/model.glb`,
- * `POST /files/<name>` and `POST /progress`, each with the job's sink token in a header.
+ * `POST /files/<name>`, `POST /frames/<n>` and `POST /progress`, each with the job's sink token
+ * in a header.
  */
 export function createSinkClient({ url, token }: SinkAddress): SinkClient {
   const base = url.replace(/\/+$/, "");
@@ -32,6 +35,13 @@ export function createSinkClient({ url, token }: SinkAddress): SinkClient {
         method: "POST",
         body: file,
         headers: { "Content-Type": file.type || "application/octet-stream" },
+      });
+    },
+    async postFrame(index, pixels) {
+      await send(`/frames/${index}`, {
+        method: "POST",
+        body: pixels,
+        headers: { "Content-Type": "application/octet-stream" },
       });
     },
     async postProgress(progress, stage) {

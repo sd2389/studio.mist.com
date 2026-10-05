@@ -24,13 +24,19 @@ function hasToken(request, token) {
 /**
  * The loopback server the harness's export mode writes to, as the render worker runs one per job
  * (ADR 0005): `GET /inputs/model.glb` serves the job's model, `POST /files/<name>` takes an
- * encoded file and `POST /progress` takes `{progress, stage}`. Every request needs the job's
- * token, and only the harness origin may call it. A response goes back once its body is in,
- * which is what makes the page wait before the next file. Here the files stay in memory.
+ * encoded file, `POST /frames/<n>` takes frame n of a video as raw RGBA (`frameSize` pixels;
+ * frames in order from 0, so anything else is 409) and `POST /progress` takes
+ * `{progress, stage}`. Every request needs the job's token, and only the harness origin may call
+ * it. A response goes back once its body is in, which is what makes the page wait before the next
+ * file or frame. Here the files and frames stay in memory; the worker writes files to the job's
+ * folder and pipes frames into ffmpeg.
+ *
+ * @param {{ model: Buffer, origin: string, frameSize?: { width: number, height: number } | null }} options
  */
-export async function startSink({ model, origin }) {
+export async function startSink({ model, origin, frameSize = null }) {
   const token = randomBytes(24).toString("hex");
   const files = new Map();
+  const frames = [];
   const progress = [];
 
   const handle = async (request, response) => {
@@ -64,6 +70,20 @@ export async function startSink({ model, origin }) {
       response.writeHead(204).end();
       return;
     }
+    if (request.method === "POST" && pathname.startsWith("/frames/")) {
+      if (pathname !== `/frames/${frames.length}`) {
+        response.writeHead(409).end();
+        return;
+      }
+      const body = await readBody(request);
+      if (frameSize && body.length !== frameSize.width * frameSize.height * 4) {
+        response.writeHead(400).end();
+        return;
+      }
+      frames.push(body);
+      response.writeHead(204).end();
+      return;
+    }
     if (request.method === "POST" && pathname === "/progress") {
       progress.push(JSON.parse((await readBody(request)).toString("utf8")));
       response.writeHead(204).end();
@@ -84,6 +104,8 @@ export async function startSink({ model, origin }) {
     token,
     /** Name → `{ contentType, body }` for every file the page posted. */
     files,
+    /** Every frame the page posted, raw RGBA, in order. */
+    frames,
     /** Every `{progress, stage}` the page posted, in order. */
     progress,
     close: () => new Promise((resolve) => server.close(resolve)),

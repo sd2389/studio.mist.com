@@ -16,6 +16,9 @@ describe("CI change detection", () => {
     expect(rendered.has("src/app/render-harness/page.worker.tsx")).toBe(true);
     expect(rendered.has("src/features/render/harness/render-images.ts")).toBe(true);
     expect(rendered.has("src/features/render/harness/cameras.ts")).toBe(true);
+    expect(rendered.has("src/features/render/harness/render-frames.ts")).toBe(true);
+    // The studio's own video camera paths, which server videos move on.
+    expect(rendered.has("src/lib/video-camera-path.ts")).toBe(true);
   });
 
   it.each([

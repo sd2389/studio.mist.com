@@ -3,10 +3,18 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { applySavedLook, resolveModelConfig, useFixedClockWarmup, useLookStage, ViewerStage } from "@/features/viewer";
 import { getHiresRefs } from "@/stores/hires-export-store";
-import { readHarnessJob, type HarnessJob, type HarnessResult } from "./job-payload";
+import {
+  jobImageSize,
+  readHarnessJob,
+  type HarnessJob,
+  type HarnessResult,
+  type RenderedFile,
+  type RenderJobPayload,
+} from "./job-payload";
+import { renderSpinFiles, renderTurntableFrames } from "./render-frames";
 import { renderJobImages } from "./render-images";
 import { describeRenderer } from "./renderer-info";
-import { createSinkClient } from "./sink-client";
+import { createSinkClient, type SinkClient } from "./sink-client";
 
 /** Frames drawn on the fixed clock before a job renders (frame N at N/60 s). */
 const EXPORT_WARMUP_FRAMES = 60;
@@ -17,16 +25,26 @@ function reportFailure(error: unknown) {
   window.__HARNESS_STATE__ = `error:${error instanceof Error ? error.message : String(error)}`;
 }
 
-function previewSize(width: number, height: number) {
+function previewSize({ width, height }: { width: number; height: number }) {
   const scale = PREVIEW_EDGE / Math.max(width, height);
   return { width: Math.round(width * scale), height: Math.round(height * scale) };
 }
 
-/** Renders the job's images, hands them to the sink, then reports what drew them. */
+/** The job's files: the images of a still, an angle set or a spin. A turntable's frames go raw. */
+async function renderOutputs(payload: RenderJobPayload, sink: SinkClient): Promise<RenderedFile[]> {
+  if (payload.kind === "turntable") {
+    await renderTurntableFrames(payload, sink);
+    return [];
+  }
+  if (payload.kind === "spin") return renderSpinFiles(payload, sink);
+  return renderJobImages(payload, sink);
+}
+
+/** Renders the job's images or frames, hands them to the sink, then reports what drew them. */
 async function renderJob(job: HarnessJob): Promise<void> {
   const sink = createSinkClient(job.sink);
   await sink.postProgress(0, "rendering");
-  const outputs = await renderJobImages(job.payload, sink);
+  const outputs = await renderOutputs(job.payload, sink);
   const refs = getHiresRefs();
   if (!refs) throw new Error("The scene has gone.");
   const result: HarnessResult = { renderer: await describeRenderer(refs.gl), outputs };
@@ -36,7 +54,7 @@ async function renderJob(job: HarnessJob): Promise<void> {
 
 /** The job's look on the studio's stage, warmed up on the fixed clock, then rendered once. */
 function ExportStage({ job, modelUrl }: { job: HarnessJob; modelUrl: string }) {
-  const { look, look_items: lookItems, spec } = job.payload;
+  const { look, look_items: lookItems } = job.payload;
   const modelConfig = useMemo(() => resolveModelConfig(look), [look]);
   const stage = useLookStage({ modelUrl, modelConfig, catalogs: null, lookItems });
   const render = useCallback(() => {
@@ -46,7 +64,7 @@ function ExportStage({ job, modelUrl }: { job: HarnessJob; modelUrl: string }) {
 
   // Laid out as the embed lays out its stage, so the CSS backdrop is read as the studio reads it.
   return (
-    <div className="studio-stage flex flex-col" style={previewSize(spec.width, spec.height)} data-harness-canvas>
+    <div className="studio-stage flex flex-col" style={previewSize(jobImageSize(job.payload))} data-harness-canvas>
       <ViewerStage {...stage} autoRotate={false} frameloop="never" />
     </div>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, Loader2, X } from "lucide-react";
+import { Download, Loader2, RotateCcw, X } from "lucide-react";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -17,11 +17,14 @@ import {
   jobTitle,
 } from "../lib/render-job-labels";
 import { isJobFinished } from "../lib/render-job-polling";
+import { jobRetryRequest } from "../lib/render-job-requests";
 import {
   cancelRenderJob,
+  createRenderJob,
   outputDownloadUrl,
   type RenderJob,
   type RenderJobOutput,
+  type RenderJobRequest,
   type RenderJobStatus,
 } from "../lib/render-jobs-api";
 import { useRenderJob } from "./useRenderJob";
@@ -51,11 +54,15 @@ type ExportJobsPanelProps = {
 /**
  * Server exports, newest first: each with its status, progress, credits and a download for
  * every file it made. Jobs still waiting or rendering keep themselves up to date and can be
- * canceled; a canceled job's credits come back.
+ * canceled; a canceled job's credits come back. A failed job can be asked for again, and the
+ * new job is listed first.
  */
 export function ExportJobsPanel({ sceneId, className }: ExportJobsPanelProps) {
   const [status, setStatus] = useState<StatusFilter>("all");
+  const [retried, setRetried] = useState<RenderJob[]>([]);
   const list = useRenderJobList({ scene_id: sceneId, status: status === "all" ? undefined : status });
+  const retriedIds = new Set(retried.map((job) => job.id));
+  const jobs = [...retried, ...list.jobs.filter((job) => !retriedIds.has(job.id))];
   const emptyNote =
     status === "all"
       ? "No exports yet. Stills and videos you render show up here, ready to download."
@@ -76,10 +83,10 @@ export function ExportJobsPanel({ sceneId, className }: ExportJobsPanelProps) {
         </p>
       ) : null}
 
-      {list.jobs.length > 0 ? (
+      {jobs.length > 0 ? (
         <ul className="space-y-2">
-          {list.jobs.map((job) => (
-            <ExportJobRow key={job.id} initial={job} />
+          {jobs.map((job) => (
+            <ExportJobRow key={job.id} initial={job} onRetried={(next) => setRetried((shown) => [next, ...shown])} />
           ))}
         </ul>
       ) : list.loading ? (
@@ -100,25 +107,45 @@ export function ExportJobsPanel({ sceneId, className }: ExportJobsPanelProps) {
   );
 }
 
+type ExportJobRowProps = {
+  initial: RenderJob;
+  /** The job a failed one's Retry made. */
+  onRetried: (job: RenderJob) => void;
+};
+
 /** One job, polled while it waits or renders. */
-function ExportJobRow({ initial }: { initial: RenderJob }) {
+function ExportJobRow({ initial, onRetried }: ExportJobRowProps) {
   const { job, error, setJob } = useRenderJob(initial);
-  const [canceling, setCanceling] = useState(false);
-  const [cancelError, setCancelError] = useState<string | null>(null);
+  const [pending, setPending] = useState<"cancel" | "retry" | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const cancelable = !isJobFinished(job) && !job.cancel_requested_at;
-  const rowError = cancelError ?? error;
+  const retryRequest = job.status === "failed" ? jobRetryRequest(job) : null;
+  const rowError = actionError ?? error;
   const title = jobTitle(job);
   const meta = [jobCreditsLabel(job), jobAge(job)].filter(Boolean).join(" · ");
 
   async function cancel() {
-    setCanceling(true);
-    setCancelError(null);
+    setPending("cancel");
+    setActionError(null);
     try {
       setJob(await cancelRenderJob(job.id));
     } catch (cancelFailure) {
-      setCancelError(cancelFailure instanceof Error ? cancelFailure.message : "The export couldn't be canceled");
+      setActionError(cancelFailure instanceof Error ? cancelFailure.message : "The export couldn't be canceled");
     } finally {
-      setCanceling(false);
+      setPending(null);
+    }
+  }
+
+  /** The same job again, with a fresh Idempotency-Key: a new job, with its own credits. */
+  async function retry(request: RenderJobRequest) {
+    setPending("retry");
+    setActionError(null);
+    try {
+      onRetried(await createRenderJob(request));
+    } catch (retryFailure) {
+      setActionError(retryFailure instanceof Error ? retryFailure.message : "The export couldn't be started again");
+    } finally {
+      setPending(null);
     }
   }
 
@@ -151,9 +178,15 @@ function ExportJobRow({ initial }: { initial: RenderJob }) {
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {job.status === "completed" ? <JobDownloads job={job} /> : null}
         {cancelable ? (
-          <Button variant="outline" size="sm" onClick={() => void cancel()} disabled={canceling}>
+          <Button variant="outline" size="sm" onClick={() => void cancel()} disabled={pending !== null}>
             <X aria-hidden />
-            {canceling ? "Canceling…" : "Cancel"}
+            {pending === "cancel" ? "Canceling…" : "Cancel"}
+          </Button>
+        ) : null}
+        {retryRequest ? (
+          <Button variant="outline" size="sm" onClick={() => void retry(retryRequest)} disabled={pending !== null}>
+            <RotateCcw aria-hidden />
+            {pending === "retry" ? "Retrying…" : "Retry"}
           </Button>
         ) : null}
         {meta ? <span className="ml-auto text-[10.5px] text-muted-foreground">{meta}</span> : null}

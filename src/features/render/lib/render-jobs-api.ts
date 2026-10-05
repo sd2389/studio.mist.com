@@ -31,13 +31,22 @@ export type StillJobSpec = ImageJobSpec & { camera: RenderJobCamera };
 /** One look from 1 to 12 cameras. */
 export type AngleSetJobSpec = ImageJobSpec & { cameras: RenderJobCamera[] };
 
+/**
+ * The look a job keeps: the snapshot it was sent, validated, with a background image kept as
+ * `{ type: "image", asset_id }` rather than an address.
+ */
+export type RenderJobLook = Record<string, unknown>;
+
 /** A create body (`RenderJobCreate`), for the kinds the API renders so far. */
 export type RenderJobRequest = {
   scene_id: number;
   /** A saved variant's look, when `look` is left out. */
   variant_id?: string | null;
-  /** The studio's current look (`lookSnapshot`); without it, the variant's or the scene's saved look. */
-  look?: LookSnapshot | null;
+  /**
+   * The studio's current look (`lookSnapshot`), or the look a job kept when it is asked for
+   * again; without it, the variant's or the scene's saved look.
+   */
+  look?: LookSnapshot | RenderJobLook | null;
   /** The outputs' file stem; the scene's SKU or name without it. */
   name?: string | null;
 } & ({ kind: "still"; spec: StillJobSpec } | { kind: "angle_set"; spec: AngleSetJobSpec });
@@ -71,6 +80,10 @@ export type RenderJob = {
    * one `_campaign-pack.zip`.
    */
   spec: Record<string, unknown>;
+  /** What else its request named, so the same job can be asked for again (null on older jobs). */
+  look: RenderJobLook | null;
+  variant_id: string | null;
+  name: string | null;
   watermark: boolean;
   /** Held while it renders, charged when it completes, refunded when it fails or is canceled. */
   credits: number;

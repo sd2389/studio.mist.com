@@ -151,14 +151,14 @@ export function createApiClient({ baseUrl, workerToken, fetch = globalThis.fetch
       const tokenFor = (url) => (isApi(url) ? { "X-Job-Token": token } : {});
 
       /** GETs a URL the payload named: a signed one as it is, an API route with the job's token. */
-      async function fetchInput(target, { maxBytes, signal }) {
+      async function fetchInput(target, signal) {
         const url = resolve(target);
         const response = await send(url, { headers: tokenFor(url) }, { timeoutMs: TRANSFER_TIMEOUT_MS, signal });
         if (isApi(url) && [401, 409].includes(response.status)) {
           throw new JobLostError(`GET ${url.pathname}: ${response.status} ${await detailOf(response)}`, response.status);
         }
         if (!response.ok) throw new ApiError(`GET ${isApi(url) ? url.pathname : url.host}: ${response.status}`, response.status);
-        return { response, label: isApi(url) ? url.pathname : url.host, maxBytes };
+        return { response, label: isApi(url) ? url.pathname : url.host };
       }
 
       return {
@@ -171,7 +171,7 @@ export function createApiClient({ baseUrl, workerToken, fetch = globalThis.fetch
 
         /** Downloads the model, `{url}` signed or `{path}` an API route, to `dest`; the bytes it took. */
         async download(source, dest, { maxBytes = MAX_MODEL_BYTES, signal } = {}) {
-          const { response, label } = await fetchInput(source.url ?? source.path, { maxBytes, signal });
+          const { response, label } = await fetchInput(source.url ?? source.path, signal);
           const meter = byteMeter(maxBytes, label);
           try {
             await pipeline(Readable.fromWeb(response.body), meter, createWriteStream(dest));
@@ -184,9 +184,14 @@ export function createApiClient({ baseUrl, workerToken, fetch = globalThis.fetch
 
         /** An input the page asked for (the look's background image), as bytes, for `route.fulfill`. */
         async read(target, { maxBytes = MAX_INPUT_BYTES, signal } = {}) {
-          const { response } = await fetchInput(target, { maxBytes, signal });
+          const { response, label } = await fetchInput(target, signal);
+          const tooBig = () => new ApiError(`${label} is larger than ${maxBytes} bytes`);
+          if (Number(response.headers.get("content-length")) > maxBytes) {
+            await response.body?.cancel();
+            throw tooBig();
+          }
           const body = Buffer.from(await response.arrayBuffer());
-          if (body.length > maxBytes) throw new ApiError(`input is larger than ${maxBytes} bytes`);
+          if (body.length > maxBytes) throw tooBig();
           return { body, contentType: response.headers.get("content-type") ?? "application/octet-stream" };
         },
 

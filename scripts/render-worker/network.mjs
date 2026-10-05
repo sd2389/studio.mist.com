@@ -128,7 +128,7 @@ export async function guardContext(context, { policy, assets, readInput = null, 
     }
   };
 
-  await context.route("**/*", async (route) => {
+  const handle = async (route) => {
     const request = route.request();
     const url = request.url();
     const where = routeFor(url, request.method(), policy);
@@ -139,7 +139,13 @@ export async function guardContext(context, { policy, assets, readInput = null, 
     blocked.push(`${request.method()} ${withoutQuery(url)}`);
     log(`blocked ${request.method()} ${withoutQuery(url)}`);
     return route.abort("blockedbyclient");
-  });
+  };
+  await context.route("**/*", (route) =>
+    handle(route).catch((error) => {
+      // A request still in flight when its job's context closes has nowhere to go.
+      if (!/has been closed|already handled/i.test(error.message)) log(`route ${withoutQuery(route.request().url())}: ${error.message}`);
+    }),
+  );
   // A production page opens none; a dev server's hot reload talks to the harness origin.
   await context.routeWebSocket(
     () => true,

@@ -4,7 +4,7 @@ import { rename, rm, stat } from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
 import { once } from "node:events";
-import { finished } from "node:stream/promises";
+import { finished, pipeline } from "node:stream/promises";
 
 /** The header the page sends the token in (`SINK_TOKEN_HEADER`, src/features/render/harness/job-payload.ts). */
 export const SINK_TOKEN_HEADER = "x-sink-token";
@@ -103,7 +103,7 @@ async function serveModel(model, response) {
   }
   const { size } = await stat(model);
   response.writeHead(200, { "Content-Type": "model/gltf-binary", "Content-Length": size });
-  createReadStream(model).pipe(response);
+  await pipeline(createReadStream(model), response);
 }
 
 /**

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import http from "node:http";
 import os from "node:os";
@@ -85,12 +85,20 @@ describe("the sink's token", () => {
 });
 
 describe("the sink's files", () => {
-  it("serves the job's model", async () => {
+  it("serves the job's model, from its bytes or from the file the worker downloaded", async () => {
     await open();
     const response = await send("/inputs/model.glb", { method: "GET" });
     expect(response.status).toBe(200);
     expect(response.headers["content-type"]).toBe("model/gltf-binary");
     expect(response.body).toEqual(MODEL);
+
+    await sink.close();
+    const modelPath = path.join(dir, "model.glb");
+    writeFileSync(modelPath, MODEL);
+    await open({ model: modelPath });
+    const fromDisk = await send("/inputs/model.glb", { method: "GET" });
+    expect(fromDisk.headers["content-length"]).toBe(String(MODEL.length));
+    expect(fromDisk.body).toEqual(MODEL);
   });
 
   it("stores each of the job's files once, in the order the page posts them", async () => {

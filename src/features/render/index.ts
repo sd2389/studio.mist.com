@@ -22,3 +22,20 @@ export { loadExportPlan, type ExportPlan } from "./lib/export-plan";
 export { useExportPlan } from "./ui/useExportPlan";
 export { useCaptureRun } from "./ui/useCaptureRun";
 export { ExportPlanNote } from "./ui/ExportPlanNote";
+/** Server exports (ADR 0005): jobs, their polling, prices and the Exports panel. */
+export {
+  cancelRenderJob,
+  createRenderJob,
+  createRenderJobs,
+  getRenderJob,
+  listRenderJobs,
+  outputDownloadUrl,
+  quoteRenderJob,
+  type RenderJob,
+  type RenderJobCamera,
+  type RenderJobFilter,
+  type RenderJobOutput,
+  type RenderJobQuote,
+  type RenderJobRequest,
+  type RenderJobStatus,
+} from "./lib/render-jobs-api";

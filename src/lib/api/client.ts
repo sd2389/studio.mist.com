@@ -1,3 +1,5 @@
+import { AuthRequestError } from "@/lib/auth/is-auth-required-error";
+
 function getApiBase(): string {
   const url = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || "";
   return url.replace(/\/$/, "");
@@ -11,6 +13,7 @@ function resolveUrl(path: string): string {
   return base ? `${base}${normalized}` : normalized;
 }
 
+/** Fails with the answer's `detail` or `error` and its HTTP status (`AuthRequestError`). */
 async function request<T>(path: string, init: RequestInit): Promise<T> {
   const res = await fetch(resolveUrl(path), {
     ...init,
@@ -29,18 +32,19 @@ async function request<T>(path: string, init: RequestInit): Promise<T> {
       (data as { detail?: string; error?: string })?.error ??
       res.statusText ??
       "Request failed";
-    throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+    throw new AuthRequestError(typeof detail === "string" ? detail : JSON.stringify(detail), res.status);
   }
 
   return data as T;
 }
 
-export function apiGet<T>(path: string): Promise<T> {
-  return request<T>(path, { method: "GET" });
+/** `init` adds headers or an abort signal. */
+export function apiGet<T>(path: string, init: RequestInit = {}): Promise<T> {
+  return request<T>(path, { ...init, method: "GET" });
 }
 
-export function apiPost<T>(path: string, body: unknown): Promise<T> {
-  return request<T>(path, { method: "POST", body: JSON.stringify(body) });
+export function apiPost<T>(path: string, body: unknown, init: RequestInit = {}): Promise<T> {
+  return request<T>(path, { ...init, method: "POST", body: JSON.stringify(body) });
 }
 
 export function apiPatch<T>(path: string, body: unknown): Promise<T> {

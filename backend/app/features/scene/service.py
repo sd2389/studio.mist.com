@@ -16,7 +16,7 @@ from app.core.public_urls import (
 from app.features.billing.quota_service import assert_variant_limit
 from app.features.publish import service as publish_service
 from app.features.scene.deletion import delete_scene
-from app.features.scene.look import scene_look
+from app.features.scene.look import saved_look, scene_look
 from app.features.scene.skus import assert_sku_available, commit_new_sku
 from app.models import Render, Scene
 from app.schemas.scene import (
@@ -245,12 +245,17 @@ def list_scenes(db: Session, user_id: int, query: SceneListQuery) -> SceneListPa
     )
 
 
-def load_scene_detail(db: Session, scene: Scene) -> SceneDetail:
-    """The scene with its renders, newest first, and everything its saved look draws from."""
-    renders = db.execute(
-        select(Render).where(Render.scene_id == scene.id).order_by(Render.created_at.desc())
-    ).scalars().all()
-    return to_detail(scene, renders, scene_look(db, scene))
+def load_scene_detail(db: Session, scene: Scene, *, with_renders: bool = True) -> SceneDetail:
+    """The scene with everything its saved look draws from, and its renders, newest first.
+
+    Public reads leave the renders out: they include export outputs, which are the owner's.
+    """
+    renders = []
+    if with_renders:
+        renders = db.execute(
+            select(Render).where(Render.scene_id == scene.id).order_by(Render.created_at.desc())
+        ).scalars().all()
+    return to_detail(scene, renders, scene_look(db, saved_look(scene), scene.user_id))
 
 
 def scene_detail(db: Session, scene_id: int, user_id: int) -> SceneDetail:
@@ -261,7 +266,7 @@ def scene_detail_for_model(db: Session, viewer_id: str) -> SceneDetail:
     scene = first_scene_for_model(db, normalized_model_key(viewer_id))
     if scene is None:
         raise HTTPException(status_code=404, detail="Scene not found")
-    return load_scene_detail(db, scene)
+    return load_scene_detail(db, scene, with_renders=False)
 
 
 def scene_detail_for_sku(db: Session, sku: str) -> SceneDetail:
@@ -271,7 +276,7 @@ def scene_detail_for_sku(db: Session, sku: str) -> SceneDetail:
     scene = first_scene_for_sku(db, trimmed)
     if scene is None:
         raise HTTPException(status_code=404, detail="Scene not found")
-    return load_scene_detail(db, scene)
+    return load_scene_detail(db, scene, with_renders=False)
 
 
 def patch_scene_by_id(db: Session, scene_id: int, user_id: int, body: ScenePatch) -> SceneListItem:

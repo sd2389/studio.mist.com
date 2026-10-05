@@ -3,7 +3,7 @@
 from collections.abc import Collection
 from typing import Any, TypeVar
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.user_library import UserAsset, UserMaterial
@@ -108,6 +108,19 @@ def get_asset(db: Session, user_id: int, asset_id: int) -> UserAsset | None:
             UserAsset.user_id == user_id,
         )
     ).scalar_one_or_none()
+
+
+def asset_at_key(db: Session, user_id: int, asset_type: str, key: str) -> UserAsset | None:
+    """The user's asset of `asset_type` stored, or previewed, at `key`."""
+    return db.execute(
+        select(UserAsset)
+        .where(
+            UserAsset.user_id == user_id,
+            UserAsset.asset_type == asset_type,
+            or_(UserAsset.preview_key == key, UserAsset.storage_key == key),
+        )
+        .order_by(UserAsset.id)
+    ).scalars().first()
 
 
 def unique_material_slug(db: Session, user_id: int, base: str) -> str:

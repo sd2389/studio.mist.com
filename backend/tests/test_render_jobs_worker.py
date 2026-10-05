@@ -10,9 +10,11 @@ Tests cover:
 - GET /render-jobs/{id}/payload: 401 wrong token; model_url http passthrough;
   model_url presign path.
 - POST /render-jobs/{id}/complete: 401 wrong token; bytes stored; result_key set;
-  balance decremented exactly 1; idempotent (second call 409, no double charge).
-- POST /render-jobs/{id}/fail: requeue (attempts 1→queued, error recorded);
-  terminal (attempts >=3 → failed); balance unchanged in both.
+  the held credits charged, the balance unmoved; idempotent (second call 409).
+- POST /render-jobs/{id}/fail: requeue (attempts 1→queued, error recorded, still
+  held); terminal (attempts >=3 → failed, refunded); a job its owner asked to
+  cancel ends canceled, refunded.
+- Only stills are claimed: this protocol renders one PNG.
 """
 
 from __future__ import annotations
@@ -114,6 +116,26 @@ def _make_job(db: Session, user_id: int, model_ref: str = "models/test-ring.glb"
     return job
 
 
+def _hold(db: Session, job, credits: int = 2):
+    """Hold the job's credits, as creating it through the API does."""
+    from app.features.billing.quota_service import hold_render_credits
+
+    job.billing_period_start = hold_render_credits(db, job.user_id, credits)
+    job.credits = credits
+    job.credit_state = "held"
+    db.commit()
+    db.refresh(job)
+    return job
+
+
+def _render_balance(db: Session, user) -> int:
+    from app.features.billing.quota_service import get_or_create_billing
+
+    billing = get_or_create_billing(db, user)
+    db.refresh(billing)
+    return billing.render_credits_balance
+
+
 @pytest.fixture()
 def user(db):
     return _make_user(db)
@@ -134,7 +156,7 @@ class TestWorkerAuthDependency:
 
     def test_503_when_setting_unset(self, monkeypatch):
         """503 when RENDER_WORKER_TOKEN is not configured."""
-        from app.features.render_jobs import service as svc
+        from app.features.render_jobs import worker as svc
 
         with monkeypatch.context() as m:
             import app.config as cfg
@@ -152,7 +174,7 @@ class TestWorkerAuthDependency:
 
     def test_401_when_token_missing(self, monkeypatch):
         """401 when X-Worker-Token header is absent (None)."""
-        from app.features.render_jobs import service as svc
+        from app.features.render_jobs import worker as svc
 
         fake_settings = MagicMock()
         fake_settings.render_worker_token = "secret-abc"
@@ -166,7 +188,7 @@ class TestWorkerAuthDependency:
 
     def test_401_when_token_wrong(self, monkeypatch):
         """401 when X-Worker-Token does not match settings."""
-        from app.features.render_jobs import service as svc
+        from app.features.render_jobs import worker as svc
 
         fake_settings = MagicMock()
         fake_settings.render_worker_token = "secret-abc"
@@ -180,7 +202,7 @@ class TestWorkerAuthDependency:
 
     def test_passes_when_token_correct(self):
         """No exception when token matches setting."""
-        from app.features.render_jobs import service as svc
+        from app.features.render_jobs import worker as svc
 
         fake_settings = MagicMock()
         fake_settings.render_worker_token = "secret-abc"
@@ -202,7 +224,7 @@ class TestClaimJob:
 
     def test_claim_sets_running_and_increments_attempts(self, db, user):
         """Claiming oldest queued job sets status=running, attempts=1."""
-        from app.features.render_jobs.service import claim_job
+        from app.features.render_jobs.worker import claim_job
 
         job = _make_job(db, user.id)
         result = claim_job(db)
@@ -214,7 +236,7 @@ class TestClaimJob:
 
     def test_claim_returns_oldest_first(self, db, user):
         """When multiple queued jobs exist, claim returns the oldest (by created_at)."""
-        from app.features.render_jobs.service import claim_job
+        from app.features.render_jobs.worker import claim_job
 
         # Create two jobs; first one should be claimed first
         job_first = _make_job(db, user.id, model_ref="models/ring-first.glb")
@@ -227,14 +249,26 @@ class TestClaimJob:
 
     def test_claim_returns_none_on_empty_queue(self, db, user):
         """When queue is empty, claim_job returns None (→ 204 in router)."""
-        from app.features.render_jobs.service import claim_job
+        from app.features.render_jobs.worker import claim_job
 
         result = claim_job(db)
         assert result is None
 
+    def test_claim_takes_only_stills(self, db, user):
+        """This protocol renders one PNG, so an angle set waits for the worker that can draw it."""
+        from app.features.render_jobs.worker import claim_job
+
+        angle_set = _make_job(db, user.id)
+        angle_set.kind = "angle_set"
+        db.commit()
+
+        assert claim_job(db) is None
+        db.refresh(angle_set)
+        assert angle_set.status == "queued"
+
     def test_two_sequential_claims_drain_single_job(self, db, user):
         """Second sequential claim when queue is empty returns None."""
-        from app.features.render_jobs.service import claim_job
+        from app.features.render_jobs.worker import claim_job
 
         _make_job(db, user.id)
 
@@ -262,7 +296,7 @@ class TestClaimLease:
 
     def test_claim_leases_the_job_for_the_configured_time(self, db, user):
         """lease_expires_at is claim time + RENDER_JOB_LEASE_SECONDS."""
-        from app.features.render_jobs.service import claim_job
+        from app.features.render_jobs.worker import claim_job
 
         _make_job(db, user.id)
         before = datetime.utcnow()
@@ -273,7 +307,7 @@ class TestClaimLease:
 
     def test_claim_issues_a_new_token(self, db, user):
         """The token a job was created with stops working once it is claimed."""
-        from app.features.render_jobs.service import claim_job
+        from app.features.render_jobs.worker import claim_job
 
         job = _make_job(db, user.id)
         created_token = job.worker_token
@@ -284,7 +318,7 @@ class TestClaimLease:
 
     def test_running_job_with_live_lease_is_not_claimed(self, db, user):
         """A job whose worker still holds the lease stays with that worker."""
-        from app.features.render_jobs.service import claim_job
+        from app.features.render_jobs.worker import claim_job
 
         _make_job(db, user.id)
         claim_job(db)
@@ -293,7 +327,7 @@ class TestClaimLease:
 
     def test_lapsed_lease_is_claimed_again_as_a_failed_attempt(self, db, user):
         """The abandoned attempt counts; the job runs again with a new token and lease."""
-        from app.features.render_jobs.service import LEASE_EXPIRED_ERROR, claim_job
+        from app.features.render_jobs.worker import LEASE_EXPIRED_ERROR, claim_job
 
         _make_job(db, user.id)
         first = claim_job(db)
@@ -311,7 +345,7 @@ class TestClaimLease:
 
     def test_lapsed_leases_keep_the_three_attempt_limit(self, db, user):
         """A job whose worker keeps vanishing is claimed 3 times, then fails for good."""
-        from app.features.render_jobs.service import LEASE_EXPIRED_ERROR, claim_job
+        from app.features.render_jobs.worker import LEASE_EXPIRED_ERROR, claim_job
 
         job = _make_job(db, user.id)
         for attempt in (1, 2, 3):
@@ -326,9 +360,39 @@ class TestClaimLease:
         assert job.attempts == 3
         assert job.error == LEASE_EXPIRED_ERROR
 
+    def test_a_job_failed_by_its_last_lapsed_lease_is_refunded(self, db, user):
+        from app.features.render_jobs.worker import claim_job
+
+        job = _hold(db, _make_job(db, user.id), credits=2)
+        before = _render_balance(db, user)
+        for _ in range(3):
+            _expire_lease(db, claim_job(db))
+
+        assert claim_job(db) is None
+        db.refresh(job)
+        assert (job.status, job.credit_state) == ("failed", "refunded")
+        assert job.finished_at is not None
+        assert _render_balance(db, user) == before + 2
+
+    def test_a_lapsed_lease_after_a_cancel_request_ends_canceled_and_refunded(self, db, user):
+        """The owner asked to stop it, so the attempt that vanished isn't retried."""
+        from app.features.render_jobs.worker import claim_job
+
+        job = _hold(db, _make_job(db, user.id), credits=1)
+        before = _render_balance(db, user)
+        claimed = claim_job(db)
+        claimed.cancel_requested_at = datetime.utcnow()
+        db.commit()
+        _expire_lease(db, claimed)
+
+        assert claim_job(db) is None
+        db.refresh(job)
+        assert (job.status, job.credit_state) == ("canceled", "refunded")
+        assert _render_balance(db, user) == before + 1
+
     def test_exhausted_job_does_not_block_the_queue(self, db, user):
         """Failing an exhausted job and claiming the next one happen in the same claim."""
-        from app.features.render_jobs.service import claim_job
+        from app.features.render_jobs.worker import claim_job
 
         stuck = _make_job(db, user.id)
         stuck.status = "running"
@@ -345,7 +409,7 @@ class TestClaimLease:
 
     def test_worker_that_lost_the_lease_is_refused(self, db, user):
         """After a re-claim, the old token can neither fetch, complete nor fail the job."""
-        from app.features.render_jobs.service import claim_job, complete_job, fail_job, get_job_payload
+        from app.features.render_jobs.worker import claim_job, complete_job, fail_job, get_job_payload
 
         _make_job(db, user.id)
         first = claim_job(db)
@@ -368,14 +432,14 @@ class TestClaimLease:
 
     def test_late_worker_can_still_finish_when_nobody_reclaimed(self, db, user):
         """A lapsed lease alone refuses nothing: the job completes if no claim took it back."""
-        from app.features.render_jobs.service import claim_job, complete_job
+        from app.features.render_jobs.worker import claim_job, complete_job
 
         _make_job(db, user.id)
         job = claim_job(db)
         _expire_lease(db, job)
 
-        with patch("app.features.render_jobs.service.write_bytes"):
-            with patch("app.features.render_jobs.service.render_key", return_value="customers/1/renders/abc.png"):
+        with patch("app.features.render_jobs.worker.write_bytes"):
+            with patch("app.features.render_jobs.worker.render_key", return_value="customers/1/renders/abc.png"):
                 done = complete_job(db, job.id, token=job.worker_token, data=b"PNG-BYTES")
 
         assert done.status == "completed"
@@ -391,7 +455,7 @@ class TestGetJobPayload:
 
     def test_401_on_wrong_token(self, db, user, job):
         """get_job_payload raises 401 when token != job.worker_token."""
-        from app.features.render_jobs.service import get_job_payload
+        from app.features.render_jobs.worker import get_job_payload
 
         with pytest.raises(HTTPException) as exc:
             get_job_payload(db, job.id, token="wrong-token")
@@ -399,11 +463,11 @@ class TestGetJobPayload:
 
     def test_http_model_ref_returned_as_is(self, db, user):
         """When model_ref starts with http, model_url is returned as-is (no presign)."""
-        from app.features.render_jobs.service import get_job_payload
+        from app.features.render_jobs.worker import get_job_payload
 
         http_job = _make_job(db, user.id, model_ref="https://example.com/ring.glb")
 
-        with patch("app.features.render_jobs.service.presign_get") as mock_presign:
+        with patch("app.features.render_jobs.worker.presign_get") as mock_presign:
             payload = get_job_payload(db, http_job.id, token=http_job.worker_token)
 
         mock_presign.assert_not_called()
@@ -411,13 +475,13 @@ class TestGetJobPayload:
 
     def test_storage_model_ref_presigned(self, db, user):
         """When model_ref is a storage key (no http), model_url is presigned URL."""
-        from app.features.render_jobs.service import get_job_payload
+        from app.features.render_jobs.worker import get_job_payload
 
         storage_job = _make_job(db, user.id, model_ref="customers/1/models/ring.glb")
         presigned_url = "https://storage.example.com/customers/1/models/ring.glb?sig=abc"
 
         with patch(
-            "app.features.render_jobs.service.presign_get",
+            "app.features.render_jobs.worker.presign_get",
             return_value=presigned_url,
         ) as mock_presign:
             payload = get_job_payload(db, storage_job.id, token=storage_job.worker_token)
@@ -427,11 +491,11 @@ class TestGetJobPayload:
 
     def test_payload_contains_all_fields(self, db, user):
         """Payload includes lighting, preset, width, height."""
-        from app.features.render_jobs.service import get_job_payload
+        from app.features.render_jobs.worker import get_job_payload
 
         http_job = _make_job(db, user.id, model_ref="https://cdn.example.com/ring.glb")
 
-        with patch("app.features.render_jobs.service.presign_get"):
+        with patch("app.features.render_jobs.worker.presign_get"):
             payload = get_job_payload(db, http_job.id, token=http_job.worker_token)
 
         assert payload.lighting == "studio"
@@ -450,7 +514,7 @@ class TestCompleteJob:
 
     def test_401_on_wrong_token(self, db, user):
         """complete_job raises 401 when token != job.worker_token."""
-        from app.features.render_jobs.service import complete_job
+        from app.features.render_jobs.worker import complete_job
 
         job = _make_job(db, user.id)
         # Manually set status to running
@@ -464,7 +528,7 @@ class TestCompleteJob:
 
     def test_409_when_not_running(self, db, user):
         """complete_job raises 409 when job.status != 'running'."""
-        from app.features.render_jobs.service import complete_job
+        from app.features.render_jobs.worker import complete_job
 
         job = _make_job(db, user.id)
         # Status is 'queued' by default — not running
@@ -473,26 +537,23 @@ class TestCompleteJob:
             complete_job(db, job.id, token=job.worker_token, data=b"fake-png")
         assert exc.value.status_code == 409
 
-    def test_happy_path_stores_bytes_sets_result_key_consumes_credit(self, db, user):
-        """complete_job writes bytes, sets result_key, decrements render credit by 1."""
-        from app.features.billing.quota_service import get_or_create_billing
-        from app.features.render_jobs.service import complete_job
+    def test_happy_path_stores_bytes_sets_result_key_and_charges_the_hold(self, db, user):
+        """complete_job writes bytes, sets result_key and keeps the held credits; the balance stays."""
+        from app.features.render_jobs.worker import complete_job
 
-        job = _make_job(db, user.id)
+        job = _hold(db, _make_job(db, user.id), credits=2)
         job.status = "running"
         job.attempts = 1
         db.commit()
-
-        billing = get_or_create_billing(db, user)
-        balance_before = billing.render_credits_balance
+        balance_before = _render_balance(db, user)
 
         stored_calls = []
 
         def fake_write_bytes(key: str, data: bytes, content_type: str | None = None):
             stored_calls.append({"key": key, "data": data, "content_type": content_type})
 
-        with patch("app.features.render_jobs.service.write_bytes", side_effect=fake_write_bytes):
-            with patch("app.features.render_jobs.service.render_key", return_value="customers/1/renders/abc.png"):
+        with patch("app.features.render_jobs.worker.write_bytes", side_effect=fake_write_bytes):
+            with patch("app.features.render_jobs.worker.render_key", return_value="customers/1/renders/abc.png"):
                 complete_job(db, job.id, token=job.worker_token, data=b"PNG-BYTES")
 
         # Bytes stored with correct content type
@@ -500,73 +561,71 @@ class TestCompleteJob:
         assert stored_calls[0]["data"] == b"PNG-BYTES"
         assert stored_calls[0]["content_type"] == "image/png"
 
-        # result_key set on job
         db.refresh(job)
         assert job.result_key is not None
         assert job.status == "completed"
+        assert job.finished_at is not None
+        assert (job.credits, job.credit_state) == (2, "charged")
+        # The credits left the balance when they were held.
+        assert _render_balance(db, user) == balance_before
 
-        # Credit decremented by exactly 1
-        db.refresh(billing)
-        assert billing.render_credits_balance == balance_before - 1
-
-    def test_zero_balance_at_completion_fails_job_402_no_write(self, db, user):
-        """Zero balance at completion → 402, job failed, no bytes written.
-
-        Prevents the orphan-PNG loop: without the precheck the PNG uploads,
-        the charge fails, and the worker retries a render nobody can pay for.
-        """
-        from app.features.billing.quota_service import get_or_create_billing
-        from app.features.render_jobs.service import complete_job
+    def test_a_held_job_completes_with_nothing_left_in_the_balance(self, db, user):
+        """Its credits were taken when it was created, so an empty balance now refuses nothing."""
+        from app.features.render_jobs.worker import complete_job
 
         job = _make_job(db, user.id)
         job.status = "running"
         job.attempts = 1
-        billing = get_or_create_billing(db, user)
-        billing.render_credits_balance = 0
         db.commit()
+        _hold(db, job, credits=_render_balance(db, user))
+        assert _render_balance(db, user) == 0
 
-        with patch("app.features.render_jobs.service.write_bytes") as mock_write:
-            with pytest.raises(HTTPException) as exc:
-                complete_job(db, job.id, token=job.worker_token, data=b"PNG-BYTES")
+        with patch("app.features.render_jobs.worker.write_bytes"):
+            done = complete_job(db, job.id, token=job.worker_token, data=b"PNG-BYTES")
 
-        assert exc.value.status_code == 402
-        mock_write.assert_not_called()
+        assert (done.status, done.credit_state) == ("completed", "charged")
 
-        db.refresh(job)
-        assert job.status == "failed"
-        assert job.error == "no credits at completion"
+    def test_a_job_made_before_holds_completes_without_a_charge(self, db, user):
+        """Rows from before credit holds (smoke tests) hold nothing, so nothing is charged."""
+        from app.features.render_jobs.worker import complete_job
+
+        job = _make_job(db, user.id)
+        job.status = "running"
+        job.attempts = 1
+        db.commit()
+        balance_before = _render_balance(db, user)
+
+        with patch("app.features.render_jobs.worker.write_bytes"):
+            done = complete_job(db, job.id, token=job.worker_token, data=b"PNG-BYTES")
+
+        assert (done.status, done.credit_state) == ("completed", "none")
+        assert _render_balance(db, user) == balance_before
 
     def test_second_complete_call_is_409_no_double_charge(self, db, user):
-        """Second complete call returns 409 and does NOT decrement credit again."""
-        from app.features.billing.quota_service import get_or_create_billing
-        from app.features.render_jobs.service import complete_job
+        """Second complete call returns 409 and leaves the charge and the balance as they were."""
+        from app.features.render_jobs.worker import complete_job
 
-        job = _make_job(db, user.id)
+        job = _hold(db, _make_job(db, user.id), credits=1)
         job.status = "running"
         job.attempts = 1
         db.commit()
 
-        billing = get_or_create_billing(db, user)
-
-        with patch("app.features.render_jobs.service.write_bytes"):
-            with patch("app.features.render_jobs.service.render_key", return_value="customers/1/renders/abc.png"):
+        with patch("app.features.render_jobs.worker.write_bytes"):
+            with patch("app.features.render_jobs.worker.render_key", return_value="customers/1/renders/abc.png"):
                 # First call — should succeed
                 complete_job(db, job.id, token=job.worker_token, data=b"PNG-BYTES")
-
-        balance_after_first = billing.render_credits_balance
-        db.refresh(billing)
-        balance_after_first = billing.render_credits_balance
+        balance_after_first = _render_balance(db, user)
 
         # Second call — should 409
         with pytest.raises(HTTPException) as exc:
-            with patch("app.features.render_jobs.service.write_bytes"):
-                with patch("app.features.render_jobs.service.render_key", return_value="customers/1/renders/abc.png"):
+            with patch("app.features.render_jobs.worker.write_bytes"):
+                with patch("app.features.render_jobs.worker.render_key", return_value="customers/1/renders/abc.png"):
                     complete_job(db, job.id, token=job.worker_token, data=b"PNG-BYTES-2")
         assert exc.value.status_code == 409
 
-        # Balance must not have changed
-        db.refresh(billing)
-        assert billing.render_credits_balance == balance_after_first
+        db.refresh(job)
+        assert job.credit_state == "charged"
+        assert _render_balance(db, user) == balance_after_first
 
 
 # ---------------------------------------------------------------------------
@@ -579,7 +638,7 @@ class TestFailJob:
 
     def test_401_on_wrong_token(self, db, user):
         """fail_job raises 401 when token != job.worker_token."""
-        from app.features.render_jobs.service import fail_job
+        from app.features.render_jobs.worker import fail_job
 
         job = _make_job(db, user.id)
         job.status = "running"
@@ -592,7 +651,7 @@ class TestFailJob:
 
     def test_409_when_not_running(self, db, user):
         """fail_job raises 409 when job.status != 'running'."""
-        from app.features.render_jobs.service import fail_job
+        from app.features.render_jobs.worker import fail_job
 
         job = _make_job(db, user.id)
         # Status is 'queued' by default
@@ -602,31 +661,26 @@ class TestFailJob:
         assert exc.value.status_code == 409
 
     def test_fail_at_attempts_1_requeues(self, db, user):
-        """fail_job with attempts=1 (< 3) requeues: status=queued, error recorded."""
-        from app.features.billing.quota_service import get_or_create_billing
-        from app.features.render_jobs.service import fail_job
+        """fail_job with attempts=1 (< 3) requeues: status=queued, error recorded, still held."""
+        from app.features.render_jobs.worker import fail_job
 
-        job = _make_job(db, user.id)
+        job = _hold(db, _make_job(db, user.id), credits=2)
         job.status = "running"
         job.attempts = 1
         db.commit()
-
-        billing = get_or_create_billing(db, user)
-        balance_before = billing.render_credits_balance
+        balance_before = _render_balance(db, user)
 
         fail_job(db, job.id, token=job.worker_token, error="GPU OOM")
 
         db.refresh(job)
         assert job.status == "queued"
         assert job.error == "GPU OOM"
-
-        # No credit consumed
-        db.refresh(billing)
-        assert billing.render_credits_balance == balance_before
+        assert job.credit_state == "held"
+        assert _render_balance(db, user) == balance_before
 
     def test_fail_at_attempts_2_still_requeues(self, db, user):
         """fail_job with attempts=2 (< 3) still requeues."""
-        from app.features.render_jobs.service import fail_job
+        from app.features.render_jobs.worker import fail_job
 
         job = _make_job(db, user.id)
         job.status = "running"
@@ -638,28 +692,41 @@ class TestFailJob:
         db.refresh(job)
         assert job.status == "queued"
 
-    def test_fail_at_attempts_3_marks_failed(self, db, user):
-        """fail_job with attempts=3 (>= 3) sets status=failed."""
-        from app.features.billing.quota_service import get_or_create_billing
-        from app.features.render_jobs.service import fail_job
+    def test_fail_at_attempts_3_marks_failed_and_refunds(self, db, user):
+        """fail_job with attempts=3 (>= 3) sets status=failed and gives the held credits back."""
+        from app.features.render_jobs.worker import fail_job
 
-        job = _make_job(db, user.id)
+        job = _hold(db, _make_job(db, user.id), credits=2)
         job.status = "running"
         job.attempts = 3
         db.commit()
-
-        billing = get_or_create_billing(db, user)
-        balance_before = billing.render_credits_balance
+        balance_before = _render_balance(db, user)
 
         fail_job(db, job.id, token=job.worker_token, error="Fatal error after 3 attempts")
 
         db.refresh(job)
         assert job.status == "failed"
         assert job.error == "Fatal error after 3 attempts"
+        assert job.credit_state == "refunded"
+        assert job.finished_at is not None
+        assert _render_balance(db, user) == balance_before + 2
 
-        # No credit consumed on failure
-        db.refresh(billing)
-        assert billing.render_credits_balance == balance_before
+    def test_a_failure_after_a_cancel_request_ends_canceled_and_refunded(self, db, user):
+        """The owner asked to stop the job, so its worker's failure isn't retried."""
+        from app.features.render_jobs.worker import fail_job
+
+        job = _hold(db, _make_job(db, user.id), credits=1)
+        job.status = "running"
+        job.attempts = 1
+        job.cancel_requested_at = datetime.utcnow()
+        db.commit()
+        balance_before = _render_balance(db, user)
+
+        fail_job(db, job.id, token=job.worker_token, error="canceled")
+
+        db.refresh(job)
+        assert (job.status, job.credit_state) == ("canceled", "refunded")
+        assert _render_balance(db, user) == balance_before + 1
 
 
 @pytest.mark.parametrize("call", ["complete", "fail"])
@@ -667,7 +734,7 @@ def test_complete_and_fail_lock_the_job_row_on_postgres(call):
     """A claim can't issue a new token between their token check and their update."""
     from sqlalchemy.dialects import postgresql
 
-    from app.features.render_jobs import service
+    from app.features.render_jobs import worker as service
 
     statements = []
 

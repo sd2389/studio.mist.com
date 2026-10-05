@@ -65,7 +65,11 @@ export type RenderJob = {
   status: RenderJobStatus;
   scene_id: number | null;
   batch_id: number | null;
-  /** The normalised spec, with `frames` (its image count) and `outputs` (its file names). */
+  /**
+   * The normalised spec, which carries `frames` and `output_names`; turntables and spins have
+   * their own `frames`. A turntable makes one `.mp4`, a spin one `-spin.zip`, and a Campaign Pack
+   * one `_campaign-pack.zip`.
+   */
   spec: Record<string, unknown>;
   watermark: boolean;
   /** Held while it renders, charged when it completes, refunded when it fails or is canceled. */
@@ -80,7 +84,7 @@ export type RenderJob = {
   error_code: string | null;
   cancel_requested_at: string | null;
   outputs: RenderJobOutput[];
-  /** UTC, without a zone designator. */
+  /** UTC, ending in Z (`parseApiTime` reads it). */
   created_at: string;
   started_at: string | null;
   finished_at: string | null;

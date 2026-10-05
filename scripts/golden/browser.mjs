@@ -1,7 +1,9 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { chromium } from "playwright";
 import { PNG } from "pngjs";
-import { startSink } from "./sink.mjs";
+import { startSink } from "../render-worker/sink.mjs";
 
 export const LIGHTING_IDS = ["studio", "soft", "dark", "catalog", "dramatic"];
 /**
@@ -166,16 +168,16 @@ function frameStrip(frames, { width, height }) {
 }
 
 /** What an export golden compares: the still's image, or the strip of a turntable's frames. */
-function exportedImage(id, payload, outputs, sink) {
+function exportedImage(id, payload, outputs, sink, frames) {
   if (sink.progress.at(-1)?.progress !== 1) throw new Error(`harness ${id}: the page never reported it had finished`);
   if (payload.kind === "turntable") {
-    const { frames } = payload.spec;
-    if (sink.frames.length !== frames) throw new Error(`harness ${id}: the sink got ${sink.frames.length} of ${frames} frames`);
-    return frameStrip(sink.frames, payload.spec);
+    const expected = payload.spec.frames;
+    if (frames.length !== expected) throw new Error(`harness ${id}: the sink got ${frames.length} of ${expected} frames`);
+    return frameStrip(frames, payload.spec);
   }
   const file = sink.files.get(outputs[0]?.name);
   if (!file) throw new Error(`harness ${id}: the sink did not get the finished image`);
-  return file.body;
+  return readFileSync(file.path);
 }
 
 /** How long the live canvas's renderer is held in its start-up; the catalogue answers meanwhile. */
@@ -219,9 +221,19 @@ async function holdRendererStart(page) {
 
 async function captureExport(id, outDir) {
   const payload = JSON.parse(readFileSync(`tests/goldens/fixtures/${id}.json`, "utf8"));
-  // A turntable's frames come raw: the sink refuses any of another size.
+  // The render worker's own sink. A turntable's frames come raw: it refuses any of another size.
   const frameSize = payload.kind === "turntable" ? { width: payload.spec.width, height: payload.spec.height } : null;
-  const sink = await startSink({ model: readFileSync(FIXTURE_MODEL), origin: new URL(BASE_URL).origin, frameSize });
+  const frames = [];
+  const sinkDir = mkdtempSync(path.join(os.tmpdir(), "export-sink-"));
+  const sink = await startSink({
+    origin: new URL(BASE_URL).origin,
+    model: FIXTURE_MODEL,
+    outDir: sinkDir,
+    frameSize,
+    onFrame: (index, pixels) => {
+      frames[index] = pixels;
+    },
+  });
   const browser = EXPORT_BACKEND === "webgpu" ? await launchWebGpuBrowser() : await launchDeterministicBrowser();
   const console_ = [];
   try {
@@ -239,7 +251,7 @@ async function captureExport(id, outDir) {
       // Where it stopped: the page's last state, what reached the sink, and the page's own log.
       const seen = await page.evaluate(() => String(window.__HARNESS_STATE__)).catch(() => "unreadable");
       throw new Error(
-        `harness ${id}: ${error.message}\nstate: ${seen}\nsink progress: ${JSON.stringify(sink.progress.map((entry, index) => ({ ...entry, at_ms: sink.progressAt[index] })).slice(-6))}, frames: ${sink.frames.length}\n${console_.slice(-40).join("\n")}`,
+        `harness ${id}: ${error.message}\nstate: ${seen}\nsink progress: ${JSON.stringify(sink.progress.slice(-6))}, frames: ${sink.frames}\n${console_.slice(-40).join("\n")}`,
       );
     });
     if (state !== "done") throw new Error(`harness ${id}: ${state}`);
@@ -249,11 +261,12 @@ async function captureExport(id, outDir) {
     if (!wanted) {
       throw new Error(`harness ${id}: drew with ${renderer.backend} on ${JSON.stringify(renderer.adapter)}, not ${EXPORT_BACKEND}`);
     }
-    writeFileSync(`${outDir}/${id}.png`, exportedImage(id, payload, outputs, sink));
+    writeFileSync(`${outDir}/${id}.png`, exportedImage(id, payload, outputs, sink, frames));
     console.log(`captured ${id} (${renderer.backend}, ${renderer.adapter?.architecture ?? "no WebGPU adapter"})`);
   } finally {
     await browser.close();
     await sink.close();
+    rmSync(sinkDir, { recursive: true, force: true });
   }
 }
 

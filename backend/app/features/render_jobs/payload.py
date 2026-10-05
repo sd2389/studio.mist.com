@@ -18,7 +18,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.core import storage
-from app.features.render_jobs.specs import longest_edge
+from app.features.render_jobs.job_files import longest_edge
 from app.features.render_jobs.worker import discard_outputs, end_attempt, max_runtime_seconds, running_job
 from app.features.scene.look import background_image_key, scene_look
 from app.models import RenderJob, Scene

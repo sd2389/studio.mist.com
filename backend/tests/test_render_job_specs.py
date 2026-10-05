@@ -3,18 +3,16 @@
 import pytest
 from fastapi import HTTPException
 
-from app.features.render_jobs.pricing import render_job_cost
-from app.features.render_jobs.specs import (
+from app.features.render_jobs.job_files import (
     PlannedOutput,
-    check_poses,
     longest_edge,
     normalised_spec,
     output_names,
     output_stem,
-    parse_spec,
     planned_outputs,
-    spec_warnings,
 )
+from app.features.render_jobs.pricing import render_job_cost
+from app.features.render_jobs.specs import check_poses, parse_spec, spec_warnings
 
 VIEW = {"view": {"position": [0.62, 0.88, 2.25], "target": [0, 0, 0]}}
 TURNTABLE = {"width": 1920, "height": 1080, "fps": 30, "frames": 120, "path": {"orbit": {"start": VIEW}}}

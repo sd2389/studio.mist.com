@@ -23,7 +23,7 @@ from app.core import storage
 from app.core import storage_keys as keys
 from app.core.storage.local import LocalBackend
 from app.features.billing.quota_service import charge_render_job, count_storage_bytes
-from app.features.render_jobs.specs import PlannedOutput, planned_outputs
+from app.features.render_jobs.job_files import PlannedOutput, planned_outputs
 from app.features.render_jobs.worker import discard_outputs, end_attempt, running_job
 from app.models import Render, RenderJob, Scene
 from app.schemas.render_job import (

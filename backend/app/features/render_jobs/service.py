@@ -22,16 +22,10 @@ from app.core import storage
 from app.features.billing.plans import MAX_BULK_RENDER_JOBS, PLAN_LABELS, PlanTier, get_quotas, normalize_tier
 from app.features.billing.quota_service import get_or_create_billing, hold_render_credits, refund_render_job
 from app.features.render_jobs import idempotency
+from app.features.render_jobs.job_files import normalised_spec, output_names, output_stem
 from app.features.render_jobs.plan_limits import assert_plan_allows
 from app.features.render_jobs.pricing import render_job_cost
-from app.features.render_jobs.specs import (
-    check_poses,
-    normalised_spec,
-    output_names,
-    output_stem,
-    parse_spec,
-    spec_warnings,
-)
+from app.features.render_jobs.specs import check_poses, parse_spec, spec_warnings
 from app.features.scene.look import saved_look, validate_look, variant_look
 from app.features.scene.service import require_owned_scene
 from app.models import Render, RenderJob, Scene

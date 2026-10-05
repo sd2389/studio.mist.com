@@ -746,7 +746,7 @@ def test_a_local_upload_stores_the_file_under_the_jobs_prefix(db, files, owner, 
     ],
 )
 def test_a_local_upload_is_only_a_file_the_spec_names(db, files, owner, scene, monkeypatch, name, content_type, body, status):
-    monkeypatch.setattr("app.features.render_jobs.specs.MAX_IMAGE_BYTES", 32)
+    monkeypatch.setattr("app.features.render_jobs.job_files.MAX_IMAGE_BYTES", 32)
     _queue(db, owner, scene)
     job = _claim(db)
 
@@ -999,7 +999,7 @@ def test_a_turntable_completes_with_its_mp4_and_a_spin_with_its_zip(db, files, o
 
 @pytest.mark.parametrize("kind", FRAME_KINDS)
 def test_a_turntable_or_a_spin_uploads_only_its_one_file_within_its_cap(db, owner, scene, kind):
-    from app.features.render_jobs.specs import MAX_VIDEO_BYTES, MAX_ZIP_BYTES
+    from app.features.render_jobs.job_files import MAX_VIDEO_BYTES, MAX_ZIP_BYTES
 
     spec, name, content_type, _, _ = FRAME_KINDS[kind]
     cap = MAX_VIDEO_BYTES if kind == "turntable" else MAX_ZIP_BYTES

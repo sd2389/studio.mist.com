@@ -1,5 +1,6 @@
 """The render job endpoints for users, over HTTP: create (with Idempotency-Key), bulk, quote,
-list, get, cancel and download (docs/adr/0005-server-exports.md)."""
+list, get, cancel and download (docs/adr/0005-server-exports.md). Creating and quoting need the
+server_exports flag, which these tests turn on."""
 
 from datetime import datetime, timedelta
 from unittest.mock import patch
@@ -12,7 +13,7 @@ from app.core.public_urls import public_file_url
 from app.core.storage.local import LocalBackend
 from app.features.billing.quota_service import get_or_create_billing, reset_allotments
 from app.main import app
-from app.models import Render, RenderJob, Scene, User, UserAsset
+from app.models import FeatureFlag, Render, RenderJob, Scene, User, UserAsset
 from app.models.user import Session as DbSession
 
 VIEW = {"view": {"position": [0.62, 0.88, 2.25], "target": [0, 0, 0]}}
@@ -42,6 +43,11 @@ def _job_rows(db) -> list[RenderJob]:
     return db.query(RenderJob).order_by(RenderJob.id).all()
 
 
+def _set_server_exports(db, enabled: bool) -> None:
+    db.merge(FeatureFlag(key="server_exports", enabled=enabled, updated_at=datetime.utcnow()))
+    db.commit()
+
+
 @pytest.fixture()
 def client(db, tmp_path, monkeypatch):
     from app.database import get_db
@@ -50,6 +56,7 @@ def client(db, tmp_path, monkeypatch):
         yield db
 
     monkeypatch.setattr(storage_mod, "get_storage", lambda: LocalBackend(tmp_path))
+    _set_server_exports(db, True)
     app.dependency_overrides[get_db] = _override_db
     yield TestClient(app)
     app.dependency_overrides.clear()
@@ -163,6 +170,31 @@ def test_a_bad_spec_or_look_is_400_naming_the_field(client, db, owner, scene, bo
     assert res.status_code == 400
     assert res.json()["detail"].startswith(detail)
     assert _balance(db, user) == 25
+
+
+def test_creating_and_quoting_are_404_while_server_exports_is_off(client, db, owner, scene):
+    user, headers = owner
+    job_id = _create(client, headers, scene).json()["id"]
+    _set_server_exports(db, False)
+    body = {"kind": "still", "scene_id": scene.id, "spec": FOUR_K}
+
+    created = client.post("/render-jobs", headers=headers, json=body)
+    bulk = client.post("/render-jobs/bulk", headers=headers, json={"jobs": [body]})
+    quote = client.post("/render-jobs/quote", headers=headers, json=body)
+    signed_out = client.post("/render-jobs", json=body)
+
+    assert [res.status_code for res in (created, bulk, quote, signed_out)] == [404, 404, 404, 404]
+    assert len(_job_rows(db)) == 1
+    # A job made before stays its owner's to read and cancel.
+    assert client.get(f"/render-jobs/{job_id}", headers=headers).status_code == 200
+    assert client.post(f"/render-jobs/{job_id}/cancel", headers=headers).status_code == 200
+
+
+def test_server_exports_is_off_until_an_admin_turns_it_on(client, db, owner, scene):
+    db.query(FeatureFlag).delete()
+    db.commit()
+
+    assert _create(client, owner[1], scene).status_code == 404
 
 
 def test_another_users_scene_is_404(client, db, other, scene):

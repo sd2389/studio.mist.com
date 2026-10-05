@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, require_feature
 from app.core.rate_limit import rate_limit_dependency
 from app.database import get_db
 from app.features.render_jobs import outputs as render_job_outputs
@@ -42,6 +42,9 @@ _create_limit = rate_limit_dependency(
     max_requests=_settings.rate_limit_render_jobs_per_hour,
     require_auth=True,
 )
+# Creating and quoting jobs are 404 while the server_exports flag is off. A job made before stays
+# readable, cancelable and downloadable, and workers still render it.
+_server_exports = [Depends(require_feature("server_exports", hidden=True))]
 
 JobStatus = Literal["queued", "running", "completed", "failed", "canceled"]
 
@@ -78,7 +81,7 @@ def _job_token(x_job_token: Annotated[str | None, Header()] = None) -> str:
 # ---------------------------------------------------------------------------
 
 
-@router.post("", status_code=201, response_model=RenderJobOut)
+@router.post("", status_code=201, response_model=RenderJobOut, dependencies=_server_exports)
 def create_render_job(
     body: RenderJobCreate,
     response: Response,
@@ -94,7 +97,7 @@ def create_render_job(
     return render_job_service.job_view(db, job)
 
 
-@router.post("/bulk", status_code=201, response_model=RenderJobBulkOut)
+@router.post("/bulk", status_code=201, response_model=RenderJobBulkOut, dependencies=_server_exports)
 def create_render_jobs(
     body: RenderJobBulkCreate,
     idempotency_key: Annotated[str | None, Header()] = None,
@@ -106,7 +109,7 @@ def create_render_jobs(
     return RenderJobBulkOut(jobs=render_job_service.job_views(db, jobs))
 
 
-@router.post("/quote", response_model=RenderJobQuote)
+@router.post("/quote", response_model=RenderJobQuote, dependencies=_server_exports)
 def quote_render_job(
     body: RenderJobCreate,
     db: Session = Depends(get_db),

@@ -1,0 +1,75 @@
+{
+  "kind": "turntable",
+  "spec": {
+    "width": 160,
+    "height": 90,
+    "fps": 30,
+    "frames": 12,
+    "quality": "high",
+    "path": { "orbit": { "start": { "view": { "position": [0.62, 0.88, 2.25], "target": [0, 0, 0] } } } }
+  },
+  "look": {
+    "material": "gold-18k-yellow",
+    "lighting": "studio",
+    "slot_selections": { "Metal 1": "gold-18k-rose", "Gem 1": "diamond" },
+    "scene_settings": {
+      "ENVIRONMENT-METAL": null,
+      "ENVIRONMENT-GEM": null,
+      "GROUND": null,
+      "BACKGROUND": "golden-dusk",
+      "VJSON": null,
+      "quality_mode": "standard",
+      "sceneSetup": null,
+      "finish": "polished",
+      "customBackground": null,
+      "advanced": { "exposure": 1.1, "metalEnvRotation": 30 },
+      "poses": [{ "id": "pose-hero", "name": "Hero", "cameraPosition": [1.2, 0.6, 1.8], "target": [0, 0, 0] }]
+    },
+    "model_config": {
+      "source": "upload-ingest",
+      "slots": [
+        { "slotId": "Gem 1", "label": "Gem 1", "kind": "gem", "defaultMaterial": "diamond", "materialOptions": [] },
+        { "slotId": "Metal 1", "label": "Metal 1", "kind": "metal", "defaultMaterial": "gold-14k-yellow", "materialOptions": [] }
+      ],
+      "defaultMaterials": { "Gem 1": "diamond", "Metal 1": "gold-14k-yellow" },
+      "materialOptionsBySlot": {},
+      "materialProps": { "Gem 1": { "visible": true }, "Metal 1": { "visible": true } },
+      "sceneSettings": {
+        "ENVIRONMENT-METAL": null,
+        "ENVIRONMENT-GEM": null,
+        "GROUND": null,
+        "BACKGROUND": null,
+        "VJSON": null,
+        "quality_mode": "standard"
+      }
+    }
+  },
+  "look_items": {
+    "environments": [],
+    "backgrounds": [
+      {
+        "slug": "golden-dusk",
+        "label": "Golden dusk",
+        "params": {
+          "kind": "linear",
+          "angle": 180,
+          "stops": [
+            { "offset": 0, "color": "#f6f1ea" },
+            { "offset": 1, "color": "#d8cbbb" }
+          ]
+        },
+        "sort_weight": 0,
+        "swatch_url": null,
+        "is_transparent": false
+      }
+    ],
+    "grounds": [],
+    "metals": [],
+    "gems": [],
+    "user_materials": []
+  },
+  "model": { "path": "/render-jobs/0/inputs/model" },
+  "watermark": false,
+  "limits": { "max_edge": 4096, "max_runtime_seconds": 1800 },
+  "scene": { "id": 0, "name": "PDR-2413", "sku": "PDR-2413" }
+}

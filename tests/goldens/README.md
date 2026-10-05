@@ -14,10 +14,11 @@ with `BUILD_TARGET=worker`, or run `BUILD_TARGET=worker npm run dev`. The public
 |---|---|---|
 | `studio`, `soft`, `dark`, `catalog`, `dramatic` | The harness's golden mode: the live canvas under each lighting setup, screenshotted | WebGL 2 (SwiftShader gives WebGPU no adapter with these flags) |
 | `export-still` | The harness's export mode: the job in `fixtures/export-still.json` (a still from a Campaign Pack angle, with a saved look and a CSS gradient backdrop), rendered as the render worker renders it; the golden is the PNG the page hands the sink | WebGL 2 in CI, like the lighting goldens: on Linux, headless Chromium's SwiftShader WebGPU lost its device (headless shell) or drew into a canvas left at 300x150 (new headless). The export pipeline is the same on either backend; WebGPU is covered by the render worker's self-check on its GPU host. `GOLDEN_EXPORT_BACKEND=webgpu` runs it on SwiftShader WebGPU instead, and the capture then fails if three.js fell back to WebGL 2 |
+| `export-turntable` | The same export mode for a video: the job in `fixtures/export-turntable.json` (12 frames at 160×90 orbiting from the live view, in `export-still`'s look); the golden is the raw frames the page hands the sink, side by side in one strip, frame 0 on the left | As `export-still` |
 
 Once the scene has loaded, the harness draws a fixed number of frames on a fixed clock (frame N
 at N/60 s) and stops drawing. The lighting goldens draw `WARMUP_FRAMES` (24, in
-`scripts/golden/browser.mjs`) instead of the 60 a render job draws; the export golden draws the
+`scripts/golden/browser.mjs`) instead of the 60 a render job draws; the export goldens draw the
 job's 60. A capture depends on neither load speed nor when the screenshot is taken, so on one
 machine it is the same PNG byte for byte every run. Changing those numbers changes every capture.
 
@@ -42,6 +43,7 @@ builds. After any playwright bump, regenerate and re-approve the goldens.
 The model fixture is `public/test-fixtures/PDR-2413.glb`, regenerated from
 `samples/PDR-2413.3dm` (not in git) via `npm run golden:fixture` (dev server
 required). Regenerating the fixture also requires regenerating the goldens,
-since they are pinned to the exact fixture bytes. The export golden's job is
-`fixtures/export-still.json`, in the shape of the API's job payload
-(`src/features/render/harness/job-payload.ts`); a unit test keeps it readable by the harness.
+since they are pinned to the exact fixture bytes. The export goldens' jobs are
+`fixtures/export-still.json` and `fixtures/export-turntable.json`, in the shape of the API's job
+payload (`src/features/render/harness/job-payload.ts`); unit tests keep them readable by the
+harness.

@@ -7,27 +7,21 @@ import {
   Output,
 } from "mediabunny";
 import type { ViewerRenderer } from "@/lib/gpu/viewer-renderer";
-import {
-  orbitPosition,
-  orbitStartFromView,
-  turntableAngle,
-  type Vec3,
-} from "@/lib/camera-orbit";
+import type { Vec3 } from "@/lib/camera-orbit";
 import { loadBackdropImage, WHITE_BACKDROP, type ExportBackdrop } from "@/lib/export-backdrop";
 import type { ExportLimits } from "@/lib/export-limits";
 import {
   createOffscreenRenderSession,
   encodeCanvas,
+  renderOpaqueFrame,
   type ExportCanvas,
   type OffscreenRenderSession,
 } from "@/lib/offscreen-render";
+import { multiAnglePath, turntablePath, type CameraPath, type CameraPose } from "@/lib/video-camera-path";
 import { defaultVideoBitrate, resolveH264EncoderConfig } from "@/lib/video-codec";
 import type { ViewerPostFXConfig } from "@/lib/viewer-postfx-config";
 
-export type CameraPose = {
-  cameraPosition: Vec3;
-  target: Vec3;
-};
+export type { CameraPose };
 
 export type RecordTurntableOpts = {
   gl: ViewerRenderer;
@@ -214,21 +208,7 @@ function placeCamera(session: OffscreenRenderSession, pose: CameraPose): void {
   camera.updateMatrixWorld(true);
 }
 
-/** Opaque frame: the scene's own background, or the render flattened over the backdrop. */
-function opaqueFrame(
-  session: OffscreenRenderSession,
-  timeSec: number,
-  backdrop: ExportBackdrop,
-  backdropImage: CanvasImageSource | null,
-): ExportCanvas {
-  if (session.hasOpaqueBackground) return session.render({ timeSec });
-  return session.capture({ timeSec, backdrop, backdropImage, cutout: false }).flat!;
-}
-
-async function recordCameraPath(
-  opts: RecordTurntableOpts,
-  poseAt: (index: number) => CameraPose,
-): Promise<VideoCaptureResult> {
+async function recordCameraPath(opts: RecordTurntableOpts, poseAt: CameraPath): Promise<VideoCaptureResult> {
   if (opts.frameCount < 1) throw new Error("frameCount must be >= 1");
   if (opts.fps < 1) throw new Error("fps must be >= 1");
   const backdrop = opts.backdrop ?? WHITE_BACKDROP;
@@ -237,7 +217,7 @@ async function recordCameraPath(
     const backdropImage = await loadBackdropImage(backdrop);
     const frameAt = (index: number) => {
       placeCamera(session, poseAt(index));
-      return opaqueFrame(session, index / opts.fps, backdrop, backdropImage);
+      return renderOpaqueFrame(session, index / opts.fps, backdrop, backdropImage);
     };
     const setup = await createMp4FrameEncoder(opts);
     let notice = setup.ok ? null : setup.reason;
@@ -264,10 +244,7 @@ async function recordCameraPath(
 
 /** Cycles saved poses, holding each for an equal share of the frames. */
 export function recordMultiAngle(opts: RecordMultiAngleOpts): Promise<VideoCaptureResult> {
-  const poses = opts.poses.filter(Boolean);
-  if (poses.length === 0) throw new Error("At least one pose is required");
-  const framesPerPose = Math.max(1, Math.floor(opts.frameCount / poses.length));
-  return recordCameraPath(opts, (index) => poses[Math.min(Math.floor(index / framesPerPose), poses.length - 1)]!);
+  return recordCameraPath(opts, multiAnglePath(opts.poses.filter(Boolean), opts.frameCount));
 }
 
 /**
@@ -275,11 +252,7 @@ export function recordMultiAngle(opts: RecordMultiAngleOpts): Promise<VideoCaptu
  * horizontal radius around the orbit target, so frame 0 matches what is on screen.
  */
 export function recordTurntable(opts: RecordTurntableOpts): Promise<VideoCaptureResult> {
-  const target: Vec3 = opts.target ?? [0, 0, 0];
   const { x, y, z } = opts.camera.position;
-  const start = orbitStartFromView([x, y, z], target);
-  return recordCameraPath(opts, (index) => ({
-    cameraPosition: orbitPosition(start, turntableAngle(index, opts.frameCount)),
-    target,
-  }));
+  const view: CameraPose = { cameraPosition: [x, y, z], target: opts.target ?? [0, 0, 0] };
+  return recordCameraPath(opts, turntablePath(view, opts.frameCount));
 }

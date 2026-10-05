@@ -1,12 +1,8 @@
-import { readViewportBackdrop } from "@/lib/export-backdrop";
-import { createOffscreenRenderSession, renderSessionStill } from "@/lib/offscreen-render";
-import { getHiresRefs } from "@/stores/hires-export-store";
-import { getRenderFidelity } from "@/stores/render-fidelity-store";
+import { renderSessionStill } from "@/lib/offscreen-render";
 import { applyShotCamera } from "../campaign-pack/engine/pack-camera";
-import { sampleModelPoints } from "../campaign-pack/engine/scene-points";
-import { prepareCutoutScene } from "../lib/stage-visibility";
 import { cameraLabel, resolveShotCamera } from "./cameras";
-import { jobCameras, type RenderedFile, type RenderJobPayload } from "./job-payload";
+import { jobCameras, type PayloadOfKind, type RenderedFile } from "./job-payload";
+import { jobCameraContext, openJobSession } from "./job-session";
 import type { SinkClient } from "./sink-client";
 
 /**
@@ -14,33 +10,13 @@ import type { SinkClient } from "./sink-client";
  * offscreen session (the hi-res export's pipeline), one camera after another. Each file goes
  * to the sink as soon as it is encoded, and the next waits until the worker has it.
  */
-export async function renderJobImages(payload: RenderJobPayload, sink: SinkClient): Promise<RenderedFile[]> {
-  const refs = getHiresRefs();
-  if (!refs) throw new Error("The scene has not loaded.");
+export async function renderJobImages(payload: PayloadOfKind<"still" | "angle_set">, sink: SinkClient): Promise<RenderedFile[]> {
   const { spec } = payload;
   const cameras = jobCameras(payload);
-  const { exposure, postfxConfig } = getRenderFidelity();
-  const session = await createOffscreenRenderSession({
-    gl: refs.gl,
-    scene: refs.scene,
-    camera: refs.camera,
-    width: spec.width,
-    height: spec.height,
-    exposure,
-    postfxConfig,
-    // Cutouts are the piece alone: no studio set, no contact-shadow catcher.
-    prepareScene: spec.transparent ? prepareCutoutScene : undefined,
-    // The API checked the size against the owner's plan and decided the mark when it made the job.
-    limits: { maxEdge: payload.limits.max_edge, watermark: payload.watermark },
-  });
+  const { session, backdrop } = await openJobSession(payload, spec);
   try {
-    const context = {
-      poses: payload.look.scene_settings.poses,
-      bounds: cameras.some((camera) => "angle" in camera) ? sampleModelPoints(session.scene) : null,
-      aspect: spec.width / spec.height,
-    };
-    // JPEG has no alpha: transparent areas become white; otherwise flatten the CSS backdrop.
-    const backdrop = spec.transparent ? null : readViewportBackdrop(refs.gl.domElement);
+    const hasFramedAngle = cameras.some((camera) => "angle" in camera);
+    const context = jobCameraContext(payload, session, spec.width / spec.height, hasFramedAngle);
     const files: RenderedFile[] = [];
     for (const [index, camera] of cameras.entries()) {
       applyShotCamera(session.camera, resolveShotCamera(camera, context));

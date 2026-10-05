@@ -342,6 +342,21 @@ export async function renderSessionStill(session: OffscreenRenderSession, opts: 
   return encodeCanvas((flat ?? cutout)!, format, opts.jpegQuality);
 }
 
+/**
+ * One video frame from a session, from its camera as it stands, at `timeSec` on the capture
+ * clock: the scene's own background, or the render flattened over the backdrop. Read the
+ * canvas before the next render replaces it.
+ */
+export function renderOpaqueFrame(
+  session: OffscreenRenderSession,
+  timeSec: number,
+  backdrop: ExportBackdrop,
+  backdropImage: CanvasImageSource | null,
+): ExportCanvas {
+  if (session.hasOpaqueBackground) return session.render({ timeSec });
+  return session.capture({ timeSec, backdrop, backdropImage, cutout: false }).flat!;
+}
+
 /** One-shot still: same PostFX pipeline as the viewport (AO, bloom, tone mapping, SMAA). */
 export async function renderAtResolution(opts: RenderOpts): Promise<Blob> {
   const session = await createOffscreenRenderSession(opts);

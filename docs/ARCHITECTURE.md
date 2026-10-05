@@ -43,6 +43,7 @@ Reuse these instead of rebuilding them per page:
 | Everything a lighting mode sets | `LIGHTING_PRESETS` (`src/lib/viewer-lighting.ts`) |
 | Still export settings and rendering | `StillExportSettings`, `exportStill` (`@/features/render`) |
 | Turntable recording options | `turntableCaptureOptions`, `videoSizeLabel` (`@/features/render`) |
+| A video's camera, frame by frame (an orbit from a view, a cut through poses) | `turntablePath`, `multiAnglePath` (`src/lib/video-camera-path.ts`): the studio's video export and the render harness both move their camera with them |
 | A video resolution picker | `VideoResolutionField` (`@/features/render`) |
 | What the plan lets an export be (size cap, watermark, Campaign Pack) | `loadExportPlan`, `useExportPlan`, `ExportPlanNote` (`@/features/render`); offscreen sessions take `ExportLimits` (`src/lib/export-limits.ts`), refuse larger sizes and draw the watermark (`src/lib/export-watermark.ts`) on every frame |
 | An upgrade prompt for a locked option or feature | `UpgradePrompt`, `UpgradeButton` (`src/components/billing/UpgradePrompt.tsx`) |

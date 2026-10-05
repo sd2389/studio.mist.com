@@ -244,7 +244,8 @@ type ImageJobRenderProps = {
 
 /**
  * The Images tab's Render on the server: one still of the live look, or in "Multiple" one per
- * scene and variant picked, in one bulk request, priced before it starts.
+ * scene and variant picked, in one bulk request, priced before it starts. The price says how
+ * many images it makes, and offers the upgrade where the plan has no batch export.
  */
 function ImageJobRender({ mode, options, viewerId, batch }: ImageJobRenderProps) {
   const exportScene = useExportScene();
@@ -274,7 +275,6 @@ function ImageJobRender({ mode, options, viewerId, batch }: ImageJobRenderProps)
 
   return (
     <>
-      {mode === "multiple" ? <BatchJobEstimate count={jobCount} enabled={batch.batchExportEnabled} /> : null}
       {error ? (
         <p className="text-sm text-destructive" role="alert">
           {error}
@@ -289,7 +289,7 @@ function ImageJobRender({ mode, options, viewerId, batch }: ImageJobRenderProps)
         bulk={mode === "multiple"}
         disabled={mode === "multiple" && !batch.batchExportEnabled}
       >
-        {mode === "single" ? "Render & download" : `Render ${jobCount} images`}
+        {mode === "single" ? "Render & download" : `Render ${jobCount} ${jobCount === 1 ? "image" : "images"}`}
       </RenderJobButton>
     </>
   );

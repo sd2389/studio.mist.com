@@ -8,9 +8,9 @@ Automated checks keep the feature-driven layout from regressing.
 |-------|---------|--------|
 | Lint | `npm run lint` | ESLint (complexity / max-lines warnings; fix errors before merge) |
 | Types | `npx tsc --noEmit` | Strict TypeScript |
-| Import boundaries | `npm run check:boundaries` | Blocks `@/components/viewer` and `@/components/upload` in `src/` |
+| Import boundaries | `npm run check:boundaries` | Blocks `@/components/viewer` and `@/components/upload` in `src/`, any import of the render harness (`src/features/render/harness/`) outside its route, and the render job's token in page code |
 | Unit tests | `npm test` | Vitest |
-| Render goldens | `npm run test:golden` | Needs the app running at `HARNESS_BASE_URL`; see `tests/goldens/README.md` |
+| Render goldens | `npm run test:golden` | Needs the worker's app (`BUILD_TARGET=worker`) running at `HARNESS_BASE_URL`; see `tests/goldens/README.md` |
 
 ## Backend
 
@@ -22,18 +22,19 @@ Automated checks keep the feature-driven layout from regressing.
 ## CI
 
 One workflow, `.github/workflows/ci.yml`, runs on every pull request and on pushes to `main`.
-Its four checks are required on `main`:
+Its five checks are required on `main`:
 
 | Check | What it runs |
 |-------|--------------|
 | `frontend-quality` | Lint, import boundaries, type check |
 | `unit` | Vitest and the backend's pytest suite |
-| `golden` | Production build with the render harness, then the SSIM comparison |
+| `public-build` | Production build of the app as it ships, and a check that it has no render harness route and no harness code in any chunk (`scripts/ci/check-public-build.mjs`) |
+| `golden` | Production build of the render worker's app (`BUILD_TARGET=worker`, which adds the render harness), then the SSIM comparison |
 | `dependency-audit` | `npm audit` (production, high and above), `pip-audit` on the backend requirements, and GitHub's dependency review of anything a pull request adds |
 
 A pull request only runs the checks its files need (`scripts/ci/changed-areas.mjs`): docs alone
 run nothing, backend changes skip the frontend checks, and only files the render harness can
-load (found by following its imports) run the goldens. A skipped check counts as passing. Changes to CI or to the lockfile run
+load (found by following its imports) run the goldens; web changes run the public build. A skipped check counts as passing. Changes to CI or to the lockfile run
 everything, and so does every push to `main`.
 
 The workflow reads the repo and nothing else (`permissions: {}`, with `contents: read` per job),

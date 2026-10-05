@@ -107,7 +107,7 @@ Templates: [`.env.example`](.env.example) (web, Compose) and [`backend/.env.exam
 | `API_URL` | web, server | FastAPI URL for Next.js route handlers; Compose points it at the internal `backend` service |
 | `NEXT_PUBLIC_CDN_ORIGIN` | web, build time | Load models, thumbnails and renders from a CDN |
 | `NEXT_PUBLIC_SOURCE_ASSET_ORIGIN` | web, build time | Separate origin for catalogue HDRIs and backgrounds |
-| `NEXT_PUBLIC_ENABLE_RENDER_HARNESS` | web, build time | `1` serves `/render-harness` in a production build (dev servers always serve it) |
+| `BUILD_TARGET` | web, build and start | `worker` makes the render worker's app, which adds `/render-harness`; any other build, dev servers included, has no such route |
 | `NEXT_PUBLIC_SENTRY_*`, `SENTRY_*` | web, backend | Optional Sentry reporting and source-map upload |
 | `STUDIO_POSTGRES_PORT` | Compose | Host port for Postgres |
 | `DATABASE_URL` | backend | Postgres connection; must be set when `APP_ENV=production` |
@@ -129,7 +129,7 @@ Templates: [`.env.example`](.env.example) (web, Compose) and [`backend/.env.exam
 | `INTERNAL_PROXY_TOKEN` | web, backend | Shared secret, the same on both: the web server's sign-in and sign-up proxies send it with the caller's IP, and the API believes a forwarded IP only with it (never a bare `X-Forwarded-For`). Unset, sign-ins through the web app share one per-IP budget, and the API warns at startup in production |
 | `RENDER_WORKER_TOKEN` | backend, worker | Shared secret for the render worker; the job-claim endpoint returns 503 until it is set |
 | `RENDER_API_URL` | worker | Backend URL |
-| `HARNESS_BASE_URL` | worker, goldens | Web app URL that serves `/render-harness` |
+| `HARNESS_BASE_URL` | worker, goldens | URL of the worker's app (`BUILD_TARGET=worker`), which serves `/render-harness` |
 
 ## Deploying
 
@@ -154,21 +154,11 @@ Top-up credits, and a plan bought at checkout, are granted only once the Checkou
 
 ## Server renders (optional)
 
-The backend can queue full-resolution renders (`POST /render-jobs`). A Node worker (`npm run worker:render`) claims each job, opens `/render-harness` in headless Chromium, renders 60 warm-up frames through the viewer's Three.js pipeline, and uploads the PNG. A successful render costs the owner 1 render credit. Failed attempts are never charged and are re-queued until a job has had 3 attempts.
+The backend can queue full-resolution renders (`POST /render-jobs`), and every export is moving to them (ADR 0005, server exports). A successful render costs the owner 1 render credit. Failed attempts are never charged and are re-queued until a job has had 3 attempts.
 
-A claim leases the job to its worker for `RENDER_JOB_LEASE_SECONDS` (10 minutes by default), and the worker gives up a minute before the lease runs out. A job left `running` by a crashed worker or backend goes to the next claim once its lease has run out, and that counts as a failed attempt. Every claim issues a new per-job token, so the worker that lost the lease can no longer complete or fail the job. The token travels in the `X-Job-Token` header, never in a URL: the worker hands it to the harness page with a Playwright init script.
+A claim leases the job to its worker for `RENDER_JOB_LEASE_SECONDS` (10 minutes by default). A job left `running` by a crashed worker or backend goes to the next claim once its lease has run out, and that counts as a failed attempt. Every claim issues a new per-job token, so the worker that lost the lease can no longer complete or fail the job. The token travels in the `X-Job-Token` header, never in a URL, and only the worker process holds it.
 
-To run it locally, keep the dev server running (`npm run dev`) and install Chromium once with `npx playwright install chromium`:
-
-```bash
-cp docker-compose.override.example.yml docker-compose.override.yml  # gives the backend a RENDER_WORKER_TOKEN
-docker compose up -d postgres backend
-docker compose exec backend python -m scripts.seed_smoke_job        # add --bogus to test the failure path
-RENDER_WORKER_TOKEN=<token from the override file> HARNESS_BASE_URL=<dev server URL> \
-  npm run worker:render -- --once
-```
-
-In production, point `RENDER_API_URL` at the backend and `HARNESS_BASE_URL` at a web build made with `NEXT_PUBLIC_ENABLE_RENDER_HARNESS=1`.
+The page that renders jobs is only in the render worker's build of the app: `BUILD_TARGET=worker` (for `npm run build`, `npm run start` and `npm run dev` alike) adds `/render-harness`, which the public build does not have. The worker opens it in headless Chromium on loopback. `?mode=probe` reports whether three.js draws with WebGPU or WebGL 2 there, and `?mode=export` renders a still or an angle set (a live view, a saved pose or a Campaign Pack angle) from the job the worker hands the page in `window.__RENDER_JOB__`, sending each image to the worker's loopback sink. The worker process itself (`npm run worker:render`) is being rebuilt around that mode and refuses to start until then; `npm run test:golden` drives the export mode with a fixture job.
 
 Known v1 limits:
 
@@ -199,7 +189,7 @@ Known v1 limits:
 ```bash
 npm run lint               # ESLint
 npx tsc --noEmit           # type check
-npm run check:boundaries   # fails on imports of the removed @/components/viewer and @/components/upload paths
+npm run check:boundaries   # fails on the removed @/components/viewer and upload paths, and on render harness imports outside its route
 npm test                   # Vitest unit tests (src/**/*.test.ts, *.test.tsx)
 npm run build              # production build
 ```
@@ -215,8 +205,8 @@ Backend, from `backend/` with the virtualenv above:
 
 **Render goldens** (`npm run test:golden`):
 
-- Captures `/render-harness` under the 5 lighting setups in headless Chromium with the SwiftShader software renderer, all at once with one browser each, and compares each frame with `tests/goldens/` (SSIM 0.98 or higher).
-- Needs Playwright's Chromium (`npx playwright install chromium`) and the app running at `HARNESS_BASE_URL` (default `http://localhost:3000`). That can be `npm run dev`, or `NEXT_PUBLIC_ENABLE_RENDER_HARNESS=1 npm run build && npm run start`, which is what CI does.
+- Captures `/render-harness` in headless Chromium with the SwiftShader software renderer, all at once with one browser each: the live view under the 5 lighting setups (WebGL 2), and a still rendered by the export mode from a fixture job (WebGPU). Compares each image with `tests/goldens/` (SSIM 0.98 or higher).
+- Needs Playwright's Chromium (`npx playwright install chromium`) and the worker's app running at `HARNESS_BASE_URL` (default `http://localhost:3000`). That can be `BUILD_TARGET=worker npm run dev`, or a production build and start with `BUILD_TARGET=worker` on both, which is what CI does.
 - Goldens are pinned to SwiftShader, the Playwright version in `package.json` and the fixture model. Regenerate them only for an approved render change, following [tests/goldens/README.md](tests/goldens/README.md).
 
 After meaningful changes, also run the manual smoke flow in [docs/QUALITY-GATES.md](docs/QUALITY-GATES.md) (upload, dashboard list, viewer, render still).

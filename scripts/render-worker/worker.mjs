@@ -1,62 +1,7 @@
-import { BASE_URL, launchDeterministicBrowser } from "../golden/browser.mjs";
-
-const API = process.env.RENDER_API_URL ?? "http://localhost:8765";
-const TOKEN = process.env.RENDER_WORKER_TOKEN;
-const ONCE = process.argv.includes("--once");
-const POLL_MS = 5000;
-/** What a job's lease keeps in hand when the worker gives up: loading the page and reporting the failure. */
-const LEASE_MARGIN_MS = 60 * 1000;
-
-if (!TOKEN) { console.error("RENDER_WORKER_TOKEN required"); process.exit(1); }
-
-async function claim() {
-  const res = await fetch(`${API}/render-jobs/claim`, { method: "POST", headers: { "X-Worker-Token": TOKEN } });
-  if (res.status === 204) return null;
-  if (!res.ok) throw new Error(`claim: ${res.status}`);
-  return res.json();
-}
-
-async function runJob(browser, { job_id, page_token, lease_seconds }) {
-  const context = await browser.newContext({ viewport: { width: 1024, height: 1024 }, deviceScaleFactor: 1 });
-  // The harness reads its job token from here, so the token never appears in a URL (access logs keep those).
-  await context.addInitScript((token) => { window.__JOB_TOKEN__ = token; }, page_token);
-  const page = await context.newPage();
-  try {
-    try {
-      await page.goto(`${BASE_URL}/render-harness?job=${job_id}`, { waitUntil: "domcontentloaded" });
-      await page.waitForFunction(
-        () => window.__JOB_STATE__ === "done" || String(window.__JOB_STATE__).startsWith("error"),
-        null,             // arg (unused by the predicate)
-        // Give up before the lease runs out; after that the next claim takes the job back.
-        { timeout: lease_seconds * 1000 - LEASE_MARGIN_MS },
-      );
-      const state = await page.evaluate(() => window.__JOB_STATE__);
-      console.log(`job ${job_id}: ${state}`);
-    } catch (err) {
-      await fetch(`${API}/render-jobs/${job_id}/fail`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Job-Token": page_token },
-        body: JSON.stringify({ error: `worker: ${err.message ?? String(err)}` }),
-      }).catch(() => {});
-      throw err;
-    }
-  } finally {
-    await context.close();
-  }
-}
-
-async function main() {
-  const browser = await launchDeterministicBrowser();
-  try {
-    for (;;) {
-      const job = await claim().catch((e) => { console.error(e.message); return null; });
-      if (job) await runJob(browser, job).catch((e) => console.error(`job ${job.job_id}: ${e.message}`));
-      else if (!job) await new Promise((r) => setTimeout(r, POLL_MS));
-      if (ONCE) break;
-    }
-  } finally {
-    await browser.close();
-  }
-}
-
-main().then(() => process.exit(0), (e) => { console.error(e); process.exit(1); });
+// The render harness has no `?job=` mode any more: the page holds no job token. The worker makes
+// every API call and hands the page its job through `?mode=export` and a loopback sink
+// (ADR 0005; `scripts/golden/` drives that mode with a fixture job). A4 rebuilds this worker
+// around it. Until then it has no page to drive, so it refuses to start rather than claim jobs
+// it cannot render.
+console.error("render worker: not runnable until ADR 0005 A4 rebuilds it around the harness's export mode");
+process.exit(1);

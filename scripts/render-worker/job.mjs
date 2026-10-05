@@ -303,6 +303,8 @@ export async function runJob({ claim, api, browser, config, assets, stopping, lo
   stopping.addEventListener("abort", stop, { once: true });
   // Claimed as the worker began to stop: back to the queue at once.
   if (stopping.aborted) stop();
+  const browserExited = () => controller.abort(new JobFailure("browser_crashed", "The browser exited.", { recycleBrowser: true }));
+  browser.once("disconnected", browserExited);
   const state = { progress: 0, stage: "loading" };
   const heartbeats = startHeartbeats(job, { seconds: claim.heartbeat_seconds, state, controller, log });
   let dir = null;
@@ -350,6 +352,7 @@ export async function runJob({ claim, api, browser, config, assets, stopping, lo
     clearTimeout(deadline);
     heartbeats.stop();
     stopping.removeEventListener("abort", stop);
+    browser.off("disconnected", browserExited);
     await context?.close().catch(() => {});
     await sink?.close().catch(() => {});
     if (dir) await rm(dir, { recursive: true, force: true });

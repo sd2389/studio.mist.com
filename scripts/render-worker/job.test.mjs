@@ -83,8 +83,13 @@ async function renderImages({ payload, sink }, renderer = SWIFTSHADER) {
 /** A browser whose pages run `page(handOff, context)` once the export mode is open. */
 function fakeBrowser(page = (handOff) => renderImages(handOff)) {
   const contexts = [];
+  const listeners = new Map();
   return {
     contexts,
+    once: (event, listener) => listeners.set(event, listener),
+    off: (event) => listeners.delete(event),
+    /** As Playwright does when the browser process goes away. */
+    exit: () => listeners.get("disconnected")?.(),
     async newContext() {
       let handOff = null;
       let closeContext;
@@ -261,6 +266,17 @@ describe("runJob", () => {
     } });
     await run({ api: broken });
     expect(called("fail")).toEqual([[{ error: "POST /render-jobs/7/complete: 400 outputs[0].key: outside this job's prefix", code: "upload_failed", retryable: true }]]);
+  });
+
+  it("fails a job whose browser exited as browser_crashed, and replaces the browser", async () => {
+    const browser = fakeBrowser(async (_handOff, context) => {
+      browser.exit();
+      await context.closed;
+      return { state: "error:closed" };
+    });
+    const { outcome, recycleBrowser } = await run({ browser });
+    expect([outcome, recycleBrowser]).toEqual(["failed", true]);
+    expect(called("fail")).toEqual([[{ error: "The browser exited.", code: "browser_crashed", retryable: true }]]);
   });
 
   it("hands a job back when the worker stops", async () => {

@@ -4,17 +4,17 @@ import { gemShaderQualityReduce, readDeviceCaps, resolveEffectiveQuality } from 
 // A small worker host: 2 cores and 2 GB, which the studio's "auto" quality calls Performance.
 vi.stubGlobal("navigator", { hardwareConcurrency: 2, deviceMemory: 2, userAgent: "HeadlessChrome" });
 const { useViewerQualityStore } = await import("@/stores/viewer-quality-store");
-const { pinExportQuality } = await import("./export-quality");
+const { pinFullQuality } = await import("./full-quality");
 
 afterAll(() => {
   vi.unstubAllGlobals();
 });
 
-describe("pinExportQuality", () => {
-  it("renders at High on a host the auto tier would degrade", () => {
+describe("pinFullQuality", () => {
+  it("draws at High on a device the auto tier would degrade", () => {
     expect(useViewerQualityStore.getState().effective.tier).toBe("performance");
 
-    pinExportQuality();
+    pinFullQuality();
 
     const { level, effective } = useViewerQualityStore.getState();
     expect(level).toBe("high");

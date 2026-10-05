@@ -1,9 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { applySavedLook, resolveModelConfig, useFixedClockWarmup, useLookStage, ViewerStage } from "@/features/viewer";
+import { applySavedLook, pinFullQuality, resolveModelConfig, useFixedClockWarmup, useLookStage, ViewerStage } from "@/features/viewer";
 import { getHiresRefs } from "@/stores/hires-export-store";
-import { pinExportQuality } from "./export-quality";
 import { assertLiveCanvasSized } from "./live-canvas";
 import {
   jobImageSize,
@@ -91,7 +90,8 @@ export function HarnessExport() {
       await sink.postProgress(0, "loading");
       const model = await sink.fetchModel();
       if (cancelled) return;
-      pinExportQuality();
+      // Exports render at full quality on any host.
+      pinFullQuality();
       applySavedLook(job.payload.look, job.payload.look_items);
       modelUrl = URL.createObjectURL(model);
       setLoaded({ job, modelUrl });

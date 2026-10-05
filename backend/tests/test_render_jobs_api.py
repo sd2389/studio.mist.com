@@ -119,10 +119,7 @@ def test_create_queues_a_still_and_holds_its_price(client, db, owner, scene):
     assert _balance(db, user) == 23
     row = _job_rows(db)[0]
     assert (row.priority, row.max_running, row.max_attempts) == (100, 1, 3)
-    # What the worker protocol before A2 reads.
-    assert (row.model_ref, row.lighting, row.preset, row.width, row.height) == (
-        "customers/1/models/ring.glb", "soft", "platinum", 3840, 2160
-    )
+    assert (row.look["material"], row.look["lighting"]) == ("platinum", "soft")
 
 
 def test_a_free_8k_still_is_402(client, db, owner, scene):

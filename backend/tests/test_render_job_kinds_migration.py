@@ -1,69 +1,43 @@
 """The render job kinds migration downgrades and upgrades on SQLite, fills in the rows it finds,
-and leaves the schema the models describe."""
+and, with the migrations after it, leaves the schema the models describe."""
 
 import json
-from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 from alembic import command
-from alembic.autogenerate import compare_metadata
-from alembic.config import Config
-from alembic.migration import MigrationContext
 from alembic.script import ScriptDirectory
-from sqlalchemy import create_engine, inspect, text
-
-import app.config
-from app.models import Base
+from migration_steps import (
+    alembic_config,
+    columns,
+    model_diffs,
+    point_alembic_at,
+    previous_revision,
+    schema_at_head,
+)
+from sqlalchemy import inspect, text
 
 REVISION = "97e22f9d865b"
-TABLES = ("render_jobs", "renders")
-ALEMBIC_DIR = Path(__file__).resolve().parent.parent / "alembic"
 
 
 @pytest.fixture()
 def sqlite_url(tmp_path, monkeypatch) -> str:
     url = f"sqlite:///{tmp_path / 'migrations.db'}"
-    # alembic/env.py takes the database URL from the settings: point it at this file only.
-    monkeypatch.setattr(app.config, "get_settings", lambda: SimpleNamespace(database_url=url))
+    point_alembic_at(url, monkeypatch)
     return url
-
-
-def _alembic_config() -> Config:
-    config = Config()  # no ini file, so env.py leaves the test run's logging alone
-    config.set_main_option("script_location", str(ALEMBIC_DIR))
-    return config
-
-
-def _columns(engine, table: str) -> set[str]:
-    return {column["name"] for column in inspect(engine).get_columns(table)}
-
-
-def _model_diffs(engine) -> list:
-    with engine.connect() as connection:
-        diffs = compare_metadata(
-            MigrationContext.configure(connection, opts={"compare_type": True}), Base.metadata
-        )
-    return [diff for diff in diffs if any(table in repr(diff) for table in TABLES)]
 
 
 def test_the_migrations_have_one_head():
     """Branches add migrations in parallel; whichever merges second re-points its down_revision."""
-    assert len(ScriptDirectory.from_config(_alembic_config()).get_heads()) == 1
+    assert len(ScriptDirectory.from_config(alembic_config()).get_heads()) == 1
 
 
 def test_render_job_kinds_migration_round_trip(sqlite_url):
-    config = _alembic_config()
-    previous = ScriptDirectory.from_config(config).get_revision(REVISION).down_revision
-    engine = create_engine(sqlite_url)
-    # Older migrations use PostgreSQL-only SQL, so build this revision's schema from the models
-    # and step down from it.
-    Base.metadata.create_all(engine)
-    command.stamp(config, REVISION)
+    config = alembic_config()
+    engine = schema_at_head(sqlite_url)
 
-    command.downgrade(config, previous)
-    assert {"kind", "spec", "credit_state", "idempotency_key"}.isdisjoint(_columns(engine, "render_jobs"))
-    assert {"job_id", "filename", "meta"}.isdisjoint(_columns(engine, "renders"))
+    command.downgrade(config, previous_revision(REVISION))
+    assert {"kind", "spec", "credit_state", "idempotency_key"}.isdisjoint(columns(engine, "render_jobs"))
+    assert {"job_id", "filename", "meta"}.isdisjoint(columns(engine, "renders"))
 
     with engine.begin() as connection:
         connection.execute(text(
@@ -96,7 +70,9 @@ def test_render_job_kinds_migration_round_trip(sqlite_url):
         (2, "still", 0, 0, "none", 100, 3),
     ]
     assert json.loads(rows[0].spec) == {"width": 2048, "height": 1024, "preset": "gold-18k-yellow", "lighting": "studio"}
-    assert _model_diffs(engine) == []
+
+    command.upgrade(config, "head")
+    assert model_diffs(engine) == []
     foreign_keys = inspect(engine).get_foreign_keys("renders")
     assert {"name": "fk_renders_job_id_render_jobs", "referred_table": "render_jobs"}.items() <= next(
         key for key in foreign_keys if key["constrained_columns"] == ["job_id"]

@@ -146,12 +146,6 @@ def _queue_jobs(
                 billing_period_start=period_start,
                 idempotency_key=idempotency_key,
                 request_hash=request_hash,
-                # What the worker protocol before A2 reads.
-                model_ref=job.scene.model_key,
-                lighting=job.look["lighting"],
-                preset=job.look["material"],
-                width=job.spec["width"],
-                height=job.spec["height"],
                 status="queued",
                 attempts=0,
                 created_at=now,

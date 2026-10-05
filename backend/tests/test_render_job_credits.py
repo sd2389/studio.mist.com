@@ -195,7 +195,7 @@ def test_hold_and_refund_leave_the_commit_to_the_caller(db, sample_user):
     db.rollback()
     assert _balance(db, sample_user) == 5
 
-    job = RenderJob(user_id=sample_user.id, model_ref="m.glb", credits=4, credit_state="held")
+    job = RenderJob(user_id=sample_user.id, credits=4, credit_state="held")
     db.add(job)
     db.commit()
     refund_render_job(db, job)

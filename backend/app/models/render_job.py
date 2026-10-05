@@ -33,12 +33,6 @@ class RenderJob(Base):
     watermark: Mapped[bool] = mapped_column(Boolean, default=True)  # the owner's plan at creation
     priority: Mapped[int] = mapped_column(SmallInteger, default=100)  # 100 from the studio, 10 for batches
     max_running: Mapped[int] = mapped_column(SmallInteger, default=1)  # the owner's running cap at creation
-    # The protocol before ADR 0005 reads these; A2 drops them with result_key.
-    model_ref: Mapped[str] = mapped_column(String(1024))  # storage model key, or absolute URL (dev/smoke)
-    lighting: Mapped[str] = mapped_column(String(32), default="studio")
-    preset: Mapped[str] = mapped_column(String(64), default="gold-18k-yellow")
-    width: Mapped[int] = mapped_column(Integer, default=2048)
-    height: Mapped[int] = mapped_column(Integer, default=2048)
     status: Mapped[str] = mapped_column(String(16), default="queued", index=True)
     attempts: Mapped[int] = mapped_column(Integer, default=0)
     max_attempts: Mapped[int] = mapped_column(SmallInteger, default=3)
@@ -57,7 +51,6 @@ class RenderJob(Base):
     billing_period_start: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # when it was held
     idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
     request_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)  # SHA-256 of the request
-    result_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
     error: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     error_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
     renderer: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # browser, backend, adapter

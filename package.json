@@ -13,7 +13,8 @@
     "golden:capture": "node scripts/golden/capture.mjs",
     "golden:fixture": "node scripts/golden/export-fixture.mjs",
     "test:golden": "node scripts/golden/check.mjs",
-    "worker:render": "node scripts/render-worker/worker.mjs"
+    "worker:render": "node scripts/render-worker/worker.mjs",
+    "worker:smoke": "node scripts/render-worker/smoke.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.1",

@@ -161,11 +161,16 @@ def output_names(spec: Spec, stem: str) -> list[str]:
     return names
 
 
+def frame_count(spec: Spec) -> int:
+    """How many images or frames a job renders: one an image of a still or an angle set."""
+    return len(spec_cameras(spec))
+
+
 def normalised_spec(spec: Spec, output_names: list[str]) -> dict[str, Any]:
     """What the job keeps: the validated spec, its frame count and its output names."""
     return {
         **spec.model_dump(mode="json", exclude_none=True),
-        "frames": len(output_names),
+        "frames": frame_count(spec),
         "output_names": output_names,
     }
 
@@ -216,6 +221,11 @@ def planned_outputs(kind: str, spec: Mapping[str, Any]) -> list[PlannedOutput]:
     ]
 
 
-def longest_edge(spec: Mapping[str, Any]) -> int:
+def frame_size(kind: str, spec: Mapping[str, Any]) -> tuple[int, int]:
+    """The width and height of every image or frame a job renders, read from its normalised spec."""
+    return spec["width"], spec["height"]
+
+
+def longest_edge(kind: str, spec: Mapping[str, Any]) -> int:
     """The longest side a job renders: what its owner's plan allowed when the job was created."""
-    return max(spec["width"], spec["height"])
+    return max(frame_size(kind, spec))

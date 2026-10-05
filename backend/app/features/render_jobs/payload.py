@@ -85,7 +85,9 @@ def job_payload(db: Session, job_id: int, token: str) -> RenderJobPayload:
         look_items=scene_look(db, job.look, job.user_id),
         model=_model_source(job, scene),
         watermark=job.watermark,
-        limits=PayloadLimits(max_edge=longest_edge(job.spec), max_runtime_seconds=max_runtime_seconds(job.kind)),
+        limits=PayloadLimits(
+            max_edge=longest_edge(job.kind, job.spec), max_runtime_seconds=max_runtime_seconds(job.kind)
+        ),
         scene=PayloadScene(id=scene.id, name=scene.name, sku=scene.sku),
     )
     db.commit()  # ends the read and its row lock

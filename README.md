@@ -107,7 +107,7 @@ Templates: [`.env.example`](.env.example) (web, Compose) and [`backend/.env.exam
 | `API_URL` | web, server | FastAPI URL for Next.js route handlers; Compose points it at the internal `backend` service |
 | `NEXT_PUBLIC_CDN_ORIGIN` | web, build time | Load models, thumbnails and renders from a CDN |
 | `NEXT_PUBLIC_SOURCE_ASSET_ORIGIN` | web, build time | Separate origin for catalogue HDRIs and backgrounds |
-| `NEXT_PUBLIC_ENABLE_RENDER_HARNESS` | web, build time | `1` serves `/render-harness` in a production build (dev servers always serve it) |
+| `BUILD_TARGET` | web, build and start | `worker` makes the render worker's app, which adds `/render-harness`; any other build, dev servers included, has no such route |
 | `NEXT_PUBLIC_SENTRY_*`, `SENTRY_*` | web, backend | Optional Sentry reporting and source-map upload |
 | `STUDIO_POSTGRES_PORT` | Compose | Host port for Postgres |
 | `DATABASE_URL` | backend | Postgres connection; must be set when `APP_ENV=production` |
@@ -129,7 +129,7 @@ Templates: [`.env.example`](.env.example) (web, Compose) and [`backend/.env.exam
 | `INTERNAL_PROXY_TOKEN` | web, backend | Shared secret, the same on both: the web server's sign-in and sign-up proxies send it with the caller's IP, and the API believes a forwarded IP only with it (never a bare `X-Forwarded-For`). Unset, sign-ins through the web app share one per-IP budget, and the API warns at startup in production |
 | `RENDER_WORKER_TOKEN` | backend, worker | Shared secret for render workers, or several comma-separated while one is rotated in; the job-claim endpoint returns 503 until it is set |
 | `RENDER_API_URL` | worker | Backend URL |
-| `HARNESS_BASE_URL` | worker, goldens | Web app URL that serves `/render-harness` |
+| `HARNESS_BASE_URL` | worker, goldens | URL of the worker's app (`BUILD_TARGET=worker`), which serves `/render-harness` |
 
 ## Deploying
 
@@ -163,7 +163,9 @@ Exports render on GPU workers ([ADR 0005](docs/adr/0005-server-exports.md)). Cre
 - Outputs live under `customers/<user>/renders/<job>/`. `complete` checks each file's key, type and stored size against the job, then creates the scene's renders, charges the credits and counts the bytes toward the owner's storage, which deleting the scene gives back.
 - Local storage signs nothing, so there the payload names `GET /{id}/inputs/model` and `/inputs/background`, and uploads go to `PUT /{id}/uploads/{name}`, all with the job token.
 
-To try it locally, `cp docker-compose.override.example.yml docker-compose.override.yml` gives the backend a `RENDER_WORKER_TOKEN`, and `docker compose exec backend python -m scripts.seed_smoke_job` queues a still for a smoke-test user (`--bogus`: one whose model file is missing). The Node worker for this protocol is being rebuilt (ADR 0005, A4); until then `npm run worker:render` speaks the protocol before it and can't render these jobs.
+The page that renders jobs is only in the render worker's build of the app: `BUILD_TARGET=worker` (for `npm run build`, `npm run start` and `npm run dev` alike) adds `/render-harness`, which the public build does not have. The worker opens it in headless Chromium on loopback. `?mode=probe` reports whether three.js draws with WebGPU or WebGL 2 there, and `?mode=export` renders a still or an angle set (a live view, a saved pose or a Campaign Pack angle) from the job the worker hands the page in `window.__RENDER_JOB__`, sending each image to the worker's loopback sink. The worker process itself (`npm run worker:render`) is being rebuilt around that mode and this protocol (ADR 0005, A4) and refuses to start until then; `npm run test:golden` drives the export mode with a fixture job.
+
+To try the API locally, `cp docker-compose.override.example.yml docker-compose.override.yml` gives the backend a `RENDER_WORKER_TOKEN`, and `docker compose exec backend python -m scripts.seed_smoke_job` queues a still for a smoke-test user (`--bogus`: one whose model file is missing).
 
 Only a claim takes back a job whose lease ran out, so with no worker polling it stays `running`.
 
@@ -191,7 +193,7 @@ Only a claim takes back a job whose lease ran out, so with no worker polling it 
 ```bash
 npm run lint               # ESLint
 npx tsc --noEmit           # type check
-npm run check:boundaries   # fails on imports of the removed @/components/viewer and @/components/upload paths
+npm run check:boundaries   # fails on the removed @/components/viewer and upload paths, and on render harness imports outside its route
 npm test                   # Vitest unit tests (src/**/*.test.ts, *.test.tsx)
 npm run build              # production build
 ```
@@ -207,8 +209,8 @@ Backend, from `backend/` with the virtualenv above:
 
 **Render goldens** (`npm run test:golden`):
 
-- Captures `/render-harness` under the 5 lighting setups in headless Chromium with the SwiftShader software renderer, all at once with one browser each, and compares each frame with `tests/goldens/` (SSIM 0.98 or higher).
-- Needs Playwright's Chromium (`npx playwright install chromium`) and the app running at `HARNESS_BASE_URL` (default `http://localhost:3000`). That can be `npm run dev`, or `NEXT_PUBLIC_ENABLE_RENDER_HARNESS=1 npm run build && npm run start`, which is what CI does.
+- Captures `/render-harness` in headless Chromium with the SwiftShader software renderer, all at once with one browser each: the live view under the 5 lighting setups (WebGL 2), and a still rendered by the export mode from a fixture job (WebGPU). Compares each image with `tests/goldens/` (SSIM 0.98 or higher).
+- Needs Playwright's Chromium (`npx playwright install chromium`) and the worker's app running at `HARNESS_BASE_URL` (default `http://localhost:3000`). That can be `BUILD_TARGET=worker npm run dev`, or a production build and start with `BUILD_TARGET=worker` on both, which is what CI does.
 - Goldens are pinned to SwiftShader, the Playwright version in `package.json` and the fixture model. Regenerate them only for an approved render change, following [tests/goldens/README.md](tests/goldens/README.md).
 
 After meaningful changes, also run the manual smoke flow in [docs/QUALITY-GATES.md](docs/QUALITY-GATES.md) (upload, dashboard list, viewer, render still).

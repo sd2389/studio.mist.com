@@ -39,12 +39,14 @@ Reuse these instead of rebuilding them per page:
 | A material's swatch colour or fineness stamp | `presetSwatchHex`, `metalBadge` (`src/lib/material-colors.ts`) |
 | A studio page (sidebar, phone sheet, header, export dialogs) | `StudioLayout` (`@/features/viewer`) |
 | A lit 3D view of jewelry or a stone (full view or catalogue tile) | `StudioCanvas` (`@/features/viewer`) |
-| A saved scene drawn as it was finished (the studio view and the embed) | `ViewerStage`, fed by `savedLook` and `registerLookMaterials` (`src/features/viewer/`); the scene's `look` brings its catalogue items ([ADR 0004](adr/0004-embed-final-look.md)) |
+| A saved scene drawn as it was finished (the studio view, the embed and the render harness) | `ViewerStage`, fed by `applySavedLook` (the look into the studio store, with its catalogue and library materials) and `useLookStage` (the store as stage props) (`@/features/viewer`); the scene's `look` brings its catalogue items ([ADR 0004](adr/0004-embed-final-look.md)) |
 | Everything a lighting mode sets | `LIGHTING_PRESETS` (`src/lib/viewer-lighting.ts`) |
 | Still export settings and rendering | `StillExportSettings`, `exportStill` (`@/features/render`) |
 | Turntable recording options | `turntableCaptureOptions`, `videoSizeLabel` (`@/features/render`) |
 | A video resolution picker | `VideoResolutionField` (`@/features/render`) |
 | What the plan lets an export be (size cap, watermark, Campaign Pack) | `loadExportPlan`, `useExportPlan`, `ExportPlanNote` (`@/features/render`); offscreen sessions take `ExportLimits` (`src/lib/export-limits.ts`), refuse larger sizes and draw the watermark (`src/lib/export-watermark.ts`) on every frame |
+| An export rendered on the server: start it, price it first, follow it, cancel or download it | `createRenderJob` / `createRenderJobs`, `useRenderJobQuote` with `RenderJobCost` (the quoted credits by a Render button), `useRenderJob` (polls until the job ends), `ExportJobsPanel` (a scene's jobs, or all of them on `/exports`) (`@/features/render`), behind the `server_exports` flag ([ADR 0005](adr/0005-server-exports.md)) |
+| The look an export renders | `lookSnapshot` (`@/features/viewer`), the same look the studio autosaves |
 | An upgrade prompt for a locked option or feature | `UpgradePrompt`, `UpgradeButton` (`src/components/billing/UpgradePrompt.tsx`) |
 | An option pill | `Chip` (`src/components/ui/chip.tsx`) |
 | A price for a design | `quoteDesign` (`src/lib/pricing/quote.ts`) |

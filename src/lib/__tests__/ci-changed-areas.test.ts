@@ -12,12 +12,20 @@ describe("CI change detection", () => {
     expect(rendered.has("src/app/pricing/page.tsx")).toBe(false);
   });
 
+  it("follows the harness's worker-only modes, which the public app never loads", () => {
+    expect(rendered.has("src/app/render-harness/page.worker.tsx")).toBe(true);
+    expect(rendered.has("src/features/render/harness/render-images.ts")).toBe(true);
+    expect(rendered.has("src/features/render/harness/cameras.ts")).toBe(true);
+  });
+
   it.each([
     [["README.md", "docs/QUALITY-GATES.md"], { web: false, backend: false, render: false }],
     [["backend/app/main.py"], { web: false, backend: true, render: false }],
     [["src/app/pricing/page.tsx"], { web: true, backend: false, render: false }],
     [["src/components/DiamondGem.tsx"], { web: true, backend: false, render: true }],
     [["tests/goldens/studio.png"], { web: true, backend: false, render: true }],
+    [["tests/goldens/fixtures/export-still.json"], { web: true, backend: false, render: true }],
+    [["src/app/render-harness/page.worker.tsx"], { web: true, backend: false, render: true }],
     [[".github/workflows/ci.yml"], { web: true, backend: true, render: true }],
     [["package-lock.json"], { web: true, backend: true, render: true }],
   ])("%j needs %j", (paths, areas) => {

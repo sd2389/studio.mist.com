@@ -323,23 +323,30 @@ export function encodeCanvas(
     : canvasToBlob(canvas, "image/png");
 }
 
+export type StillImageOpts = Pick<RenderOpts, "transparent" | "format" | "jpegQuality" | "backdrop">;
+
+/** One still from a session, from its camera as it stands: the image a hi-res export downloads. */
+export async function renderSessionStill(session: OffscreenRenderSession, opts: StillImageOpts): Promise<Blob> {
+  const { transparent = false, format = "png", backdrop = null } = opts;
+  if (!transparent && session.hasOpaqueBackground) {
+    return encodeCanvas(session.render(), format, opts.jpegQuality);
+  }
+  const flattenOnto = format === "jpeg" ? backdrop ?? WHITE_BACKDROP : transparent ? null : backdrop;
+  const backdropImage = await loadBackdropImage(flattenOnto);
+  const { cutout, flat } = session.capture({
+    backdrop: flattenOnto,
+    backdropImage,
+    cutout: !flattenOnto,
+    samples: STILL_EXPORT_SAMPLES,
+  });
+  return encodeCanvas((flat ?? cutout)!, format, opts.jpegQuality);
+}
+
 /** One-shot still: same PostFX pipeline as the viewport (AO, bloom, tone mapping, SMAA). */
 export async function renderAtResolution(opts: RenderOpts): Promise<Blob> {
-  const { transparent = false, format = "png", backdrop = null } = opts;
   const session = await createOffscreenRenderSession(opts);
   try {
-    if (!transparent && session.hasOpaqueBackground) {
-      return await encodeCanvas(session.render(), format, opts.jpegQuality);
-    }
-    const flattenOnto = format === "jpeg" ? backdrop ?? WHITE_BACKDROP : transparent ? null : backdrop;
-    const backdropImage = await loadBackdropImage(flattenOnto);
-    const { cutout, flat } = session.capture({
-      backdrop: flattenOnto,
-      backdropImage,
-      cutout: !flattenOnto,
-      samples: STILL_EXPORT_SAMPLES,
-    });
-    return await encodeCanvas((flat ?? cutout)!, format, opts.jpegQuality);
+    return await renderSessionStill(session, opts);
   } finally {
     session.dispose();
   }

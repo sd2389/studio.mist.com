@@ -18,7 +18,29 @@ export {
 } from "./ui/StillExportSettings";
 export { turntableCaptureOptions, videoSizeLabel, type TurntableSettings } from "./lib/turntable-capture";
 export { VideoResolutionField } from "./ui/VideoResolutionField";
-export { loadExportPlan, type ExportPlan } from "./lib/export-plan";
+export { exportPlanFromSnapshot, loadExportPlan, type ExportPlan } from "./lib/export-plan";
 export { useExportPlan } from "./ui/useExportPlan";
 export { useCaptureRun } from "./ui/useCaptureRun";
 export { ExportPlanNote } from "./ui/ExportPlanNote";
+/** Server exports (ADR 0005): jobs, their polling, prices and the Exports panel. */
+export {
+  cancelRenderJob,
+  createRenderJob,
+  createRenderJobs,
+  getRenderJob,
+  listRenderJobs,
+  outputDownloadUrl,
+  quoteRenderJob,
+  type RenderJob,
+  type RenderJobCamera,
+  type RenderJobFilter,
+  type RenderJobOutput,
+  type RenderJobQuote,
+  type RenderJobRequest,
+  type RenderJobStatus,
+} from "./lib/render-jobs-api";
+export { isJobFinished, pollRenderJob } from "./lib/render-job-polling";
+export { useRenderJob } from "./ui/useRenderJob";
+export { useRenderJobQuote } from "./ui/useRenderJobQuote";
+export { RenderJobCost } from "./ui/RenderJobCost";
+export { ExportJobsPanel } from "./ui/ExportJobsPanel";

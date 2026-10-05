@@ -3,14 +3,14 @@
 // GitHub step outputs:
 //   web=true      lint, type check and frontend unit tests
 //   backend=true  backend unit tests
-//   render=true   render goldens: any file the render-harness page can load
+//   render=true   render goldens: any file the render-harness page (worker build only) can load
 // Changes to CI itself or to dependencies run everything; docs alone run nothing.
 import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 /** The golden page and the layout around it. */
-const HARNESS_ENTRIES = ["src/app/layout.tsx", "src/app/render-harness/page.tsx"];
+const HARNESS_ENTRIES = ["src/app/layout.tsx", "src/app/render-harness/page.worker.tsx"];
 const SOURCE_EXTENSIONS = [".ts", ".tsx", ".mts", ".js", ".jsx", ".mjs", ".css"];
 // Static and dynamic imports, re-exports, side-effect imports and CSS @import.
 const SPECIFIER = /(?:from\s*|import\s*\(\s*|import\s+|@import\s+)["']([^"']+)["']/g;
@@ -61,7 +61,7 @@ export function changedAreas(paths, rendered = harnessFiles()) {
       // Docs need no checks.
     } else if (
       rendered.has(file) ||
-      /^(public|scripts\/golden|tests\/goldens)\//.test(file) ||
+      /^(public|scripts\/golden|tests\/goldens|src\/app\/render-harness)\//.test(file) ||
       /^(next\.config\.|postcss\.config\.|tsconfig\.json$)/.test(file)
     ) {
       areas.web = true;

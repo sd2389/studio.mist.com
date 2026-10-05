@@ -1,5 +1,6 @@
 import "server-only";
 
+import { NextResponse } from "next/server";
 import { getServerApiUrl } from "@/lib/api-url";
 import { parseAuthErrorBody } from "@/lib/auth/parse-auth-error";
 import { authHeaders } from "@/lib/auth/server-session";
@@ -51,4 +52,13 @@ export async function readUpstreamJson(upstream: Response): Promise<unknown> {
 
 export function upstreamError(json: unknown, fallback: string): string {
   return parseAuthErrorBody(json, fallback);
+}
+
+/** The API's answer as the proxy's own: its JSON with its status, or `{ error }` with its status. */
+export async function relayUpstreamJson(upstream: Response, fallback: string): Promise<NextResponse> {
+  const json = await readUpstreamJson(upstream);
+  if (!upstream.ok) {
+    return NextResponse.json({ error: upstreamError(json, fallback) }, { status: upstream.status });
+  }
+  return NextResponse.json(json, { status: upstream.status });
 }

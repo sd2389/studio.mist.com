@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { isFeatureEnabled } from "@/features/feature-flags/domain/is-enabled";
+import { isFeatureEnabled } from "@/lib/feature-flags/is-enabled";
 import type { FeatureFlagsSnapshot, FeatureKey } from "@/lib/feature-flags/types";
 
 export function useFeatureFlags(initial?: FeatureFlagsSnapshot | null) {

@@ -6,12 +6,24 @@ of the files it makes (job_files.py). Kinds whose phase hasn't shipped answer 40
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal
+import re
+from collections.abc import Mapping
+from typing import Annotated, Any, Literal, get_args
 
 from fastapi import HTTPException
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from app.core.validation import validation_detail
+from app.features.render_jobs.campaign_pack import (
+    MAX_PACK_ANGLES,
+    MAX_PACK_METALS,
+    PACK_METALS,
+    PACK_STILL_SIZES,
+    POSE_ANGLE_PREFIX,
+    PackPart,
+    PackVideoFormat,
+    pack_parts,
+)
 from app.features.scene.look import MAX_POSES, POSE_ID, CameraCoordinate, Position
 
 # Limits for every plan; the plan's own caps are checked against the spec as well (plan_limits.py).
@@ -24,7 +36,7 @@ MAX_VIDEO_FPS = 60
 MAX_VIDEO_FRAMES = 3600
 MAX_SPIN_FRAMES = 144
 MAX_SPIN_SIZE = 2048
-LATER_KINDS = frozenset({"campaign_pack", "convert", "batch_archive"})
+LATER_KINDS = frozenset({"convert", "batch_archive"})
 # The studio's four built-in poses (DEFAULT_POSES in src/lib/viewer-scene.ts); a look saves only its own.
 DEFAULT_POSE_IDS = frozenset({"pose-top", "pose-right", "pose-default", "pose-left"})
 DEFAULT_MARGIN_PCT = 8.0
@@ -32,6 +44,9 @@ DEFAULT_MARGIN_PCT = 8.0
 # The Campaign Pack's built-in angles (src/features/render/campaign-pack/domain/defaults.ts).
 PackAngle = Literal["front", "three-quarter", "top", "side"]
 PoseId = Annotated[str, Field(pattern=POSE_ID)]
+VideoFps = Annotated[int, Field(ge=1, le=MAX_VIDEO_FPS)]
+SpinFrames = Annotated[int, Field(ge=1, le=MAX_SPIN_FRAMES)]
+SpinSize = Annotated[int, Field(ge=64, le=MAX_SPIN_SIZE)]
 
 
 class SpecModel(BaseModel):
@@ -126,7 +141,7 @@ class TurntablePath(SpecModel):
 class TurntableSpec(FrameSize):
     """A video: the harness renders its frames and the worker encodes them as one H.264 MP4."""
 
-    fps: int = Field(ge=1, le=MAX_VIDEO_FPS)
+    fps: VideoFps
     frames: int = Field(ge=1, le=MAX_VIDEO_FRAMES)
     # The worker's x264 CRF: standard 23, high 20, max 17.
     quality: Literal["standard", "high", "max"] = "high"
@@ -151,16 +166,122 @@ class SpinSpec(ImageEncoding):
     """A 360° spin: `frames` frames of `size` px square, once round the piece on the Campaign
     Pack's spin orbit. The worker puts them and the pack's viewer page in one ZIP."""
 
-    frames: int = Field(ge=1, le=MAX_SPIN_FRAMES)
-    size: int = Field(ge=64, le=MAX_SPIN_SIZE)
+    frames: SpinFrames
+    size: SpinSize
 
 
-Spec = StillSpec | AngleSetSpec | TurntableSpec | SpinSpec
+def _is_pack_metal(metal: str) -> str:
+    if metal not in PACK_METALS:
+        raise ValueError(f"'{metal}' is neither a metal preset nor 'current'")
+    return metal
+
+
+def _is_pack_angle(angle: str) -> str:
+    pose = angle.removeprefix(POSE_ANGLE_PREFIX)
+    if angle not in get_args(PackAngle) and not (pose != angle and re.fullmatch(POSE_ID, pose)):
+        raise ValueError(f"'{angle}' is neither a built-in angle nor {POSE_ANGLE_PREFIX}<saved pose id>")
+    return angle
+
+
+def _is_pack_still_size(size: int) -> int:
+    if size not in PACK_STILL_SIZES:
+        *sizes, largest = PACK_STILL_SIZES
+        raise ValueError(f"must be {', '.join(map(str, sizes))} or {largest}")
+    return size
+
+
+def _each_once(values: list[Any]) -> list[Any]:
+    if len(set(values)) != len(values):
+        raise ValueError("each at most once")
+    return values
+
+
+PackMetal = Annotated[str, AfterValidator(_is_pack_metal)]
+PackAngleId = Annotated[str, AfterValidator(_is_pack_angle)]
+
+
+class PackFormats(SpecModel):
+    jpg: bool
+    png: bool
+
+
+class PackBackground(SpecModel):
+    """What the stills, the videos and the spin frames are flattened onto: white, the studio's own
+    backdrop and set (`scene`), or a colour the dialog's picker gave (#rrggbb)."""
+
+    kind: Literal["white", "scene", "custom"]
+    color: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
+
+    @model_validator(mode="after")
+    def _has_a_colour_when_custom(self) -> PackBackground:
+        if (self.kind == "custom") != (self.color is not None):
+            raise ValueError("a custom background has a colour, and only a custom one")
+        return self
+
+
+class PackTurntable(SpecModel):
+    """A turntable of every metal in each format, `durationSec` long at `fps`."""
+
+    enabled: bool
+    formats: Annotated[list[PackVideoFormat], AfterValidator(_each_once)] = Field(max_length=3)
+    durationSec: int = Field(ge=1)
+    fps: VideoFps
+
+    @model_validator(mode="after")
+    def _fits_one_video(self) -> PackTurntable:
+        if self.durationSec * self.fps > MAX_VIDEO_FRAMES:
+            raise ValueError(f"at most {MAX_VIDEO_FRAMES} frames a turntable")
+        return self
+
+
+class PackSpin(SpecModel):
+    """A spin of every metal, `frames` frames of `size` px square."""
+
+    enabled: bool
+    frames: SpinFrames
+    size: SpinSize
+
+
+class CampaignPackSpec(SpecModel):
+    """The pack's CampaignPackConfig (src/features/render/campaign-pack/domain/types.ts), whole,
+    as the dialog resolves it. `angleIds` are built-in angles or "pose:<id>" of a pose the look
+    saves; `metals` are the studio's metal presets or "current", the model as configured."""
+
+    metals: Annotated[list[PackMetal], AfterValidator(_each_once)] = Field(min_length=1, max_length=MAX_PACK_METALS)
+    angleIds: Annotated[list[PackAngleId], AfterValidator(_each_once)] = Field(max_length=MAX_PACK_ANGLES)
+    stillSize: Annotated[int, AfterValidator(_is_pack_still_size)]
+    formats: PackFormats
+    background: PackBackground
+    jpegQuality: float = Field(ge=0.8, le=1)
+    autoFrame: bool
+    # Empty border on every side, as a percentage of the frame.
+    marginPct: float = Field(ge=0, le=20)
+    contactShadow: bool
+    turntable: PackTurntable
+    spin: PackSpin
+    # The live 3D embed's page and snippet; the pack has them only when the scene has a SKU.
+    embed: bool
+    # The ASET image of the stones, when the piece has ray-traced gems.
+    cutScope: bool
+
+    @model_validator(mode="after")
+    def _renders_something(self) -> CampaignPackSpec:
+        if not self.parts():
+            raise ValueError("pick at least one angle, turntable format, the 360° spin or the ASET image")
+        return self
+
+    def parts(self) -> list[PackPart]:
+        """What the pack renders (campaign_pack.pack_parts)."""
+        return pack_parts(self.model_dump())
+
+
+Spec = StillSpec | AngleSetSpec | TurntableSpec | SpinSpec | CampaignPackSpec
 SPEC_MODELS: dict[str, type[Spec]] = {
     "still": StillSpec,
     "angle_set": AngleSetSpec,
     "turntable": TurntableSpec,
     "spin": SpinSpec,
+    "campaign_pack": CampaignPackSpec,
 }
 
 
@@ -196,11 +317,29 @@ def _named_poses(spec: Spec) -> list[tuple[str, str]]:
     return poses
 
 
-def check_poses(spec: Spec, saved_pose_ids: set[str]) -> None:
-    """400 when the spec names a pose that is neither saved in the look nor built in."""
+def _pack_poses(spec: Spec) -> list[tuple[str, str]]:
+    """Each saved pose a Campaign Pack takes as an angle, with its field."""
+    if not isinstance(spec, CampaignPackSpec):
+        return []
+    return [
+        (f"angleIds[{index}]", angle.removeprefix(POSE_ANGLE_PREFIX))
+        for index, angle in enumerate(spec.angleIds)
+        if angle.startswith(POSE_ANGLE_PREFIX)
+    ]
+
+
+def check_poses(spec: Spec, saved_poses: list[Mapping[str, Any]]) -> None:
+    """400 when the spec names a pose the look doesn't have. A camera or a turntable names one the
+    look saves or a built-in one; a Campaign Pack's angle only one the user saved, as the pack's
+    picker offers them (its built-in angles stand for the built-in poses)."""
+    saved = {pose["id"] for pose in saved_poses}
     for field, pose in _named_poses(spec):
-        if pose not in saved_pose_ids | DEFAULT_POSE_IDS:
+        if pose not in saved | DEFAULT_POSE_IDS:
             raise HTTPException(status_code=400, detail=f"spec.{field}: the look has no pose '{pose}'")
+    users_own = {pose["id"] for pose in saved_poses if not pose.get("isDefault")} - DEFAULT_POSE_IDS
+    for field, pose in _pack_poses(spec):
+        if pose not in users_own:
+            raise HTTPException(status_code=400, detail=f"spec.{field}: the look has no saved pose '{pose}'")
 
 
 def spec_warnings(spec: Spec) -> list[str]:

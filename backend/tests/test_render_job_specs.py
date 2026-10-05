@@ -102,7 +102,7 @@ def test_an_angle_set_takes_1_to_12_cameras():
     assert _refused("angle_set", _still()).startswith("spec.")
 
 
-@pytest.mark.parametrize("kind", ["campaign_pack", "convert", "batch_archive"])
+@pytest.mark.parametrize("kind", ["convert", "batch_archive"])
 def test_kinds_of_later_phases_answer_400(kind):
     assert _refused(kind, {}) == f"kind: '{kind}' is not available yet"
 
@@ -136,9 +136,9 @@ def test_an_angle_set_costs_each_of_its_images():
 def test_a_pose_must_be_saved_in_the_look_or_built_in():
     spec = parse_spec("angle_set", {"cameras": [{"pose": "pose-top"}, {"pose": "pose-hero"}], "width": 512, "height": 512})
 
-    check_poses(spec, {"pose-hero"})
+    check_poses(spec, [{"id": "pose-hero"}])
     with pytest.raises(HTTPException) as exc:
-        check_poses(spec, set())
+        check_poses(spec, [])
     assert exc.value.detail == "spec.cameras[1].pose: the look has no pose 'pose-hero'"
 
 
@@ -329,12 +329,12 @@ def test_a_turntables_poses_must_be_saved_in_the_look_or_built_in():
     cut = parse_spec("turntable", _turntable(path={"poses": ["pose-top", "pose-hero"]}))
     orbit = parse_spec("turntable", _turntable(path={"orbit": {"start": {"pose": "pose-hero"}}}))
 
-    check_poses(cut, {"pose-hero"})
-    check_poses(orbit, {"pose-hero"})
+    check_poses(cut, [{"id": "pose-hero"}])
+    check_poses(orbit, [{"id": "pose-hero"}])
     details = []
     for spec in (cut, orbit):
         with pytest.raises(HTTPException) as exc:
-            check_poses(spec, set())
+            check_poses(spec, [])
         details.append(exc.value.detail)
     assert details == [
         "spec.path.poses[1]: the look has no pose 'pose-hero'",

@@ -24,6 +24,7 @@ from unittest.mock import patch
 
 import pytest
 from fastapi import HTTPException
+from pack_samples import DEFAULT_PACK
 from sqlalchemy.dialects import postgresql
 
 from app.core import storage as storage_mod
@@ -1026,6 +1027,30 @@ def test_a_turntable_runs_30_minutes_and_a_spin_15(db, clock, owner, scene, kind
     assert _heartbeat(db, job).cancel is False
     clock.tick(20)
     assert _heartbeat(db, job).cancel is True
+
+
+def test_a_campaign_pack_runs_an_hour_and_completes_with_its_one_zip(db, clock, files):
+    grower = _user(db, "grow@example.com", tier="grow")
+    _queue(db, grower, _scene(db, grower), spec=DEFAULT_PACK, kind="campaign_pack")
+    job = _claim(db, kinds=["campaign_pack"])
+    name = f"RING-{grower.id}_campaign-pack.zip"
+
+    payload = payloads.job_payload(db, job.id, job.worker_token).model_dump(mode="json")
+    assert (payload["kind"], payload["spec"]["output_names"]) == ("campaign_pack", [name])
+    # Its stills are its largest frames; a pack may run an hour.
+    assert payload["limits"] == {"max_edge": 2000, "max_runtime_seconds": 3600}
+    clock.tick(59 * 60)
+    assert _heartbeat(db, job).cancel is False
+
+    data = b"PK\x03\x04" + b"entries" * 10
+    _upload(files, job, name, data)
+    done = _complete(db, job, [{"name": name, "key": _key(job, name), "content_type": "application/zip", "bytes": len(data)}])
+
+    assert (done.status, done.credits, done.credit_state) == ("completed", 49, "charged")
+    [row] = db.query(Render).filter(Render.job_id == job.id).all()
+    assert (row.kind, row.filename, row.content_type, row.width, row.height) == (
+        "campaign_pack", name, "application/zip", None, None,
+    )
 
 
 # ---------------------------------------------------------------------------

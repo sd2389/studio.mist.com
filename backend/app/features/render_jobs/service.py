@@ -75,7 +75,7 @@ def plan_job(db: Session, user: User, body: RenderJobCreate) -> PlannedJob:
     assert_plan_allows(db, user, spec)
     scene = require_owned_scene(db.get(Scene, body.scene_id), user.id)
     look = validate_look(db, _look_to_render(scene, body), user.id)
-    check_poses(spec, {pose["id"] for pose in look["scene_settings"].get("poses") or []})
+    check_poses(spec, look["scene_settings"].get("poses") or [])
     names = output_names(spec, output_stem(body.name, scene.sku, scene.name))
     return PlannedJob(
         scene=scene,

@@ -123,11 +123,12 @@ RENDER_CREDIT_COSTS: dict[str, tuple[tuple[float, int], ...]] = {
     # A Campaign Pack is the sum of its images, turntables and spins, plus 1 for the ASET image.
     # A conversion costs no render credit: a design costs 1 model credit, as an upload does.
 }
-# The rest of the turntable and spin prices above: a turntable pays for every started 10
-# seconds, and counts double above 30 fps; a spin counts double above 72 frames.
+# The rest of the prices above: a turntable pays for every started 10 seconds, and counts
+# double above 30 fps; a spin counts double above 72 frames; a Campaign Pack's ASET image is 1.
 VIDEO_CREDIT_SECONDS = 10
 VIDEO_DOUBLE_ABOVE_FPS = 30
 SPIN_DOUBLE_ABOVE_FRAMES = 72
+PACK_SCOPE_CREDITS = 1
 
 # Most jobs one POST /render-jobs/bulk may create (ADR 0005's default, an open question).
 MAX_BULK_RENDER_JOBS = 100

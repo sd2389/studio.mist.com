@@ -12,9 +12,11 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from app.features.render_jobs.campaign_pack import pack_parts
 from app.features.render_jobs.specs import (
     SPEC_MODELS,
     Camera,
+    CampaignPackSpec,
     Spec,
     SpinSpec,
     StillSpec,
@@ -52,7 +54,10 @@ def _camera_label(camera: Camera, number: int) -> str:
 
 def output_names(spec: Spec, stem: str) -> list[str]:
     """The names of the files a job makes: one per image in camera order, an angle set's carrying
-    each camera's label; a turntable's MP4; a spin's ZIP."""
+    each camera's label; a turntable's MP4; a spin's ZIP; a Campaign Pack's ZIP, named as the
+    browser names it (packZipName in src/features/render/campaign-pack/domain/naming.ts)."""
+    if isinstance(spec, CampaignPackSpec):
+        return [f"{stem}_campaign-pack.zip"]
     if isinstance(spec, TurntableSpec):
         return [f"{stem}.mp4"]
     if isinstance(spec, SpinSpec):
@@ -71,8 +76,10 @@ def output_names(spec: Spec, stem: str) -> list[str]:
 
 
 def frame_count(spec: Spec) -> int:
-    """How many images or frames a job renders: one an image of a still or an angle set, or a
-    turntable's or a spin's own count."""
+    """How many images or frames a job renders: one an image of a still or an angle set, a
+    turntable's or a spin's own count, or all of a Campaign Pack's images and frames."""
+    if isinstance(spec, CampaignPackSpec):
+        return sum(part.frames for part in spec.parts())
     if isinstance(spec, TurntableSpec | SpinSpec):
         return spec.frames
     return len(spec_cameras(spec))
@@ -108,7 +115,8 @@ class PlannedOutput:
     render_kind: str  # the kind of the render it becomes
     content_type: str
     max_bytes: int
-    # An image's size; a turntable's or a spin's frame size, for its MP4 or its ZIP.
+    # An image's size; a turntable's or a spin's frame size, for its MP4 or its ZIP; none for a
+    # Campaign Pack's ZIP, whose stills, videos and spins differ in size.
     width: int | None
     height: int | None
     # The camera's angle or pose id, as the harness labels the file; none for a live view, an
@@ -116,10 +124,11 @@ class PlannedOutput:
     label: str | None
 
 
-def _single_output(kind: str, spec: Mapping[str, Any], content_type: str, max_bytes: int) -> PlannedOutput:
-    """The one file a turntable or a spin makes, which its frames go into."""
+def _single_output(
+    kind: str, spec: Mapping[str, Any], content_type: str, max_bytes: int, width: int | None, height: int | None
+) -> PlannedOutput:
+    """The one file a turntable, a spin or a Campaign Pack makes, which its frames go into."""
     [name] = spec["output_names"]
-    width, height = frame_size(kind, spec)
     return PlannedOutput(
         name=name,
         render_kind=kind,
@@ -133,13 +142,16 @@ def _single_output(kind: str, spec: Mapping[str, Any], content_type: str, max_by
 
 def planned_outputs(kind: str, spec: Mapping[str, Any]) -> list[PlannedOutput]:
     """The files a job makes, read from its normalised spec: a still's or an angle set's images in
-    camera order, a turntable's MP4, or a spin's ZIP of its frames and its viewer page."""
+    camera order, a turntable's MP4, a spin's ZIP of its frames and its viewer page, or a
+    Campaign Pack's ZIP."""
     if kind not in SPEC_MODELS:
         raise ValueError(f"No outputs for a '{kind}' job")
     if kind == "turntable":
-        return [_single_output(kind, spec, VIDEO_CONTENT_TYPE, MAX_VIDEO_BYTES)]
+        return [_single_output(kind, spec, VIDEO_CONTENT_TYPE, MAX_VIDEO_BYTES, *frame_size(kind, spec))]
     if kind == "spin":
-        return [_single_output(kind, spec, ZIP_CONTENT_TYPE, MAX_ZIP_BYTES)]
+        return [_single_output(kind, spec, ZIP_CONTENT_TYPE, MAX_ZIP_BYTES, *frame_size(kind, spec))]
+    if kind == "campaign_pack":
+        return [_single_output(kind, spec, ZIP_CONTENT_TYPE, MAX_ZIP_BYTES, None, None)]
     cameras = [spec["camera"]] if kind == "still" else spec["cameras"]
     content_type = IMAGE_CONTENT_TYPES[spec["format"]]
     return [
@@ -158,12 +170,17 @@ def planned_outputs(kind: str, spec: Mapping[str, Any]) -> list[PlannedOutput]:
 
 def frame_size(kind: str, spec: Mapping[str, Any]) -> tuple[int, int]:
     """The width and height of every image or frame a job renders, read from its normalised spec;
-    a spin's frames are `size` square."""
+    a spin's frames are `size` square. A Campaign Pack's are its stills' size."""
+    if kind == "campaign_pack":
+        return spec["stillSize"], spec["stillSize"]
     if kind == "spin":
         return spec["size"], spec["size"]
     return spec["width"], spec["height"]
 
 
 def longest_edge(kind: str, spec: Mapping[str, Any]) -> int:
-    """The longest side a job renders: what its owner's plan allowed when the job was created."""
+    """The longest side a job renders: what its owner's plan allowed when the job was created.
+    A Campaign Pack's is the longest of its stills', videos' and spins'."""
+    if kind == "campaign_pack":
+        return max(max(part.width, part.height) for part in pack_parts(spec))
     return max(frame_size(kind, spec))

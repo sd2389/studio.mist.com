@@ -11,10 +11,12 @@ export type FeatureKey =
   | "catalog"
   | "library"
   | "billing"
-  | "pricing_page";
+  | "pricing_page"
+  | "server_exports";
 
+/** The API's flags; a key it doesn't send takes its default (`isFeatureEnabled`). */
 export type FeatureFlagsSnapshot = {
-  flags: Record<FeatureKey, boolean>;
+  flags: Partial<Record<FeatureKey, boolean>>;
 };
 
 export type FeatureFlagRow = {

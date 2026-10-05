@@ -127,7 +127,7 @@ Templates: [`.env.example`](.env.example) (web, Compose) and [`backend/.env.exam
 | `DEMO_EMBED_PASSWORD` | backend | Password for the embed demo's owner account; unset, the seed gives it a random one |
 | `HEALTH_DEPS_TOKEN` | backend | `X-Health-Token` value for `GET /health/deps` in production |
 | `INTERNAL_PROXY_TOKEN` | web, backend | Shared secret, the same on both: the web server's sign-in and sign-up proxies send it with the caller's IP, and the API believes a forwarded IP only with it (never a bare `X-Forwarded-For`). Unset, sign-ins through the web app share one per-IP budget, and the API warns at startup in production |
-| `RENDER_WORKER_TOKEN` | backend, worker | Shared secret for the render worker; the job-claim endpoint returns 503 until it is set |
+| `RENDER_WORKER_TOKEN` | backend, worker | Shared secret for render workers, or several comma-separated while one is rotated in; the job-claim endpoint returns 503 until it is set |
 | `RENDER_API_URL` | worker | Backend URL |
 | `HARNESS_BASE_URL` | worker, goldens | Web app URL that serves `/render-harness` |
 
@@ -154,26 +154,18 @@ Top-up credits, and a plan bought at checkout, are granted only once the Checkou
 
 ## Server renders (optional)
 
-The backend can queue full-resolution renders (`POST /render-jobs`). A Node worker (`npm run worker:render`) claims each job, opens `/render-harness` in headless Chromium, renders 60 warm-up frames through the viewer's Three.js pipeline, and uploads the PNG. A successful render costs the owner 1 render credit. Failed attempts are never charged and are re-queued until a job has had 3 attempts.
+Exports render on GPU workers ([ADR 0005](docs/adr/0005-server-exports.md)). Creating a job (`POST /render-jobs`) holds its render credits; a worker claims it, renders it in the harness and uploads the files, and completing the job charges the credits it held. A job that ends failed or canceled is refunded. The worker protocol, under `/render-jobs`:
 
-A claim leases the job to its worker for `RENDER_JOB_LEASE_SECONDS` (10 minutes by default), and the worker gives up a minute before the lease runs out. A job left `running` by a crashed worker or backend goes to the next claim once its lease has run out, and that counts as a failed attempt. Every claim issues a new per-job token, so the worker that lost the lease can no longer complete or fail the job. The token travels in the `X-Job-Token` header, never in a URL: the worker hands it to the harness page with a Playwright init script.
+- `POST /claim`, with `X-Worker-Token` and `{"worker_id", "kinds"}`, answers the next job of those kinds: the highest priority, then the oldest, whose retry backoff has passed and whose owner runs fewer jobs than their plan allows. It carries a fresh job token and a lease of `RENDER_JOB_LEASE_SECONDS` (120 by default). `RENDER_WORKER_TOKEN` may list several tokens, comma-separated, so one can be rotated in.
+- Every other call takes only the job token, in the `X-Job-Token` header, never in a URL: `GET /{id}/payload` (the spec, the look and its catalogue items, the model, the watermark, the limits), `POST /{id}/heartbeat` every 20 s, `POST /{id}/uploads` (signed PUTs with each file's size and name signed in), `POST /{id}/complete` and `POST /{id}/fail` (`{error, code, retryable}`).
+- A heartbeat extends the lease until the job's kind has run out of run time, and answers `cancel` when the owner canceled the job or the time is up. A job whose lease runs out is taken back by the next claim as a failed attempt, and its old token stops working.
+- A retryable failure is queued again after 30 s, then 60 s; after 3 attempts, or on a final code, the job fails and is refunded.
+- Outputs live under `customers/<user>/renders/<job>/`. `complete` checks each file's key, type and stored size against the job, then creates the scene's renders, charges the credits and counts the bytes toward the owner's storage, which deleting the scene gives back.
+- Local storage signs nothing, so there the payload names `GET /{id}/inputs/model` and `/inputs/background`, and uploads go to `PUT /{id}/uploads/{name}`, all with the job token.
 
-To run it locally, keep the dev server running (`npm run dev`) and install Chromium once with `npx playwright install chromium`:
+To try it locally, `cp docker-compose.override.example.yml docker-compose.override.yml` gives the backend a `RENDER_WORKER_TOKEN`, and `docker compose exec backend python -m scripts.seed_smoke_job` queues a still for a smoke-test user (`--bogus`: one whose model file is missing). The Node worker for this protocol is being rebuilt (ADR 0005, A4); until then `npm run worker:render` speaks the protocol before it and can't render these jobs.
 
-```bash
-cp docker-compose.override.example.yml docker-compose.override.yml  # gives the backend a RENDER_WORKER_TOKEN
-docker compose up -d postgres backend
-docker compose exec backend python -m scripts.seed_smoke_job        # add --bogus to test the failure path
-RENDER_WORKER_TOKEN=<token from the override file> HARNESS_BASE_URL=<dev server URL> \
-  npm run worker:render -- --once
-```
-
-In production, point `RENDER_API_URL` at the backend and `HARNESS_BASE_URL` at a web build made with `NEXT_PUBLIC_ENABLE_RENDER_HARNESS=1`.
-
-Known v1 limits:
-
-- Leases are not renewed. A render that takes longer than the lease allows is given up and retried, so keep `RENDER_JOB_LEASE_SECONDS` a minute or more above the slowest render.
-- Only a claim takes back a job whose lease ran out, so with no worker polling it stays `running`.
+Only a claim takes back a job whose lease ran out, so with no worker polling it stays `running`.
 
 ## Project layout
 

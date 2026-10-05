@@ -3,18 +3,10 @@ import { requireSessionApi } from "@/lib/auth/require-api-access";
 import { readUpstreamJson, upstreamError } from "@/lib/auth/upstream";
 import { authHeaders } from "@/lib/auth/server-session";
 import { getServerApiUrl } from "@/lib/api-url";
-import { enforceApiRateLimit } from "@/lib/observability/api-rate-limit";
 
 export async function POST(request: Request) {
   const denied = await requireSessionApi();
   if (denied) return denied;
-
-  const limited = await enforceApiRateLimit({
-    scope: "api.upload.direct",
-    maxRequests: 20,
-    request,
-  });
-  if (limited) return limited;
 
   const api = getServerApiUrl();
   if (!api) {

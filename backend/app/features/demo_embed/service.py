@@ -116,7 +116,7 @@ def seed_demo_embed(db: Session, fixture_path: Path | None = None) -> DemoEmbedS
         db.add(scene)
     db.commit()
     db.refresh(scene)
-    publish_service.publish_scene_to_public(scene)
+    publish_service.publish_scene(db, scene)
     return DemoEmbedSeedResult(
         embed_id=DEMO_SKU,
         sku=DEMO_SKU,

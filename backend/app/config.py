@@ -53,6 +53,9 @@ class Settings(BaseSettings):
     sentry_release: str | None = None
     sentry_traces_sample_rate: float = 0.1
     rate_limit_enabled: bool = True
+    # Shared with the web app's server. Its proxies send it with the caller's IP, which per-IP
+    # rate limits then use; unset, a proxied request counts against the proxy's own address.
+    internal_proxy_token: str | None = Field(default=None, validation_alias="INTERNAL_PROXY_TOKEN")
     rate_limit_upload_presign_per_hour: int = 30
     rate_limit_upload_register_per_hour: int = 30
     rate_limit_upload_direct_per_hour: int = 20

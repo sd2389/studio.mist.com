@@ -73,8 +73,43 @@ export type ScenePatch = Partial<{
   product_specs?: ProductSpecs;
 }>;
 
-export function listScenes(): Promise<Scene[]> {
-  return apiGet<Scene[]>("/api/scenes");
+/** The longest search `GET /scenes` takes. */
+export const SCENE_SEARCH_MAX_LENGTH = 200;
+
+/** `GET /scenes` filters: `q` searches name, SKU, note and category; `limit` is at most 100. */
+export type SceneListParams = Partial<{
+  q: string;
+  category: string;
+  page: number;
+  limit: number;
+}>;
+
+/** One page of the signed-in user's scenes, newest first; `total` counts every match. */
+export type SceneListPage = {
+  items: Scene[];
+  total: number;
+  page: number;
+  limit: number;
+};
+
+/** Pages a scene list fills at its page size; never fewer than one. */
+export function scenePageCount(page: Pick<SceneListPage, "total" | "limit">): number {
+  return Math.max(1, Math.ceil(page.total / page.limit));
+}
+
+/** The query string for `GET /scenes`, with only the filters that are set. */
+export function sceneListSearch(params: SceneListParams): string {
+  const search = new URLSearchParams();
+  if (params.q) search.set("q", params.q);
+  if (params.category) search.set("category", params.category);
+  if (params.page && params.page > 1) search.set("page", String(params.page));
+  if (params.limit) search.set("limit", String(params.limit));
+  const query = search.toString();
+  return query ? `?${query}` : "";
+}
+
+export function listScenes(params: SceneListParams = {}): Promise<SceneListPage> {
+  return apiGet<SceneListPage>(`/api/scenes${sceneListSearch(params)}`);
 }
 
 export function getScene(id: number): Promise<SceneDetail> {

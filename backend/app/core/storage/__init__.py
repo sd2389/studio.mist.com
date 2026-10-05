@@ -71,6 +71,11 @@ def delete(key: str) -> None:
     get_storage().delete(key)
 
 
+def object_size(key: str) -> int | None:
+    """Bytes the object takes; None when there is no such object."""
+    return get_storage().size(key)
+
+
 def delete_quietly(key: str) -> None:
     """Remove an object nobody will keep, such as a refused or unsaved upload. A failure is
     logged, never raised over the error that led here."""
@@ -112,6 +117,7 @@ __all__ = [
     "get_s3_object_stream",
     "get_storage",
     "local_file_if_exists",
+    "object_size",
     "presign_get",
     "presign_put",
     "read_bytes",

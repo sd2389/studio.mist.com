@@ -61,6 +61,10 @@ class LocalBackend:
     def exists(self, key: str) -> bool:
         return self._path(key).is_file()
 
+    def size(self, key: str) -> int | None:
+        path = self._path(key)
+        return path.stat().st_size if path.is_file() else None
+
     def stream(self, key: str) -> tuple[Any, str, str | None]:
         path = self._path(key)
         if not path.is_file():

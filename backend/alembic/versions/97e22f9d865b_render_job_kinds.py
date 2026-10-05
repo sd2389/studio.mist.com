@@ -1,7 +1,7 @@
 """render job kinds, specs, looks and credit holds
 
 Revision ID: 97e22f9d865b
-Revises: 81a7e50047d5
+Revises: f7e94879f642
 Create Date: 2026-10-03 05:08:55.000000
 
 Render jobs gain a kind, a spec, a frozen look and held credits (docs/adr/0005-server-exports.md).
@@ -18,7 +18,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = '97e22f9d865b'
-down_revision: Union[str, Sequence[str], None] = '81a7e50047d5'
+down_revision: Union[str, Sequence[str], None] = 'f7e94879f642'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

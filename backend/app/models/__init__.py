@@ -7,6 +7,7 @@ from app.models.catalog import (
     CatalogScenePreset,
 )
 from app.models.project import Project
+from app.models.rate_limit import RateLimitCounter
 from app.models.render import Render
 from app.models.render_job import RenderJob
 from app.models.scene import Base, Scene
@@ -38,4 +39,5 @@ __all__ = [
     "CreditAdjustment",
     "CreditPurchase",
     "FeatureFlag",
+    "RateLimitCounter",
 ]

@@ -63,14 +63,14 @@ export function DashboardClient({
     setLoading(true);
     setError(null);
     try {
-      const data = await listScenes();
-      setScenes(data);
+      const data = await listScenes(filters);
+      setScenes(data.items);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load scenes");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [filters]);
 
   const handleDelete = useCallback(async (id: number, name: string) => {
     if (

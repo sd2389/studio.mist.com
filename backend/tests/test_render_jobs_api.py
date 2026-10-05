@@ -9,7 +9,6 @@ from fastapi.testclient import TestClient
 
 from app.core import storage as storage_mod
 from app.core.public_urls import public_file_url
-from app.core.rate_limit import get_rate_limiter
 from app.core.storage.local import LocalBackend
 from app.features.billing.quota_service import get_or_create_billing, reset_allotments
 from app.main import app
@@ -51,7 +50,6 @@ def client(db, tmp_path, monkeypatch):
         yield db
 
     monkeypatch.setattr(storage_mod, "get_storage", lambda: LocalBackend(tmp_path))
-    get_rate_limiter().reset()
     app.dependency_overrides[get_db] = _override_db
     yield TestClient(app)
     app.dependency_overrides.clear()

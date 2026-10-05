@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -17,6 +17,8 @@ if TYPE_CHECKING:
 
 class Scene(Base):
     __tablename__ = "scenes"
+    # GET /scenes: one user's scenes, newest first.
+    __table_args__ = (Index("ix_scenes_user_id_updated_at", "user_id", "updated_at"),)
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     model_key: Mapped[str] = mapped_column(String(512))
@@ -32,6 +34,8 @@ class Scene(Base):
     variants: Mapped[dict] = mapped_column(JSON, default=dict)
     product_specs: Mapped[dict] = mapped_column(JSON, default=dict)
     thumbnail_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # When the SKU's public copies of the model and thumbnail were last made; null without them.
+    published_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True)
     project_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("projects.id", ondelete="SET NULL"), nullable=True

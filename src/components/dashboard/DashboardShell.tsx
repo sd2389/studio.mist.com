@@ -1,12 +1,7 @@
 import Link from "next/link";
 import { DashboardClient } from "@/components/dashboard/DashboardClient";
-import { fetchScenesServer } from "@/lib/api/server-fetch";
 import type { UserBillingSnapshot } from "@/lib/billing/types";
-import {
-  applyDashboardFilters,
-  type DashboardFilterResult,
-  type DashboardFilters,
-} from "@/lib/dashboard/filters";
+import type { DashboardFilterResult, DashboardFilters } from "@/lib/dashboard/filters";
 import { AppHeader } from "@/components/layout/AppHeader";
 import type { Scene } from "@/lib/api/scenes";
 
@@ -110,41 +105,4 @@ export function DashboardShell({
       </main>
     </div>
   );
-}
-
-export async function loadDashboardData(filters?: DashboardFilters): Promise<{
-  initialScenes: Scene[];
-  initialError: string | null;
-  filterResult: DashboardFilterResult;
-  allSceneCount: number;
-}> {
-  try {
-    const allScenes = await fetchScenesServer();
-    const resolvedFilters = filters ?? {
-      q: "",
-      category: "",
-      page: 1,
-      limit: 10,
-    };
-    const filterResult = applyDashboardFilters(allScenes, resolvedFilters);
-    return {
-      initialScenes: filterResult.scenes,
-      initialError: null,
-      filterResult,
-      allSceneCount: allScenes.length,
-    };
-  } catch (e) {
-    return {
-      initialScenes: [],
-      initialError: e instanceof Error ? e.message : "Failed to load scenes",
-      filterResult: {
-        scenes: [],
-        total: 0,
-        page: 1,
-        pageCount: 1,
-        limit: filters?.limit ?? 10,
-      },
-      allSceneCount: 0,
-    };
-  }
 }

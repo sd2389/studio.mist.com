@@ -46,6 +46,8 @@ services:
       CONTACT_NOTIFY_EMAIL: support@mist.com
       ADMIN_EMAILS: ${ADMIN_EMAILS:-}
       DEMO_EMBED_PASSWORD: ${DEMO_EMBED_PASSWORD:-}
+      # Same value as the web service's: lets the API believe the caller IP its proxies send.
+      INTERNAL_PROXY_TOKEN: ${INTERNAL_PROXY_TOKEN:-}
       # AWS_BUCKET: ${AWS_BUCKET-}
       # AWS_REGION: ${AWS_REGION:-auto}
       # AWS_S3_ENDPOINT: ${AWS_S3_ENDPOINT-}
@@ -81,6 +83,8 @@ services:
       # over the internal Docker network.
       API_URL: ${API_URL:-http://backend:8765}
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8765}
+      # Sent with the caller's IP on sign-in and sign-up; the backend needs the same value.
+      INTERNAL_PROXY_TOKEN: ${INTERNAL_PROXY_TOKEN:-}
 
 volumes:
   studio_pg:

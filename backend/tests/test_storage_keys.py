@@ -19,3 +19,10 @@ def test_public_published_keys():
     assert model == "published/3/SKU-001/model.glb"
     assert thumb == "published/3/SKU-001/thumbnail.webp"
     assert keys.is_public_published_key(model)
+
+
+def test_render_job_outputs_live_under_their_jobs_prefix():
+    key = keys.render_job_output_key(5, 812, "solitaire-4K.png")
+    assert key == "customers/5/renders/812/solitaire-4K.png"
+    assert key.startswith(keys.render_job_prefix(5, 812))
+    assert keys.key_belongs_to_user(key, 5)

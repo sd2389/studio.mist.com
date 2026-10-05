@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from app.config import Settings, get_settings
+from app.core.cache_policy import cache_control_for_key
 from app.core.observability import get_logger, log_event
 from app.core.storage.base import StorageBackend
 from app.core.storage.local import LocalBackend
@@ -89,6 +90,34 @@ def presign_put(key: str, content_type: str, expires_in: int = 900) -> str:
     return get_storage().presign_put(key, content_type, expires_in=expires_in)
 
 
+def signs_urls() -> bool:
+    """Whether storage hands out signed URLs. Local storage signs none, so the API takes and
+    serves those files itself."""
+    return not isinstance(get_storage(), LocalBackend)
+
+
+def presign_upload(
+    key: str, content_type: str, size: int, filename: str, expires_in: int = 900
+) -> tuple[str, dict[str, str]]:
+    """A signed PUT for exactly `size` bytes, stored to download as `filename`, and the headers
+    the upload must send. The signature covers every one of them, so a file of another size or
+    type is refused by the storage itself. The backends sign the key's Cache-Control too."""
+    headers = {
+        "Content-Type": content_type,
+        "Content-Length": str(size),
+        "Content-Disposition": f'attachment; filename="{filename}"',
+        "Cache-Control": cache_control_for_key(key),
+    }
+    url = get_storage().presign_put(
+        key,
+        content_type,
+        expires_in=expires_in,
+        content_length=size,
+        content_disposition=headers["Content-Disposition"],
+    )
+    return url, headers
+
+
 def presign_get(key: str, expires_in: int = 900) -> str:
     return get_storage().presign_get(key, expires_in=expires_in)
 
@@ -120,6 +149,8 @@ __all__ = [
     "object_size",
     "presign_get",
     "presign_put",
+    "presign_upload",
+    "signs_urls",
     "read_bytes",
     "write_bytes",
 ]

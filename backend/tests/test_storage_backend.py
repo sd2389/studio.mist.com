@@ -2,11 +2,13 @@ import io
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from botocore.exceptions import ClientError
 from fastapi import HTTPException
 
+from app.core import storage
 from app.core.adapters.errors import StorageObjectTooLargeError
 from app.core.s3_client import read_object_body
 from app.core.storage.local import LocalBackend
@@ -123,3 +125,51 @@ def test_r2_checks_and_deletes_published_copies_in_the_public_bucket():
     assert not backend.exists("published/1/R-1/model.glb")  # the private bucket holds no copy
     backend.delete_public("published/1/R-1/model.glb")
     assert client.deleted == [("public", "published/1/R-1/model.glb")]
+
+
+def _signing_r2() -> R2Backend:
+    """R2 with made-up keys: URLs are signed locally, so nothing is sent anywhere."""
+    return R2Backend(
+        SimpleNamespace(
+            r2_account_id="account",
+            r2_access_key_id="AKIDEXAMPLE",
+            r2_secret_access_key="secret",
+            r2_endpoint_url=None,
+            r2_region="auto",
+            r2_force_path_style=True,
+            r2_bucket_name="private",
+            aws_bucket=None,
+            r2_public_bucket_name=None,
+        )
+    )
+
+
+def _signed_headers(url: str) -> list[str]:
+    return parse_qs(urlsplit(url).query)["X-Amz-SignedHeaders"][0].split(";")
+
+
+def test_a_signed_upload_signs_in_its_type_size_name_and_cache_policy(monkeypatch):
+    """So storage itself refuses a render job's output of another size, type or name."""
+    monkeypatch.setattr(storage, "get_storage", _signing_r2)
+
+    url, headers = storage.presign_upload("customers/1/renders/7/RING-1.png", "image/png", 1834212, "RING-1.png")
+
+    assert _signed_headers(url) == ["cache-control", "content-disposition", "content-length", "content-type", "host"]
+    assert parse_qs(urlsplit(url).query)["X-Amz-Expires"] == ["900"]
+    assert headers == {
+        "Content-Type": "image/png",
+        "Content-Length": "1834212",
+        "Content-Disposition": 'attachment; filename="RING-1.png"',
+        "Cache-Control": "public, max-age=31536000, immutable",
+    }
+    # A model upload signs in what it did before, and no size.
+    model_url = _signing_r2().presign_put("customers/1/models/ring.glb", "model/gltf-binary")
+    assert _signed_headers(model_url) == ["cache-control", "content-type", "host"]
+
+
+def test_only_cloud_storage_signs_urls(monkeypatch, tmp_path):
+    monkeypatch.setattr(storage, "get_storage", lambda: LocalBackend(tmp_path))
+    assert storage.signs_urls() is False
+
+    monkeypatch.setattr(storage, "get_storage", _signing_r2)
+    assert storage.signs_urls() is True

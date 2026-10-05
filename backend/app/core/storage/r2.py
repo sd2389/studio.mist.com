@@ -14,7 +14,7 @@ from fastapi import HTTPException
 from app.config import Settings, get_settings
 from app.core.adapters.errors import StorageAdapterError
 from app.core.cache_policy import cache_control_for_key
-from app.core.s3_client import read_object_body
+from app.core.s3_client import put_params, read_object_body
 
 
 def _r2_client(settings: Settings) -> BaseClient:
@@ -70,16 +70,19 @@ class R2Backend:
         except BotoCoreError as exc:
             raise HTTPException(status_code=502, detail=f"Failed to read object: {exc}") from exc
 
-    def presign_put(self, key: str, content_type: str, expires_in: int = 900) -> str:
+    def presign_put(
+        self,
+        key: str,
+        content_type: str,
+        expires_in: int = 900,
+        *,
+        content_length: int | None = None,
+        content_disposition: str | None = None,
+    ) -> str:
         try:
             return self._client.generate_presigned_url(
                 "put_object",
-                Params={
-                    "Bucket": self._private_bucket,
-                    "Key": key,
-                    "ContentType": content_type,
-                    "CacheControl": cache_control_for_key(key),
-                },
+                Params=put_params(self._private_bucket, key, content_type, content_length, content_disposition),
                 ExpiresIn=expires_in,
             )
         except (BotoCoreError, ClientError) as exc:

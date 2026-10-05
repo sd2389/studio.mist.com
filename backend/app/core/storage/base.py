@@ -16,7 +16,17 @@ class StorageBackend(Protocol):
         """The object's bytes. One over `max_bytes` raises StorageObjectTooLargeError unread."""
         ...
 
-    def presign_put(self, key: str, content_type: str, expires_in: int = 900) -> str: ...
+    def presign_put(
+        self,
+        key: str,
+        content_type: str,
+        expires_in: int = 900,
+        *,
+        content_length: int | None = None,
+        content_disposition: str | None = None,
+    ) -> str:
+        """A signed PUT. Each header given is signed in, so the upload must send it as given."""
+        ...
 
     def presign_get(self, key: str, expires_in: int = 900) -> str: ...
 

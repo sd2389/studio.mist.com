@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { applySavedLook, resolveModelConfig, useFixedClockWarmup, useLookStage, ViewerStage } from "@/features/viewer";
 import { getHiresRefs } from "@/stores/hires-export-store";
 import { pinExportQuality } from "./export-quality";
+import { assertLiveCanvasSized } from "./live-canvas";
 import {
   jobImageSize,
   readHarnessJob,
@@ -43,11 +44,12 @@ async function renderOutputs(payload: RenderJobPayload, sink: SinkClient): Promi
 
 /** Renders the job's images or frames, hands them to the sink, then reports what drew them. */
 async function renderJob(job: HarnessJob): Promise<void> {
+  const refs = getHiresRefs();
+  if (!refs) throw new Error("The scene has not loaded.");
+  assertLiveCanvasSized(refs.gl);
   const sink = createSinkClient(job.sink);
   await sink.postProgress(0, "rendering");
   const outputs = await renderOutputs(job.payload, sink);
-  const refs = getHiresRefs();
-  if (!refs) throw new Error("The scene has gone.");
   const result: HarnessResult = { renderer: await describeRenderer(refs.gl), outputs };
   window.__RENDER_RESULT__ = result;
   window.__HARNESS_STATE__ = "done";

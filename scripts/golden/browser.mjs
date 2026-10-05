@@ -19,12 +19,13 @@ export const GOLDEN_IDS = [...EXPORT_IDS, ...LIGHTING_IDS];
  */
 export const WARMUP_FRAMES = 24;
 /**
- * What the export goldens draw with. CI uses WebGL 2, like the lighting goldens: on Linux, headless
- * Chromium's SwiftShader WebGPU either lost its device (the headless shell) or drew the live stage
- * into a canvas left at the default 300x150 (new headless), so frames went invalid and the readback
- * never returned. The export pipeline (cameras, sink, watermark, outputs) is the same either way;
- * WebGPU is checked by the worker's self-check on the GPU host. `GOLDEN_EXPORT_BACKEND=webgpu`
- * runs them on SwiftShader WebGPU instead.
+ * What the export goldens draw with. CI uses WebGL 2, like the lighting goldens, which its
+ * baselines were made on. On Linux the headless shell's SwiftShader WebGPU lost its device, and
+ * new headless drew the live stage at 300x150: a second renderer had got onto the canvas, which
+ * `createR3FWebGPURenderer` now prevents and every export capture provokes (`holdRendererStart`).
+ * The export pipeline (cameras, sink, watermark, outputs) is the same either way; WebGPU is
+ * checked by the render worker's self-check. `GOLDEN_EXPORT_BACKEND=webgpu` runs them on
+ * SwiftShader WebGPU instead.
  */
 const EXPORT_BACKEND = process.env.GOLDEN_EXPORT_BACKEND === "webgpu" ? "webgpu" : "webgl";
 export const BASE_URL = process.env.HARNESS_BASE_URL ?? "http://localhost:3000";
@@ -177,6 +178,45 @@ function exportedImage(id, payload, outputs, sink) {
   return file.body;
 }
 
+/** How long the live canvas's renderer is held in its start-up; the catalogue answers meanwhile. */
+const RENDERER_START_HOLD_MS = 3000;
+
+/**
+ * Holds the live canvas's renderer in its start-up (its first WebGPU adapter request) while the
+ * catalogue's answer re-renders the stage, on any machine. R3F used to ask for a renderer on
+ * every render until the first was ready, and the second renderer on the canvas drew at 300x150
+ * (on Linux the readback then hung); the harness's canvas check now fails such a capture.
+ * The capture's image doesn't change: its frames run on a fixed clock.
+ */
+async function holdRendererStart(page) {
+  let release;
+  const adapterRequested = new Promise((resolve) => {
+    release = resolve;
+  });
+  await page.exposeFunction("__goldenAdapterRequested", () => release());
+  await page.route(
+    (url) => url.pathname === "/api/catalog/source",
+    async (route) => {
+      await adapterRequested;
+      await route.continue().catch(() => {});
+    },
+  );
+  await page.addInitScript((holdMs) => {
+    const gpu = navigator.gpu ? Object.getPrototypeOf(navigator.gpu) : null;
+    if (!gpu) return;
+    const requestAdapter = gpu.requestAdapter;
+    let held = false;
+    gpu.requestAdapter = async function (...args) {
+      if (!held) {
+        held = true;
+        await window.__goldenAdapterRequested();
+        await new Promise((resolve) => setTimeout(resolve, holdMs));
+      }
+      return requestAdapter.apply(this, args);
+    };
+  }, RENDERER_START_HOLD_MS);
+}
+
 async function captureExport(id, outDir) {
   const payload = JSON.parse(readFileSync(`tests/goldens/fixtures/${id}.json`, "utf8"));
   // A turntable's frames come raw: the sink refuses any of another size.
@@ -189,6 +229,7 @@ async function captureExport(id, outDir) {
     page.setDefaultTimeout(EXPORT_CAPTURE_TIMEOUT_MS);
     page.on("console", (message) => console_.push(`[${message.type()}] ${message.text()}`));
     page.on("pageerror", (error) => console_.push(`[pageerror] ${error.message}`));
+    await holdRendererStart(page);
     // As the worker hands a job over: set before the page loads, never in the URL.
     await page.addInitScript((job) => {
       window.__RENDER_JOB__ = job;

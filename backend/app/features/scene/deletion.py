@@ -53,15 +53,19 @@ def published_path_shared(db: Session, scene: Scene) -> bool:
 
 def delete_scene(db: Session, scene: Scene) -> int:
     """Delete the scene with its model, thumbnail, renders and published copies, and give its
-    owner back the storage its upload counted. Returns the bytes given back.
+    owner back the storage its upload and its render jobs' outputs counted. Returns the bytes
+    given back.
 
     The row and the bytes go first, in one commit; files follow, and one that can't be deleted
     is logged and left rather than leaving a scene whose files are gone. Files another scene
     still uses are kept.
     """
-    render_keys = list(db.execute(select(Render.key).where(Render.scene_id == scene.id)).scalars())
+    renders = db.execute(select(Render.key, Render.bytes, Render.job_id).where(Render.scene_id == scene.id)).all()
+    render_keys = [render.key for render in renders]
     counted = counted_keys(scene, render_keys)
-    freed = sum(storage.object_size(key) or 0 for key in counted)
+    # A job's outputs counted their bytes when it completed; saved stills never did.
+    outputs = sum(render.bytes for render in renders if render.job_id is not None)
+    freed = sum(storage.object_size(key) or 0 for key in counted) + outputs
     files = list(dict.fromkeys(counted + render_keys))
     kept = keys_used_elsewhere(db, scene.id, files)
     sku = (scene.sku or "").strip()

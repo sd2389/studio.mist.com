@@ -81,10 +81,12 @@ class Settings(BaseSettings):
     admin_emails: str = Field(default="", validation_alias="ADMIN_EMAILS")
     # The embed demo's owner account. Unset, it gets a random password nobody needs to know.
     demo_embed_password: str | None = Field(default=None, validation_alias="DEMO_EMBED_PASSWORD")
+    # The tokens render workers claim jobs with, comma-separated, so one can be rotated in
+    # while the old one is still in use.
     render_worker_token: str | None = Field(default=None, validation_alias="RENDER_WORKER_TOKEN")
-    # How long a claimed render job stays with its worker. A job still running when this runs
-    # out is taken back by the next claim; the worker gives up a minute before that.
-    render_job_lease_seconds: int = Field(default=600, ge=120, validation_alias="RENDER_JOB_LEASE_SECONDS")
+    # How long a claim or a heartbeat keeps a render job with its worker. Workers heartbeat
+    # every 20 s; a job whose lease runs out is taken back by the next claim as a failed attempt.
+    render_job_lease_seconds: int = Field(default=120, ge=60, validation_alias="RENDER_JOB_LEASE_SECONDS")
 
     @model_validator(mode="after")
     def validate_production_settings(self) -> Self:

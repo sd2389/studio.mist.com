@@ -1,7 +1,9 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
+
+from app.schemas.scene import SceneLook
 
 
 class RenderJobCreate(BaseModel):
@@ -88,33 +90,174 @@ class RenderJobQuote(BaseModel):
     width: int
     height: int
     frames: int
-    outputs: list[str]
+    output_names: list[str]
     watermark: bool
     warnings: list[str]
 
 
-class RenderJobStatus(BaseModel):
-    """What the worker routes answer with."""
+# ---------------------------------------------------------------------------
+# The worker protocol (docs/adr/0005-server-exports.md, "Endpoints for workers")
+# ---------------------------------------------------------------------------
 
+# Every kind of ADR 0005 and 0006; MAX_RUNTIME_SECONDS in features/render_jobs/worker.py has one
+# run time limit for each.
+JobKind = Literal["still", "angle_set", "turntable", "spin", "campaign_pack", "convert", "batch_archive"]
+# What a worker reports. A failure with one of the first four codes is retried while attempts
+# are left; the others end the job. The API records `lease_expired` itself.
+FailureCode = Literal[
+    "browser_crashed", "gpu_lost", "upload_failed", "unknown",
+    "invalid_spec", "model_unreadable", "input_missing", "over_limit", "timeout", "canceled",
+]
+RenderStage = Literal["loading", "rendering", "encoding", "uploading"]
+# How a worker names itself; a job keeps the name of the worker that holds it.
+WORKER_ID = r"^[A-Za-z0-9._:-]{1,64}$"
+# The file names a job's spec gives its outputs (specs.clean_file_stem keeps them to these).
+OUTPUT_NAME = r"^[A-Za-z0-9._-]{1,255}$"
+
+
+class WorkerRequest(BaseModel):
+    """A worker's request body: unknown fields, strings where numbers go and non-finite numbers are refused."""
+
+    model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
+
+
+class RenderJobClaimRequest(WorkerRequest):
+    worker_id: str = Field(pattern=WORKER_ID)
+    kinds: list[JobKind] = Field(min_length=1, max_length=7)
+
+
+class RenderJobClaim(BaseModel):
+    job_id: int
+    # Sent back in X-Job-Token on every call for this job, and good until the job's lease is lost.
+    job_token: str
+    kind: str
+    lease_seconds: int
+    heartbeat_seconds: int
+
+
+class ModelURL(BaseModel):
+    """A signed GET for the job's model (cloud storage)."""
+
+    url: str
+
+
+class ModelPath(BaseModel):
+    """The API route that streams the job's model (local storage), relative to the API's URL."""
+
+    path: str
+
+
+class PayloadLimits(BaseModel):
+    max_edge: int  # the longest side the job renders
+    max_runtime_seconds: int  # how long one attempt may run
+
+
+class PayloadScene(BaseModel):
     id: int
-    status: str
-    result_url: str | None = None
-    error: str | None = None
-    attempts: int
-    created_at: datetime
-
-    model_config = {"from_attributes": True}
+    name: str | None
+    sku: str | None
 
 
 class RenderJobPayload(BaseModel):
-    model_url: str
-    lighting: str
-    preset: str
-    width: int
-    height: int
+    """What the harness renders a job from, exactly as src/features/render/harness/job-payload.ts reads it."""
+
+    kind: str
+    spec: dict[str, Any]  # normalised, with its frame count and output names
+    # The look frozen at creation. A background image is the URL the worker fetches it from.
+    look: dict[str, Any]
+    look_items: SceneLook
+    model: ModelURL | ModelPath
     # Decided from the owner's plan when the job was created, so the render carries the mark.
     watermark: bool
+    limits: PayloadLimits
+    scene: PayloadScene
 
 
-class RenderJobFailRequest(BaseModel):
-    error: str = Field(..., max_length=1024)
+class RenderJobHeartbeat(WorkerRequest):
+    progress: float | None = Field(default=None, ge=0, le=1)
+    stage: RenderStage | None = None
+
+
+class RenderJobHeartbeatOut(BaseModel):
+    lease_expires_at: datetime
+    # The owner asked to stop, or the attempt ran past its kind's run time: stop and fail the job.
+    cancel: bool
+
+
+class RenderJobUploadFile(WorkerRequest):
+    name: str = Field(pattern=OUTPUT_NAME)
+    content_type: str = Field(min_length=1, max_length=64)
+    bytes: int = Field(ge=1)
+
+
+class RenderJobUploadsRequest(WorkerRequest):
+    files: list[RenderJobUploadFile] = Field(min_length=1, max_length=100)
+
+
+class RenderJobUpload(BaseModel):
+    name: str
+    key: str
+    # A signed PUT on cloud storage; on local storage the API route that takes the file,
+    # relative to the API's URL.
+    url: str
+    # Send every one of them with the PUT: the signature covers them.
+    headers: dict[str, str]
+
+
+class RenderJobUploads(BaseModel):
+    files: list[RenderJobUpload]
+
+
+class RenderOutputMeta(WorkerRequest):
+    sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+
+
+class RenderJobOutputReport(WorkerRequest):
+    """One uploaded output, as complete lists it."""
+
+    name: str = Field(pattern=OUTPUT_NAME)
+    key: str = Field(min_length=1, max_length=512)
+    content_type: str = Field(min_length=1, max_length=64)
+    bytes: int = Field(ge=1)
+    width: int | None = Field(default=None, ge=1, le=8192)
+    height: int | None = Field(default=None, ge=1, le=8192)
+    label: str | None = Field(default=None, max_length=128)
+    meta: RenderOutputMeta | None = None
+
+
+class RendererAdapter(WorkerRequest):
+    vendor: str = Field(max_length=256)
+    architecture: str = Field(max_length=256)
+    device: str = Field(max_length=256)
+    description: str = Field(max_length=256)
+
+
+class RendererInfo(WorkerRequest):
+    """What drew the job: the browser, three.js's backend and the GPU adapter."""
+
+    browser: str = Field(min_length=1, max_length=512)
+    backend: Literal["webgpu", "webgl2"]
+    adapter: RendererAdapter | None = None
+
+
+class RenderJobCompleteRequest(WorkerRequest):
+    outputs: list[RenderJobOutputReport] = Field(min_length=1, max_length=100)
+    renderer: RendererInfo
+
+
+class RenderJobFailRequest(WorkerRequest):
+    error: str = Field(min_length=1, max_length=1024)
+    code: FailureCode
+    retryable: bool
+
+
+class RenderJobStatus(BaseModel):
+    """What complete and fail answer with."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    status: str
+    attempts: int
+    error: str | None
+    error_code: str | None

@@ -27,7 +27,7 @@ def _refused(kind: str, spec: dict) -> str:
     return exc.value.detail
 
 
-def test_a_still_is_normalised_with_its_defaults_frames_and_outputs():
+def test_a_still_is_normalised_with_its_defaults_frames_and_output_names():
     spec = parse_spec("still", _still())
 
     assert normalised_spec(spec, ["ring.png"]) == {
@@ -38,7 +38,7 @@ def test_a_still_is_normalised_with_its_defaults_frames_and_outputs():
         "jpeg_quality": 0.95,
         "transparent": False,
         "frames": 1,
-        "outputs": ["ring.png"],
+        "output_names": ["ring.png"],
     }
 
 

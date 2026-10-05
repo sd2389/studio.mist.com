@@ -44,8 +44,10 @@ class RenderJob(Base):
     max_attempts: Mapped[int] = mapped_column(SmallInteger, default=3)
     run_after: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # retry backoff
     worker_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    worker_token: Mapped[str] = mapped_column(String(64), default=lambda: uuid4().hex)  # reissued on every claim
-    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # set on every claim
+    # Reissued on every claim, and when a lapsed lease is taken back.
+    worker_token: Mapped[str] = mapped_column(String(64), default=lambda: uuid4().hex)
+    # Set by every claim, extended by every heartbeat within the kind's run time.
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     progress: Mapped[float] = mapped_column(Float, default=0.0)  # 0 to 1
     stage: Mapped[str | None] = mapped_column(String(16), nullable=True)
@@ -61,5 +63,6 @@ class RenderJob(Base):
     renderer: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # browser, backend, adapter
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    # When the current attempt was claimed; its kind's run time limit counts from it.
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

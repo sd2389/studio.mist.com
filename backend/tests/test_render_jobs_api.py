@@ -113,7 +113,7 @@ def test_create_queues_a_still_and_holds_its_price(client, db, owner, scene):
     job = res.json()
     assert (job["kind"], job["status"], job["scene_id"]) == ("still", "queued", scene.id)
     assert (job["credits"], job["credit_state"], job["watermark"]) == (2, "held", True)
-    assert job["spec"]["outputs"] == ["Solitaire-4K.png"]
+    assert job["spec"]["output_names"] == ["Solitaire-4K.png"]
     assert job["spec"]["frames"] == 1
     assert job["outputs"] == []
     assert _balance(db, user) == 23
@@ -342,7 +342,7 @@ def test_a_quote_prices_a_job_without_holding_anything(client, db, owner, scene)
     assert res.status_code == 200
     quote = res.json()
     assert (quote["credits"], quote["width"], quote["height"], quote["frames"]) == (2, 2000, 2000, 2)
-    assert quote["outputs"] == ["RING-1-front.jpg", "RING-1-pose-hero.jpg"]
+    assert quote["output_names"] == ["RING-1-front.jpg", "RING-1-pose-hero.jpg"]
     assert quote["watermark"] is True
     assert len(quote["warnings"]) == 1
     assert _job_rows(db) == []

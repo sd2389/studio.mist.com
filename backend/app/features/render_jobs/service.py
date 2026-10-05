@@ -85,11 +85,11 @@ def plan_job(db: Session, user: User, body: RenderJobCreate) -> PlannedJob:
     scene = require_owned_scene(db.get(Scene, body.scene_id), user.id)
     look = validate_look(db, _look_to_render(scene, body), user.id)
     check_poses(spec, {pose["id"] for pose in look["scene_settings"].get("poses") or []})
-    outputs = output_names(spec, output_stem(body.name, scene.sku, scene.name))
+    names = output_names(spec, output_stem(body.name, scene.sku, scene.name))
     return PlannedJob(
         scene=scene,
         kind=body.kind,
-        spec=normalised_spec(spec, outputs),
+        spec=normalised_spec(spec, names),
         look=look,
         credits=render_job_cost(body.kind, spec),
         warnings=spec_warnings(spec),
@@ -248,7 +248,7 @@ def quote_job(db: Session, user: User, body: RenderJobCreate) -> RenderJobQuote:
         width=planned.spec["width"],
         height=planned.spec["height"],
         frames=planned.spec["frames"],
-        outputs=planned.spec["outputs"],
+        output_names=planned.spec["output_names"],
         watermark=get_quotas(normalize_tier(billing.plan_tier)).watermark_exports,
         warnings=warnings,
     )

@@ -2,27 +2,36 @@
 
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, UploadFile
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
 from app.core.deps import get_current_user
-from app.core.public_urls import public_file_url
 from app.core.rate_limit import rate_limit_dependency
 from app.database import get_db
+from app.features.render_jobs import outputs as render_job_outputs
+from app.features.render_jobs import payload as render_job_payload
 from app.features.render_jobs import service as render_job_service
 from app.features.render_jobs import worker as render_job_worker
 from app.models.user import User
 from app.schemas.render_job import (
     RenderJobBulkCreate,
     RenderJobBulkOut,
+    RenderJobClaim,
+    RenderJobClaimRequest,
+    RenderJobCompleteRequest,
     RenderJobCreate,
     RenderJobFailRequest,
+    RenderJobHeartbeat,
+    RenderJobHeartbeatOut,
     RenderJobOut,
     RenderJobPage,
     RenderJobPayload,
     RenderJobQuote,
     RenderJobStatus,
+    RenderJobUploads,
+    RenderJobUploadsRequest,
 )
 
 router = APIRouter()
@@ -62,23 +71,6 @@ def _job_token(x_job_token: Annotated[str | None, Header()] = None) -> str:
     if not x_job_token:
         raise HTTPException(status_code=401, detail="Missing job token")
     return x_job_token
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _to_status(job) -> RenderJobStatus:
-    result_url = public_file_url(job.result_key) if job.result_key else None
-    return RenderJobStatus(
-        id=job.id,
-        status=job.status,
-        result_url=result_url,
-        error=job.error,
-        attempts=job.attempts,
-        created_at=job.created_at,
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -170,31 +162,29 @@ def download_render_job_output(
 
 
 # ---------------------------------------------------------------------------
-# Worker routes
+# Worker routes. Claims take X-Worker-Token; everything else takes only the job's own token,
+# in X-Job-Token. The worker's Node process makes every call: the harness page holds no token.
 # ---------------------------------------------------------------------------
 
 
-@router.post("/claim")
+@router.post("/claim", response_model=RenderJobClaim, responses={204: {"description": "Nothing to claim"}})
 def claim_render_job(
-    response: Response,
+    body: RenderJobClaimRequest,
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
     _: None = Depends(_worker_auth),
 ):
-    """Claim the next job. Returns {job_id, page_token, lease_seconds} or 204 when empty.
-
-    The worker has to finish within lease_seconds; after that the next claim
-    takes the job back and page_token stops working.
-    """
-    job = render_job_worker.claim_job(db, settings)
+    """The next job of the kinds the worker renders, with its token and lease; 204 when there is none."""
+    job = render_job_worker.claim_job(db, body.worker_id, body.kinds, settings)
     if job is None:
-        response.status_code = 204
-        return None
-    return {
-        "job_id": job.id,
-        "page_token": job.worker_token,
-        "lease_seconds": settings.render_job_lease_seconds,
-    }
+        return Response(status_code=204)
+    return RenderJobClaim(
+        job_id=job.id,
+        job_token=job.worker_token,
+        kind=job.kind,
+        lease_seconds=settings.render_job_lease_seconds,
+        heartbeat_seconds=render_job_worker.HEARTBEAT_SECONDS,
+    )
 
 
 @router.get("/{job_id}/payload", response_model=RenderJobPayload)
@@ -203,42 +193,79 @@ def get_job_payload(
     token: str = Depends(_job_token),
     db: Session = Depends(get_db),
 ) -> RenderJobPayload:
-    """Return render parameters. Secured by the per-job token (X-Job-Token) only.
-
-    X-Worker-Token is NOT required here: the browser harness page (running inside
-    the worker's Playwright browser) calls this endpoint, and the shared worker
-    secret never enters that page. The per-job token is a UUID hex issued at
-    claim time and serves as the sole credential for payload/complete/fail.
-    """
-    return render_job_worker.get_job_payload(db, job_id, token=token)
+    """What the harness renders the job from."""
+    return render_job_payload.job_payload(db, job_id, token)
 
 
-@router.post("/{job_id}/complete")
-async def complete_render_job(
+@router.get("/{job_id}/inputs/model", response_class=FileResponse)
+def get_job_model(job_id: int, token: str = Depends(_job_token), db: Session = Depends(get_db)):
+    """The job's model, streamed (local storage only)."""
+    return render_job_payload.model_file(db, job_id, token)
+
+
+@router.get("/{job_id}/inputs/background", response_class=FileResponse)
+def get_job_background(job_id: int, token: str = Depends(_job_token), db: Session = Depends(get_db)):
+    """The look's background image, streamed (local storage only)."""
+    return render_job_payload.background_file(db, job_id, token)
+
+
+@router.post("/{job_id}/heartbeat", response_model=RenderJobHeartbeatOut)
+def heartbeat_render_job(
     job_id: int,
-    file: UploadFile,
+    body: RenderJobHeartbeat,
     token: str = Depends(_job_token),
     db: Session = Depends(get_db),
-):
-    """Mark job completed; accepts multipart PNG upload; charges the credits it held.
-
-    Secured by the per-job token only (see get_job_payload docstring).
-    """
-    data = await file.read()
-    job = render_job_worker.complete_job(db, job_id, token=token, data=data)
-    return _to_status(job)
+    settings: Settings = Depends(get_settings),
+) -> RenderJobHeartbeatOut:
+    """Extends the lease and records progress; `cancel` tells the worker to stop."""
+    return render_job_worker.heartbeat(
+        db, job_id, token, progress=body.progress, stage=body.stage, settings=settings
+    )
 
 
-@router.post("/{job_id}/fail")
+@router.post("/{job_id}/uploads", response_model=RenderJobUploads)
+def request_render_job_uploads(
+    job_id: int,
+    body: RenderJobUploadsRequest,
+    token: str = Depends(_job_token),
+    db: Session = Depends(get_db),
+) -> RenderJobUploads:
+    """Where to PUT each output: URLs signed for 15 minutes, or on local storage the next route."""
+    return RenderJobUploads(files=render_job_outputs.upload_targets(db, job_id, token, body.files))
+
+
+@router.put("/{job_id}/uploads/{name}", status_code=204)
+async def upload_render_job_output(
+    job_id: int,
+    name: str,
+    request: Request,
+    content_type: Annotated[str | None, Header()] = None,
+    token: str = Depends(_job_token),
+    db: Session = Depends(get_db),
+) -> Response:
+    """One output's bytes (local storage only)."""
+    await render_job_outputs.save_local_upload(db, job_id, token, name, content_type, request.stream())
+    return Response(status_code=204)
+
+
+@router.post("/{job_id}/complete", response_model=RenderJobStatus)
+def complete_render_job(
+    job_id: int,
+    body: RenderJobCompleteRequest,
+    token: str = Depends(_job_token),
+    db: Session = Depends(get_db),
+) -> RenderJobStatus:
+    """Completes the job with its uploaded outputs and charges the credits it held."""
+    return RenderJobStatus.model_validate(render_job_outputs.complete_job(db, job_id, token, body))
+
+
+@router.post("/{job_id}/fail", response_model=RenderJobStatus)
 def fail_render_job(
     job_id: int,
     body: RenderJobFailRequest,
     token: str = Depends(_job_token),
     db: Session = Depends(get_db),
-):
-    """Mark job failed or requeue for retry. Body: {error: str}.
-
-    Secured by the per-job token only (see get_job_payload docstring).
-    """
-    job = render_job_worker.fail_job(db, job_id, token=token, error=body.error)
-    return _to_status(job)
+) -> RenderJobStatus:
+    """Retries the job after a backoff, or ends it refunded."""
+    job = render_job_worker.fail_job(db, job_id, token, error=body.error, code=body.code, retryable=body.retryable)
+    return RenderJobStatus.model_validate(job)

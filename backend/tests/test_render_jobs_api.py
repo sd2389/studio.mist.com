@@ -19,6 +19,8 @@ from app.models.user import Session as DbSession
 VIEW = {"view": {"position": [0.62, 0.88, 2.25], "target": [0, 0, 0]}}
 FOUR_K = {"camera": VIEW, "width": 3840, "height": 2160}  # 2 credits
 EIGHT_K = {"camera": VIEW, "width": 7680, "height": 4320}  # 4 credits
+TURNTABLE = {"width": 1920, "height": 1080, "fps": 30, "frames": 120, "path": {"orbit": {"start": VIEW}}}  # 3 credits
+SPIN = {"frames": 72, "size": 1080, "format": "jpeg"}  # 2 credits
 
 
 def _sign_in(db, email: str, tier: str = "free") -> tuple[User, dict[str, str]]:
@@ -157,9 +159,13 @@ def test_a_grow_8k_still_is_queued_without_the_mark(client, db, scene):
     [
         ({"spec": {**FOUR_K, "width": 10}}, "spec.width:"),
         ({"spec": {**FOUR_K, "fps": 30}}, "spec.fps:"),
-        ({"kind": "turntable", "spec": {}}, "kind: 'turntable' is not available yet"),
+        ({"kind": "campaign_pack", "spec": {}}, "kind: 'campaign_pack' is not available yet"),
         ({"look": {"material": "platinum", "lighting": "neon"}}, "look.lighting:"),
         ({"spec": {**FOUR_K, "camera": {"pose": "pose-nowhere"}}}, "spec.camera.pose: the look has no pose"),
+        ({"kind": "turntable", "spec": {**TURNTABLE, "width": 1919}}, "spec.width: must be even"),
+        ({"kind": "turntable", "spec": {**TURNTABLE, "quality": "ultra"}}, "spec.quality:"),
+        ({"kind": "turntable", "spec": {**TURNTABLE, "path": {"poses": ["pose-nowhere"]}}}, "spec.path.poses[0]: the look"),
+        ({"kind": "spin", "spec": {**SPIN, "frames": 145}}, "spec.frames:"),
     ],
 )
 def test_a_bad_spec_or_look_is_400_naming_the_field(client, db, owner, scene, body, detail):
@@ -270,6 +276,86 @@ def test_the_queue_is_capped_by_the_plan(client, db, owner, scene):
     assert res.status_code == 429
     assert "Render queue full" in res.json()["detail"]
     assert _balance(db, user) == 20
+
+
+# ---------------------------------------------------------------------------
+# Turntables and spins
+# ---------------------------------------------------------------------------
+
+
+def test_a_turntable_is_queued_with_its_own_frame_count_and_one_mp4(client, db, owner, scene):
+    user, headers = owner
+
+    res = _create(client, headers, scene, kind="turntable", spec=TURNTABLE)
+
+    assert res.status_code == 201
+    job = res.json()
+    assert (job["kind"], job["credits"], job["credit_state"], job["watermark"]) == ("turntable", 3, "held", True)
+    assert job["spec"] == {**TURNTABLE, "quality": "high", "output_names": ["RING-1.mp4"]}
+    assert _balance(db, user) == 22
+
+
+def test_a_spin_is_queued_with_its_own_frame_count_and_one_zip(client, db, owner, scene):
+    user, headers = owner
+
+    res = _create(client, headers, scene, kind="spin", spec=SPIN)
+
+    assert res.status_code == 201
+    job = res.json()
+    assert (job["kind"], job["credits"]) == ("spin", 2)
+    assert job["spec"] == {**SPIN, "jpeg_quality": 0.95, "transparent": False, "output_names": ["RING-1-spin.zip"]}
+    assert _balance(db, user) == 23
+
+
+@pytest.mark.parametrize(
+    ("kind", "spec", "detail"),
+    [
+        ("turntable", {**TURNTABLE, "fps": 60, "frames": 240}, "Frame rate limit exceeded for Free (max 30 fps)."),
+        ("turntable", {**TURNTABLE, "frames": 601}, "Video length limit exceeded for Free (max 20 s)."),
+        ("turntable", {**TURNTABLE, "width": 7680, "height": 4320}, "Resolution limit exceeded for Free"),
+        ("turntable", {**TURNTABLE, "width": 4096, "height": 2160}, "8K video (above 8.3 megapixels a frame)"),
+        ("spin", {**SPIN, "frames": 144}, "Spin frame limit exceeded for Free (max 72 frames)."),
+        ("spin", {**SPIN, "size": 2048}, "Spin size limit exceeded for Free (max 1080 px)."),
+    ],
+)
+def test_a_free_video_or_spin_past_the_plan_is_402_and_holds_nothing(client, db, owner, scene, kind, spec, detail):
+    user, headers = owner
+
+    res = _create(client, headers, scene, kind=kind, spec=spec)
+
+    assert res.status_code == 402
+    assert res.json()["detail"].startswith(detail)
+    assert _job_rows(db) == []
+    assert _balance(db, user) == 25
+
+
+def test_grow_renders_a_minute_at_60_fps_8k_for_20_seconds_and_bigger_spins(client, db, grower, scene):
+    user, headers = grower
+    eight_k = {**TURNTABLE, "width": 7680, "height": 4320}
+
+    minute = _create(client, headers, scene, kind="turntable", spec={**TURNTABLE, "fps": 60, "frames": 3600})
+    short_8k = _create(client, headers, scene, kind="turntable", spec={**eight_k, "frames": 600})
+    long_8k = _create(client, headers, scene, kind="turntable", spec={**eight_k, "frames": 601})
+    spin = _create(client, headers, scene, kind="spin", spec={**SPIN, "frames": 144, "size": 2048})
+
+    assert [res.status_code for res in (minute, short_8k, long_8k, spin)] == [201, 201, 402, 201]
+    assert long_8k.json()["detail"] == "Video length limit exceeded for Grow (max 20 s at 8K)."
+    # 6 started 10 s at 1080p, doubled at 60 fps; 2 started 10 s at 8K; a 144-frame spin at 2048 px.
+    assert [minute.json()["credits"], short_8k.json()["credits"], spin.json()["credits"]] == [36, 40, 8]
+    assert _balance(db, user) == 300 - 36 - 40 - 8
+    assert [row.watermark for row in _job_rows(db)] == [False, False, False]
+
+
+def test_a_turntable_is_asked_for_again_with_its_own_frame_count(client, db, owner, scene):
+    """A Retry sends the spec back less output_names: a turntable's frames are its own."""
+    headers = owner[1]
+    first = _create(client, headers, scene, kind="turntable", spec=TURNTABLE).json()
+
+    spec = {key: value for key, value in first["spec"].items() if key != "output_names"}
+    again = _create(client, headers, scene, kind="turntable", spec=spec)
+
+    assert again.status_code == 201
+    assert (again.json()["spec"], again.json()["credits"]) == (first["spec"], first["credits"])
 
 
 # ---------------------------------------------------------------------------
@@ -429,6 +515,19 @@ def test_a_quote_prices_a_job_without_holding_anything(client, db, owner, scene)
     assert _balance(db, user) == 25
 
 
+def test_a_quote_prices_a_turntable_and_a_spin_by_their_frames(client, db, owner, scene):
+    user, headers = owner
+    fields = ("credits", "width", "height", "frames", "outputs", "watermark")
+
+    turntable = client.post("/render-jobs/quote", headers=headers, json={"kind": "turntable", "scene_id": scene.id, "spec": TURNTABLE})
+    spin = client.post("/render-jobs/quote", headers=headers, json={"kind": "spin", "scene_id": scene.id, "spec": SPIN})
+
+    assert (turntable.status_code, spin.status_code) == (200, 200)
+    assert [turntable.json()[field] for field in fields] == [3, 1920, 1080, 120, ["RING-1.mp4"], True]
+    assert [spin.json()[field] for field in fields] == [2, 1080, 1080, 72, ["RING-1-spin.zip"], True]
+    assert (_job_rows(db), _balance(db, user)) == ([], 25)
+
+
 def test_a_quote_says_when_the_balance_is_short_and_refuses_what_the_plan_does(client, db, owner, scene):
     user, headers = owner
     get_or_create_billing(db, user).render_credits_balance = 1
@@ -470,6 +569,25 @@ def test_a_bulk_quote_prices_each_job_and_says_which_ones_are_refused(client, db
         "status": 402, "detail": "Rendering several scenes or variants at once is part of Grow and Studio, not Free.",
     }
     assert (quote["warnings"], _job_rows(db), _balance(db, user)) == ([], [], 25)
+
+
+def test_a_bulk_quote_prices_turntables_and_spins_and_refuses_what_the_plan_does(client, db, owner, scene):
+    res = _bulk_quote(
+        client, owner[1], scene,
+        {"kind": "turntable", "spec": TURNTABLE},  # 3 credits
+        {"kind": "spin", "spec": SPIN},  # 2 credits
+        {"kind": "turntable", "spec": {**TURNTABLE, "fps": 60}},  # above Free's frame rate
+        {"kind": "spin", "spec": {**SPIN, "frames": 145}},  # more frames than any spin has
+    )
+
+    assert res.status_code == 200
+    quote = res.json()
+    assert quote["credits"] == 5
+    assert [item["quote"] and item["quote"]["outputs"] for item in quote["items"]] == [
+        ["RING-1.mp4"], ["RING-1-spin.zip"], None, None,
+    ]
+    assert [item["refused"] and item["refused"]["status"] for item in quote["items"]] == [None, None, 402, 400]
+    assert quote["items"][2]["refused"]["detail"] == "Frame rate limit exceeded for Free (max 30 fps)."
 
 
 def test_a_bulk_quote_says_when_the_balance_is_short_for_the_total(client, db, grower, scene):

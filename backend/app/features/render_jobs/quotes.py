@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.features.billing.plans import get_quotas, normalize_tier
 from app.features.billing.quota_service import get_or_create_billing
 from app.features.render_jobs.service import PlannedJob, bulk_refusal, check_bulk_size, plan_job
+from app.features.render_jobs.specs import frame_size
 from app.models.user import User
 from app.schemas.render_job import (
     RenderJobBulkQuote,
@@ -30,10 +31,11 @@ def _short_of_credits(credits: int, balance: int) -> list[str]:
 
 
 def _quote(planned: PlannedJob, watermark: bool, warnings: list[str]) -> RenderJobQuote:
+    width, height = frame_size(planned.kind, planned.spec)
     return RenderJobQuote(
         credits=planned.credits,
-        width=planned.spec["width"],
-        height=planned.spec["height"],
+        width=width,
+        height=height,
         frames=planned.spec["frames"],
         outputs=planned.spec["output_names"],
         watermark=watermark,

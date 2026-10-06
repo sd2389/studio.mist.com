@@ -133,10 +133,12 @@ class RenderJobBulkQuote(BaseModel):
 # run time limit for each.
 JobKind = Literal["still", "angle_set", "turntable", "spin", "campaign_pack", "convert", "batch_archive"]
 # What a worker reports. A failure with one of the first four codes is retried while attempts
-# are left; the others end the job. The API records `lease_expired` itself.
+# are left; the others end the job. The API records `lease_expired` itself. A convert job whose
+# stones alone pass the plan's polygon cap, or that may not be decimated, is `over_polygon_cap`.
 FailureCode = Literal[
     "browser_crashed", "gpu_lost", "upload_failed", "unknown",
     "invalid_spec", "model_unreadable", "input_missing", "over_limit", "timeout", "canceled",
+    "over_polygon_cap",
 ]
 RenderStage = Literal["loading", "rendering", "encoding", "uploading"]
 # How a worker names itself; a job keeps the name of the worker that holds it.
@@ -166,13 +168,14 @@ class RenderJobClaim(BaseModel):
 
 
 class ModelURL(BaseModel):
-    """A signed GET for the job's model (cloud storage)."""
+    """A signed GET for the job's model, or a convert job's CAD file (cloud storage)."""
 
     url: str
 
 
 class ModelPath(BaseModel):
-    """The API route that streams the job's model (local storage), relative to the API's URL."""
+    """The API route that streams the job's model, or a convert job's CAD file (local storage),
+    relative to the API's URL."""
 
     path: str
 
@@ -201,6 +204,17 @@ class RenderJobPayload(BaseModel):
     watermark: bool
     limits: PayloadLimits
     scene: PayloadScene
+
+
+class ConvertJobPayload(BaseModel):
+    """What the harness's convert mode converts a design from (docs/adr/0006-bulk-pipeline.md):
+    its spec, and where to fetch its source file and each companion, in the spec's order."""
+
+    kind: Literal["convert"]
+    spec: dict[str, Any]  # with its output names
+    source: ModelURL | ModelPath
+    companions: list[ModelURL | ModelPath]
+    limits: PayloadLimits  # max_edge is the thumbnail's size
 
 
 class RenderJobHeartbeat(WorkerRequest):

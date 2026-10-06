@@ -4,7 +4,8 @@ The payload is what the harness's export mode reads (src/features/render/harness
 the spec, the look frozen at creation with the items it names, where to get the model, the
 watermark and the limits. On cloud storage the model and a background image come as URLs signed
 for 15 minutes; local storage signs none, so the payload names this API's routes for them, which
-take the job's token like every other worker call.
+take the job's token like every other worker call. A convert job's payload is its spec and its
+design's CAD files, fetched the same ways (ADR 0006).
 """
 
 from __future__ import annotations
@@ -22,7 +23,14 @@ from app.features.render_jobs.specs import longest_edge
 from app.features.render_jobs.worker import discard_outputs, end_attempt, max_runtime_seconds, running_job
 from app.features.scene.look import background_image_key, scene_look
 from app.models import RenderJob, Scene
-from app.schemas.render_job import ModelPath, ModelURL, PayloadLimits, PayloadScene, RenderJobPayload
+from app.schemas.render_job import (
+    ConvertJobPayload,
+    ModelPath,
+    ModelURL,
+    PayloadLimits,
+    PayloadScene,
+    RenderJobPayload,
+)
 
 INPUT_URL_SECONDS = 900
 
@@ -71,10 +79,36 @@ def _model_source(job: RenderJob, scene: Scene) -> ModelURL | ModelPath:
     return ModelPath(path=f"/render-jobs/{job.id}/inputs/model")
 
 
-def job_payload(db: Session, job_id: int, token: str) -> RenderJobPayload:
+def _input_location(job: RenderJob, key: str, route: str) -> ModelURL | ModelPath:
+    if storage.signs_urls():
+        return ModelURL(url=storage.presign_get(key, expires_in=INPUT_URL_SECONDS))
+    return ModelPath(path=f"/render-jobs/{job.id}/inputs/{route}")
+
+
+def _convert_payload(job: RenderJob) -> ConvertJobPayload:
+    """What a convert job converts: its spec, and its design's source file and companions."""
+    spec = job.spec
+    return ConvertJobPayload(
+        kind="convert",
+        spec=spec,
+        source=_input_location(job, spec["source"]["key"], "source"),
+        companions=[
+            _input_location(job, companion["key"], f"companions/{index}")
+            for index, companion in enumerate(spec["companions"])
+        ],
+        limits=PayloadLimits(max_edge=spec["thumbnail"]["size"], max_runtime_seconds=max_runtime_seconds(job.kind)),
+    )
+
+
+def job_payload(db: Session, job_id: int, token: str) -> RenderJobPayload | ConvertJobPayload:
     """The running job's payload. A job whose scene or background image has gone since it was
-    created can't render: it ends failed (input_missing) and refunded, and this is 409."""
+    created can't render: it ends failed (input_missing) and refunded, and this is 409. A
+    convert job's is its design's files (ADR 0006)."""
     job = running_job(db, job_id, token)
+    if job.kind == "convert":
+        payload = _convert_payload(job)
+        db.commit()  # ends the read and its row lock
+        return payload
     scene = _job_scene(db, job)
     if scene is None:
         raise _missing_input(db, job, "The job's scene was deleted.")
@@ -110,3 +144,16 @@ def background_file(db: Session, job_id: int, token: str) -> FileResponse:
     job = running_job(db, job_id, token, lock=False)
     asset_id = _background_asset_id(job)
     return _local_file(background_image_key(db, job.user_id, asset_id) if asset_id is not None else None)
+
+
+def convert_source_file(db: Session, job_id: int, token: str) -> FileResponse:
+    """A convert job's CAD file (local storage only)."""
+    job = running_job(db, job_id, token, lock=False)
+    return _local_file(job.spec["source"]["key"] if job.kind == "convert" else None)
+
+
+def convert_companion_file(db: Session, job_id: int, token: str, index: int) -> FileResponse:
+    """One of a convert job's companion files, by its place in the spec (local storage only)."""
+    job = running_job(db, job_id, token, lock=False)
+    companions = job.spec["companions"] if job.kind == "convert" else []
+    return _local_file(companions[index]["key"] if 0 <= index < len(companions) else None)

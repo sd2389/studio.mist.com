@@ -15,6 +15,7 @@ from app.features.billing import email_service as billing_email
 from app.features.billing.plans import PLAN_LABELS, TOP_UP_PACKS, PlanTier, normalize_tier
 from app.features.billing.purchases import record_topup_purchase
 from app.features.billing.quota_service import (
+    change_plan,
     downgrade_to_free,
     get_or_create_billing,
     reset_allotments,
@@ -25,6 +26,9 @@ from app.models.billing import BillingEvent, UserBilling
 from app.models.user import User
 
 logger = logging.getLogger(__name__)
+
+# Subscription statuses that end the plan.
+_ENDED_STATUSES = frozenset({"canceled", "unpaid", "incomplete_expired"})
 
 
 def _stripe_client() -> stripe.StripeClient:
@@ -229,17 +233,34 @@ def _read_metadata(obj: object) -> dict[str, str]:
     return {}
 
 
-def _subscription_price_id(subscription: object) -> str | None:
+def _first_subscription_item(subscription: object) -> object | None:
     items = _read_field(subscription, "items")
     data = _read_field(items, "data", []) if items is not None else []
-    if not data:
-        return None
-    first = data[0]
-    price = _read_field(first, "price")
+    return data[0] if data else None
+
+
+def _subscription_price_id(subscription: object) -> str | None:
+    first = _first_subscription_item(subscription)
+    price = _read_field(first, "price") if first is not None else None
     if price is None:
         return None
     value = _read_field(price, "id")
     return str(value) if value else None
+
+
+def _subscription_tier(subscription: object) -> PlanTier:
+    price_id = _subscription_price_id(subscription)
+    return tier_for_stripe_price(price_id or "", _price_tier_map()) or "free"
+
+
+def _subscription_period(subscription: object, key: str) -> datetime | None:
+    """current_period_start or current_period_end. From API version 2025-03-31.basil
+    Stripe sends them on the subscription items, not on the subscription."""
+    value = _read_field(subscription, key)
+    if value is None:
+        first = _first_subscription_item(subscription)
+        value = _read_field(first, key) if first is not None else None
+    return _ts_to_dt(value)
 
 
 def _apply_subscription(
@@ -247,22 +268,85 @@ def _apply_subscription(
     billing: UserBilling,
     subscription: object,
 ) -> PlanTier:
-    price_id = _subscription_price_id(subscription)
-    tier = tier_for_stripe_price(price_id or "", _price_tier_map()) or "free"
     status = str(_read_field(subscription, "status", "") or "")
-    if status in {"canceled", "unpaid", "incomplete_expired"}:
+    if status in _ENDED_STATUSES:
         downgrade_to_free(db, billing)
         return "free"
 
+    tier = _subscription_tier(subscription)
     set_subscription_period(
         db,
         billing,
         tier=tier,
-        period_start=_ts_to_dt(_read_field(subscription, "current_period_start")),
-        period_end=_ts_to_dt(_read_field(subscription, "current_period_end")),
+        period_start=_subscription_period(subscription, "current_period_start"),
+        period_end=_subscription_period(subscription, "current_period_end"),
         stripe_subscription_id=str(_read_field(subscription, "id") or "") or None,
     )
     return tier
+
+
+def _is_current_subscription(billing: UserBilling, subscription: object) -> bool:
+    """True when the account's plan comes from this subscription."""
+    current_id = billing.stripe_subscription_id
+    return current_id is not None and current_id == _read_field(subscription, "id")
+
+
+def _change_or_end_plan(db: Session, billing: UserBilling, subscription: object) -> PlanTier | None:
+    """Follow customer.subscription.created or .updated: change the plan or end it, never add
+    credits. Credits come with a payment: a paid checkout or invoice.paid. Returns the plan
+    the account is now on, or None when the event leaves the account alone."""
+    status = str(_read_field(subscription, "status", "") or "")
+    if status in _ENDED_STATUSES:
+        if not _is_current_subscription(billing, subscription):
+            return None
+        downgrade_to_free(db, billing)
+        return "free"
+    if status == "incomplete":  # the first payment has not cleared
+        return None
+    if billing.stripe_subscription_id and not _is_current_subscription(billing, subscription):
+        return None  # the account is on another subscription
+    tier = _subscription_tier(subscription)
+    change_plan(
+        db,
+        billing,
+        tier=tier,
+        period_start=_subscription_period(subscription, "current_period_start"),
+        period_end=_subscription_period(subscription, "current_period_end"),
+        stripe_subscription_id=str(_read_field(subscription, "id") or "") or None,
+    )
+    return tier
+
+
+def _handle_subscription_changed(db: Session, subscription: object) -> None:
+    """Stripe also sends customer.subscription.updated for renewals, card changes and cancel
+    toggles, so the customer is emailed only when the plan itself changes."""
+    pair = _user_from_customer(db, _read_field(subscription, "customer"))
+    if pair is None:
+        return
+    user, billing = pair
+    previous_tier = normalize_tier(billing.plan_tier)
+    tier = _change_or_end_plan(db, billing, subscription)
+    if tier is not None and tier != previous_tier:
+        billing_email.send_subscription_updated_email(
+            to=user.email,
+            plan_label=PLAN_LABELS[tier],
+            action="updated",
+        )
+
+
+def _handle_subscription_deleted(db: Session, subscription: object) -> None:
+    pair = _user_from_customer(db, _read_field(subscription, "customer"))
+    if pair is None:
+        return
+    user, billing = pair
+    if not _is_current_subscription(billing, subscription):
+        return  # an older subscription; the account has moved on from it
+    downgrade_to_free(db, billing)
+    billing_email.send_subscription_updated_email(
+        to=user.email,
+        plan_label=PLAN_LABELS["free"],
+        action="cancelled",
+    )
 
 
 def handle_webhook(db: Session, payload: bytes, signature: str | None) -> dict[str, str]:
@@ -291,25 +375,9 @@ def handle_webhook(db: Session, payload: bytes, signature: str | None) -> dict[s
     elif event_type == "checkout.session.async_payment_failed":
         _log_failed_async_payment(data_obj)
     elif event_type in {"customer.subscription.created", "customer.subscription.updated"}:
-        pair = _user_from_customer(db, _read_field(data_obj, "customer"))
-        if pair:
-            user, billing = pair
-            tier = _apply_subscription(db, billing, data)
-            billing_email.send_subscription_updated_email(
-                to=user.email,
-                plan_label=PLAN_LABELS[tier],
-                action="updated",
-            )
+        _handle_subscription_changed(db, data_obj)
     elif event_type == "customer.subscription.deleted":
-        pair = _user_from_customer(db, _read_field(data_obj, "customer"))
-        if pair:
-            user, billing = pair
-            downgrade_to_free(db, billing)
-            billing_email.send_subscription_updated_email(
-                to=user.email,
-                plan_label=PLAN_LABELS["free"],
-                action="cancelled",
-            )
+        _handle_subscription_deleted(db, data_obj)
     elif event_type == "invoice.paid":
         pair = _user_from_customer(db, _read_field(data_obj, "customer"))
         if pair:

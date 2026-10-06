@@ -3,7 +3,8 @@ import { createViewerRenderer } from "@/lib/gpu/viewer-renderer";
 import { fitModelToUnit } from "./stamp-slots";
 import { cloneOwnedModel } from "./clone-owned-model";
 
-const THUMB_SIZE = 512;
+/** A model's thumbnail is this many pixels square, a WebP. */
+export const THUMB_SIZE = 512;
 
 function canvasToWebpBlob(canvas: HTMLCanvasElement | OffscreenCanvas): Promise<Blob> {
   if ("convertToBlob" in canvas) {

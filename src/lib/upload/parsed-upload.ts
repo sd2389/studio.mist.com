@@ -6,8 +6,14 @@ import {
   type PersistedModelConfig,
 } from "@/lib/slot-materials/model-config";
 import { countPolygons } from "@/lib/upload/count-polygons";
+import { decimateModelRoot } from "@/lib/upload/decimate-model";
 import { formatPolyCount } from "@/lib/upload/polygon-limits";
 
+/**
+ * A model parsed for saving, and the steps before Save that the upload page and the render
+ * worker's convert mode share (ADR 0006): one slot config from the file's names, the default
+ * materials, and the polygon count the plan's cap is checked against.
+ */
 export type ParsedUpload = {
   file: File;
   preloaded: LoadedModel;
@@ -46,6 +52,15 @@ export function buildParsedUpload(file: File, inspected: InspectedModel): Parsed
     sceneSettings: getDefaultSceneSettings(),
     polyCount,
   };
+}
+
+/**
+ * "Decimate metal": metal simplified toward `maxPolygons` (decimateModelRoot), the stones left
+ * as they are, and the model counted again. Still over the cap means its stones alone are.
+ */
+export async function decimateParsedUpload(parsed: ParsedUpload, maxPolygons: number): Promise<ParsedUpload> {
+  const polyCount = await decimateModelRoot(parsed.preloaded.root, maxPolygons);
+  return { ...parsed, polyCount };
 }
 
 export function parseErrorMessage(err: unknown, filename = ""): string {

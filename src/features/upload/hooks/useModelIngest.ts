@@ -6,7 +6,7 @@ import type { ModelLoadStatus } from "@/lib/convert/types";
 import { captureClientException, logClientEvent } from "@/lib/observability/sentry";
 import { groupModelFiles, unsupportedFilesMessage, type ModelFileSet } from "@/lib/upload/model-files";
 import { fetchSampleModelFile, type SampleModel } from "@/lib/upload/sample-models";
-import { buildParsedUpload, parseErrorMessage, type ParsedUpload } from "@/features/upload/lib/parsed-upload";
+import { buildParsedUpload, parseErrorMessage, type ParsedUpload } from "@/lib/upload/parsed-upload";
 
 export type ModelIngestCallbacks = {
   onStart: () => void;

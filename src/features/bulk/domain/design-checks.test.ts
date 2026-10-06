@@ -58,6 +58,13 @@ describe("planDesigns without a manifest", () => {
     ]);
   });
 
+  it("refuses a path longer than the API's filename takes, though its file name is short", () => {
+    const deep = `${"folder/".repeat(80)}R-1.stl`;
+    expect(planOf([dropped(deep)]).problems).toContainEqual(
+      expect.objectContaining({ field: "filename", code: "filename_invalid", message: `'${deep}' is longer than 512 characters.` }),
+    );
+  });
+
   it("finds companions sharing a name, and SKUs two designs share", () => {
     const plan = planOf([dropped("a/R-1.obj"), dropped("a/R-1.mtl"), dropped("a/r-1.MTL"), dropped("b/R-1.stl")]);
 

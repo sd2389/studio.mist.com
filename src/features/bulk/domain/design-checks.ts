@@ -19,6 +19,8 @@ const UNITLESS_FORMATS = ["obj", "stl", "ply"];
 const MAX_NAME_LENGTH = 255;
 const MAX_NOTE_LENGTH = 4096;
 const MAX_FILE_NAME_LENGTH = 255;
+/** A file's whole relative path, as the API's `filename` takes it (backend/app/schemas/ingest.py). */
+const MAX_PATH_LENGTH = 512;
 const CONTROL_CHARACTERS = /[\x00-\x1f\x7f]/;
 const CONTROL_IN_TEXT = /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/; // all but tabs and line breaks
 const MB = 1024 ** 2;
@@ -53,12 +55,18 @@ class Report {
   }
 }
 
+/** Length as Python counts it, in code points: an emoji is one character, not two. */
+function characters(text: string): number {
+  return [...text].length;
+}
+
 function pathProblem(path: string): string | null {
   if (CONTROL_CHARACTERS.test(path) || path.includes("\\")) return "has a backslash or a control character in it";
   if (path.startsWith("/") || path.split("/").some((part) => part === "" || part === "." || part === "..")) {
     return "is not a relative path";
   }
-  if (baseName(path).length > MAX_FILE_NAME_LENGTH) return `has a file name longer than ${MAX_FILE_NAME_LENGTH} characters`;
+  if (characters(path) > MAX_PATH_LENGTH) return `is longer than ${MAX_PATH_LENGTH} characters`;
+  if (characters(baseName(path)) > MAX_FILE_NAME_LENGTH) return `has a file name longer than ${MAX_FILE_NAME_LENGTH} characters`;
   return null;
 }
 

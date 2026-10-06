@@ -1,3 +1,5 @@
+import type { RenderJobTarget } from "@/features/render";
+import type { LookSnapshot } from "@/features/viewer";
 import { getScene } from "@/lib/api/scenes";
 import type { SceneDetail } from "@/lib/api/scenes";
 import { resolveModelConfigFromScene } from "@/features/editor/lib/hydrate-editor-scene";
@@ -281,4 +283,18 @@ export function batchJobTarget(job: BatchExportJob, currentSceneId: number): Bat
     live: job.sceneId === currentSceneId && job.variant === null,
     label: batchFilenamePrefix(job),
   };
+}
+
+/**
+ * Each target of a batch as what its job renders: the current scene without a variant in the
+ * studio's look, unsaved edits included; a saved variant by its id and another scene by its
+ * saved look, for the API to read. `suffix` ends each file stem ("halo-band-platinum-4K").
+ */
+export function batchRenderTargets(targets: BatchJobTarget[], liveLook: LookSnapshot, suffix: string): RenderJobTarget[] {
+  return targets.map((target) => ({
+    sceneId: target.sceneId,
+    variantId: target.variantId,
+    look: target.live ? liveLook : null,
+    name: `${target.label}-${suffix}`,
+  }));
 }

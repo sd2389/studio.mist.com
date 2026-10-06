@@ -253,8 +253,10 @@ describe("Export & share", () => {
     expect(html).toContain("Set as thumbnail");
     expect(html).toContain('aria-label="Exports"');
     expect(html).toContain('href="/exports"');
+    expect(html).toContain("MP4 rendered on our servers");
     expect(html).not.toContain("Download PNG");
     expect(html).not.toContain("Capture still");
+    expect(html).not.toContain("WebCodecs");
   });
 
   it("starts a Quick still of the live view at the viewport's aspect ratio, 2048 px long, and renders nothing here", async () => {
@@ -292,6 +294,7 @@ describe("Export & share", () => {
     const html = inStudio(panel);
     expect(html).toContain("Download PNG");
     expect(html).toContain("Capture still");
+    expect(html).toContain("MP4 via Mediabunny + WebCodecs");
     expect(html).not.toContain('aria-label="Exports"');
 
     drawnButton("Download PNG").click();

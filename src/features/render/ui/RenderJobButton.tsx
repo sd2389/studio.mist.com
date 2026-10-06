@@ -58,7 +58,7 @@ export function RenderJobButton({ requests, bulk = false, disabled = false, chil
           </>
         )}
       </Button>
-      <RenderJobCost {...quote} />
+      <RenderJobCost {...quote} kind={priced?.[0]?.kind} />
       <RenderJobError error={started.error} />
       <StartedExportJobs jobs={started.jobs} onRetried={started.add} />
     </div>

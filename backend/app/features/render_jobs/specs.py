@@ -129,7 +129,8 @@ class TurntablePath(SpecModel):
     frames (the studio's "Multi-angle")."""
 
     orbit: OrbitPath | None = None
-    poses: list[PoseId] | None = Field(default=None, min_length=1, max_length=MAX_POSES)
+    # Every pose a look can save, after the studio's four built-in ones.
+    poses: list[PoseId] | None = Field(default=None, min_length=1, max_length=MAX_POSES + len(DEFAULT_POSE_IDS))
 
     @model_validator(mode="after")
     def _is_one_path(self) -> TurntablePath:

@@ -10,8 +10,15 @@ import { Label } from "@/components/ui/label";
 import {
   CampaignPackLauncher,
   CaptureNotice,
+  FREE_EXPORT_PLAN,
+  jobVideoFps,
+  maxVideoSeconds,
+  useExportPlan,
+  useServerExports,
+  VideoFpsField,
   VideoResolutionField,
   videoSizeLabel,
+  type ExportPlan,
 } from "@/features/render";
 import { ModelMultiSelect, VariantMultiSelect } from "@/features/variants";
 import {
@@ -24,11 +31,44 @@ import { isWebCodecsSupported, type CameraPose } from "@/lib/video-capture";
 import { mergePoses } from "@/lib/viewer-scene";
 import { cn } from "@/lib/utils";
 import { useMaterialPresetStore } from "@/stores/material-preset-store";
-import { ChipField } from "@/components/ui/chip";
 import { BatchJobEstimate } from "./BatchJobEstimate";
+import { VideoJobRender } from "./VideoJobRender";
+
+/** The duration field's longest video, in seconds. */
+const LONGEST_DURATION_SECONDS = 60;
+
+/** The Videos tab's picked size, length and rate, and what they come to. */
+function useVideoSettings(serverExports: boolean | null, plan: ExportPlan | null) {
+  const [resId, setResId] = useState<VideoResolutionId>("1080p");
+  const [durationSec, setDurationSec] = useState("4");
+  const [pickedFps, setFps] = useState<VideoFps>(30);
+  const fps = serverExports ? jobVideoFps(pickedFps) : pickedFps;
+  const resolution = VIDEO_RESOLUTIONS.find((r) => r.id === resId) ?? VIDEO_RESOLUTIONS[1];
+  const duration = Math.max(1, Number.parseFloat(durationSec) || 4);
+  // A server video is as long as the plan lets it be at this size (Free: 20 s); the API refuses longer.
+  const longestDuration = serverExports
+    ? Math.max(1, Math.min(LONGEST_DURATION_SECONDS, maxVideoSeconds(plan ?? FREE_EXPORT_PLAN, resolution.width, resolution.height)))
+    : LONGEST_DURATION_SECONDS;
+  return {
+    resId,
+    setResId,
+    durationSec,
+    setDurationSec,
+    fps,
+    setFps,
+    resolution,
+    duration,
+    frameCount: Math.max(1, Math.round(duration * fps)),
+    bps: Math.round(resolution.width * resolution.height * fps * 0.12),
+    longestDuration,
+  };
+}
 
 export function EditorVideoTab(props: BatchExportTabProps) {
   const { sceneId, viewerId, modelConfig, variantItems } = props;
+  // While server exports are on, videos render on the server (ADR 0005); else in this browser.
+  const serverExports = useServerExports();
+  const plan = useExportPlan();
   const sceneSettings = useMaterialPresetStore((s) => s.sceneSettings);
   const poses = useMemo(() => mergePoses(sceneSettings.poses), [sceneSettings.poses]);
   const poseAngles: CameraPose[] = useMemo(
@@ -41,16 +81,10 @@ export function EditorVideoTab(props: BatchExportTabProps) {
   );
 
   const [mode, setMode] = useState<VideoMode>("simple");
-  const [resId, setResId] = useState<VideoResolutionId>("1080p");
-  const [durationSec, setDurationSec] = useState("4");
-  const [fps, setFps] = useState<VideoFps>(30);
+  const { resId, setResId, durationSec, setDurationSec, fps, setFps, resolution, duration, frameCount, bps, longestDuration } =
+    useVideoSettings(serverExports, plan);
   const batch = useBatchExport(props);
   const [hasWebCodecs] = useState(() => isWebCodecsSupported());
-
-  const resolution = VIDEO_RESOLUTIONS.find((r) => r.id === resId) ?? VIDEO_RESOLUTIONS[1];
-  const duration = Math.max(1, Number.parseFloat(durationSec) || 4);
-  const frameCount = Math.max(1, Math.round(duration * fps));
-  const bps = Math.round(resolution.width * resolution.height * fps * 0.12);
 
   const fileSizeStr = videoSizeLabel(bps, duration);
 
@@ -76,7 +110,8 @@ export function EditorVideoTab(props: BatchExportTabProps) {
 
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
         <CampaignPackLauncher modelId={viewerId} sceneId={sceneId} modelConfig={modelConfig} />
-        {!hasWebCodecs ? (
+        {/* The server encodes the MP4, so this browser's encoder doesn't matter there. */}
+        {!serverExports && !hasWebCodecs ? (
           <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-foreground/90">
             <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-500" aria-hidden />
             <p>
@@ -111,7 +146,13 @@ export function EditorVideoTab(props: BatchExportTabProps) {
           </>
         ) : null}
 
-        <VideoResolutionField value={resId} onChange={setResId} disabled={busy} />
+        <VideoResolutionField
+          value={resId}
+          onChange={setResId}
+          // Until the flag loads it isn't known which picks the server would take.
+          disabled={busy || serverExports === null}
+          isServerExport={serverExports === true}
+        />
 
         <div className="space-y-2">
           <Label htmlFor="video-duration" className="text-muted-foreground">
@@ -121,7 +162,7 @@ export function EditorVideoTab(props: BatchExportTabProps) {
             id="video-duration"
             type="number"
             min={1}
-            max={60}
+            max={longestDuration}
             step={0.5}
             value={durationSec}
             onChange={(event) => setDurationSec(event.target.value)}
@@ -130,12 +171,12 @@ export function EditorVideoTab(props: BatchExportTabProps) {
           />
         </div>
 
-        <ChipField
-          label="FPS"
-          options={VIDEO_FPS_OPTIONS.map((value) => ({ value, label: `${value} fps` }))}
+        <VideoFpsField
+          options={VIDEO_FPS_OPTIONS}
           value={fps}
           onChange={setFps}
-          disabled={busy}
+          disabled={busy || serverExports === null}
+          isServerExport={serverExports === true}
         />
 
         <div className="grid grid-cols-2 gap-3 rounded-lg border border-border bg-muted/40 p-3 text-xs">
@@ -149,62 +190,75 @@ export function EditorVideoTab(props: BatchExportTabProps) {
           </div>
         </div>
 
-        {busy ? (
-          <div className="space-y-2">
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-              <div
-                className="h-full bg-primary transition-all"
-                style={{ width: `${Math.round(progress * 100)}%` }}
-              />
-            </div>
-            <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-              <span>{Math.round(progress * 100)}%</span>
-              {etaLabel ? <span>{etaLabel}</span> : null}
-            </div>
-          </div>
-        ) : null}
-
-        {error ? (
-          <p className="text-sm text-destructive" role="alert">
-            {error}
-          </p>
-        ) : null}
-        <CaptureNotice message={notice} />
-        {status ? (
-          <p className="text-xs text-muted-foreground" role="status">
-            {status}
-          </p>
-        ) : null}
-
-        <div className="flex flex-col gap-2">
-          {mode === "multiple" ? (
-            <BatchJobEstimate count={batch.estimatedJobCount} enabled={batch.batchExportEnabled} />
-          ) : null}
-          {busy ? (
-            <Button type="button" variant="outline" onClick={video.cancel} className="gap-2">
-              <X className="size-4" aria-hidden />
-              Cancel
-            </Button>
-          ) : null}
-          <Button
-            type="button"
-            onClick={() => void video.render()}
-            disabled={busy || (mode === "multiple" && !batch.batchExportEnabled)}
-            className="gap-2"
-          >
+        {serverExports ? (
+          <VideoJobRender
+            mode={mode}
+            settings={{ width: resolution.width, height: resolution.height, fps, frames: frameCount, quality: "high" }}
+            poses={poses}
+            viewerId={viewerId}
+            batch={batch}
+          />
+        ) : (
+          <>
             {busy ? (
-              <>
-                <Loader2 className="size-4 animate-spin" aria-hidden />
-                Rendering…
-              </>
-            ) : (
-              <>
-                <Video className="size-4" aria-hidden />
-                {mode === "multiple" ? `Render ${batch.estimatedJobCount} videos` : "Render video"}
-              </>
-            )}
-          </Button>
-        </div>
+              <div className="space-y-2">
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full bg-primary transition-all"
+                    style={{ width: `${Math.round(progress * 100)}%` }}
+                  />
+                </div>
+                <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                  <span>{Math.round(progress * 100)}%</span>
+                  {etaLabel ? <span>{etaLabel}</span> : null}
+                </div>
+              </div>
+            ) : null}
+
+            {error ? (
+              <p className="text-sm text-destructive" role="alert">
+                {error}
+              </p>
+            ) : null}
+            <CaptureNotice message={notice} />
+            {status ? (
+              <p className="text-xs text-muted-foreground" role="status">
+                {status}
+              </p>
+            ) : null}
+
+            <div className="flex flex-col gap-2">
+              {mode === "multiple" ? (
+                <BatchJobEstimate count={batch.estimatedJobCount} enabled={batch.batchExportEnabled} />
+              ) : null}
+              {busy ? (
+                <Button type="button" variant="outline" onClick={video.cancel} className="gap-2">
+                  <X className="size-4" aria-hidden />
+                  Cancel
+                </Button>
+              ) : null}
+              {/* Until the flag is read, neither way can start. */}
+              <Button
+                type="button"
+                onClick={() => void video.render()}
+                disabled={busy || serverExports === null || (mode === "multiple" && !batch.batchExportEnabled)}
+                className="gap-2"
+              >
+                {busy ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" aria-hidden />
+                    Rendering…
+                  </>
+                ) : (
+                  <>
+                    <Video className="size-4" aria-hidden />
+                    {mode === "multiple" ? `Render ${batch.estimatedJobCount} videos` : "Render video"}
+                  </>
+                )}
+              </Button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

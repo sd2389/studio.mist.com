@@ -3,17 +3,21 @@
 import { UpgradePrompt } from "@/components/billing/UpgradePrompt";
 import { AuthRequestError } from "@/lib/auth/is-auth-required-error";
 import { cn } from "@/lib/utils";
-import { creditsLabel } from "../lib/render-job-labels";
+import { creditsLabel, outputsLabel } from "../lib/render-job-labels";
 import type { RenderJobBulkQuote, RenderJobQuote } from "../lib/render-jobs-api";
 import type { useRenderJobQuote } from "./useRenderJobQuote";
 
-type RenderJobCostProps = ReturnType<typeof useRenderJobQuote> & { className?: string };
+type RenderJobCostProps = ReturnType<typeof useRenderJobQuote> & {
+  /** The kind of the jobs priced, which names their files: "for 6 images", "for 2 videos". */
+  kind?: string;
+  className?: string;
+};
 
 /** What one quote or a bulk quote comes to, as the cost line shows it. */
 type CostLine = {
   credits: number;
-  /** Images a bulk request makes; none for a single job. */
-  images: number | null;
+  /** Files a bulk request makes; none for a single job. */
+  files: number | null;
   watermark: boolean;
   warnings: string[];
   /** Why the plan refuses the request as a whole. */
@@ -22,14 +26,15 @@ type CostLine = {
 
 function costLine(quote: RenderJobQuote | RenderJobBulkQuote): CostLine {
   if (!("items" in quote)) {
-    return { credits: quote.credits, images: null, watermark: quote.watermark, warnings: quote.warnings, refusal: null };
+    return { credits: quote.credits, files: null, watermark: quote.watermark, warnings: quote.warnings, refusal: null };
   }
   const quoted = quote.items.flatMap((item) => (item.quote ? [item.quote] : []));
   const refused = quote.items.flatMap((item) => (item.refused ? [item.refused] : []));
   const itemWarnings = [...new Set(quoted.flatMap((item) => item.warnings))];
   return {
     credits: quote.credits,
-    images: quoted.reduce((images, item) => images + item.frames, 0),
+    // A still or an angle set makes an image a frame; a turntable makes one video of all its frames.
+    files: quoted.reduce((files, item) => files + item.outputs.length, 0),
     watermark: quoted.some((item) => item.watermark),
     warnings: [
       ...quote.warnings,
@@ -58,10 +63,11 @@ export function RenderJobError({ error, className }: { error: Error | null; clas
 
 /**
  * The quoted price next to a Render button: "Costs 2 credits", or for several jobs "Costs 6
- * credits for 6 images", with the API's warnings (too few credits left, a transparent JPEG,
- * jobs that can't be made); an upgrade prompt when the plan can't render it (402).
+ * credits for 6 images" ("for 2 videos"), with the API's warnings (too few credits left, a
+ * transparent JPEG, jobs that can't be made); an upgrade prompt when the plan can't render it
+ * (402).
  */
-export function RenderJobCost({ quote, error, pending, className }: RenderJobCostProps) {
+export function RenderJobCost({ quote, error, pending, kind = "still", className }: RenderJobCostProps) {
   if (error) return <RenderJobError error={error} className={className} />;
   if (!quote) {
     return pending ? <p className={cn("text-xs text-muted-foreground", className)}>Pricing…</p> : null;
@@ -74,7 +80,7 @@ export function RenderJobCost({ quote, error, pending, className }: RenderJobCos
     <div className={cn("space-y-1 text-xs text-muted-foreground", className)}>
       <p>
         Costs <span className="font-medium text-foreground">{creditsLabel(line.credits)}</span>
-        {line.images !== null ? ` for ${line.images} ${line.images === 1 ? "image" : "images"}` : null}
+        {line.files !== null ? ` for ${outputsLabel(kind, line.files)}` : null}
         {line.watermark ? " · watermarked" : null}
       </p>
       {line.warnings.map((warning) => (

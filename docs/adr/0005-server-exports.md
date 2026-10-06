@@ -537,6 +537,8 @@ The code suggests one change to the A→D order: stills don't need Phase B, so C
 
 **C3. Videos** (after B3 and C1, in parallel with C2): `Video360Modal`, `EditorVideoTab` simple, multi-angle and multiple; the WebCodecs warnings go.
 
+As built in C3: with the flag on, the 360° dialog and the Videos tab create `turntable` jobs (`turntableJobSpec`; the tab's modes in `videoJobRequests`): the dialog and Simple an orbit from the live view, Multi-angle a cut through the studio's four poses and the saved ones, in that order, Multiple an orbit for each scene and variant picked, in one bulk request priced with the bulk quote. Files keep the browser downloads' stems (`-360`, `-multi-angle`). The dialog's Bitrate becomes Quality (`standard`, `high`, `max`); the tab, which has no such picker, encodes at `high`. The billing snapshot's features carry the plan's video caps (`max_video_fps`, `max_video_seconds`, `max_8k_video_seconds`), so the pickers lock past them (Free: 30 fps, 20 s, no 8K) and offer no rate above 60; a longer duration typed in is the quote's 402, shown with the upgrade. The WebCodecs warnings and the PNG ZIP fallback remain only with the flag off.
+
 **C4. Delete the browser exports** (after C2, C3 and D2): the removals listed above, the boundary rule in place of `export-parity.test.ts`, the flag removed. Acceptance: no public route imports the export pipeline (`check:boundaries`); `mediabunny` is gone; the smoke flow in `docs/QUALITY-GATES.md` uses an export job instead of `POST /renders`.
 
 ### Phase D: the Campaign Pack on the server

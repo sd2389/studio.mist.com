@@ -6,9 +6,13 @@ import {
   campaignPackJobRequest,
   campaignPackJobSpec,
   jobRetryRequest,
+  orbitPath,
+  posesPath,
   quickStillSpec,
   stillJobRequest,
   stillJobSpec,
+  turntableJobRequest,
+  turntableJobSpec,
 } from "./render-job-requests";
 import type { RenderJob, RenderJobCamera } from "./render-jobs-api";
 
@@ -85,6 +89,57 @@ describe("stillJobRequest", () => {
     });
   });
 });
+describe("turntableJobSpec", () => {
+  const settings = { width: 1920, height: 1080, fps: 30, frames: 120, quality: "high" as const };
+
+  it("orbits once round the live view's target from the view itself, at the size, rate, length and quality picked", () => {
+    expect(turntableJobSpec(settings, orbitPath(LIVE_VIEW))).toEqual({
+      width: 1920,
+      height: 1080,
+      fps: 30,
+      frames: 120,
+      quality: "high",
+      path: { orbit: { start: LIVE_VIEW } },
+    });
+  });
+
+  it("cuts through the poses by id, in the order the studio lists them", () => {
+    const poses = [{ id: "pose-top" }, { id: "pose-right" }, { id: "pose-default" }, { id: "pose-left" }, { id: "pose-lxk2" }];
+
+    expect(turntableJobSpec({ ...settings, quality: "max" }, posesPath(poses))).toMatchObject({
+      quality: "max",
+      path: { poses: ["pose-top", "pose-right", "pose-default", "pose-left", "pose-lxk2"] },
+    });
+  });
+
+  it("keeps the frame even both ways, as H.264's 4:2:0 chroma needs", () => {
+    expect(turntableJobSpec({ ...settings, width: 1081, height: 607 }, orbitPath(LIVE_VIEW))).toMatchObject({ width: 1080, height: 606 });
+  });
+});
+
+describe("turntableJobRequest", () => {
+  const spec = turntableJobSpec({ width: 3840, height: 2160, fps: 24, frames: 240, quality: "standard" }, orbitPath(LIVE_VIEW));
+
+  it("sends the studio's look for its own scene, or names a saved variant for the API to read", () => {
+    const look = { material: "platinum", lighting: "studio" } as LookSnapshot;
+
+    expect(turntableJobRequest(spec, { sceneId: 812, look, name: "ring-360" })).toEqual({
+      kind: "turntable",
+      scene_id: 812,
+      variant_id: null,
+      look,
+      name: "ring-360",
+      spec,
+    });
+    expect(turntableJobRequest(spec, { sceneId: 913, variantId: "variant-pt", name: "halo-platinum-360" })).toMatchObject({
+      kind: "turntable",
+      scene_id: 913,
+      variant_id: "variant-pt",
+      look: null,
+    });
+  });
+});
+
 const LOOK = { material: "platinum", lighting: "soft", scene_settings: { customBackground: { type: "image", asset_id: 41 } } };
 
 function failedJob(job: Partial<RenderJob>): RenderJob {

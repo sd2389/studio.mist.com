@@ -12,10 +12,21 @@ import {
 } from "@/components/ui/dialog";
 import {
   CaptureNotice,
+  jobVideoFps,
+  liveViewCamera,
+  orbitPath,
+  RenderJobButton,
   turntableCaptureOptions,
+  turntableJobRequest,
+  turntableJobSpec,
   useCaptureRun,
+  useExportScene,
+  useServerExports,
+  VideoFpsField,
   VideoResolutionField,
   videoSizeLabel,
+  type RenderJobRequest,
+  type VideoQuality,
 } from "@/features/render";
 import { downloadBlob, VIDEO_RESOLUTIONS, type VideoResolutionId } from "@/lib/export-presets";
 import { isWebCodecsSupported, recordTurntable } from "@/lib/video-capture";
@@ -35,11 +46,12 @@ type FrameCount = (typeof FRAME_COUNTS)[number];
 const FPS_OPTIONS = [24, 30, 60] as const;
 type FpsOption = (typeof FPS_OPTIONS)[number];
 
+/** The browser's bitrate for each level, and the quality the server encodes it at (an x264 CRF). */
 const BITRATES = [
-  { id: "low", label: "Standard", multiplier: 0.06 },
-  { id: "med", label: "High", multiplier: 0.12 },
-  { id: "high", label: "Max", multiplier: 0.22 },
-] as const;
+  { id: "low", label: "Standard", multiplier: 0.06, quality: "standard" },
+  { id: "med", label: "High", multiplier: 0.12, quality: "high" },
+  { id: "high", label: "Max", multiplier: 0.22, quality: "max" },
+] as const satisfies readonly { id: string; label: string; multiplier: number; quality: VideoQuality }[];
 type BitrateId = (typeof BITRATES)[number]["id"];
 
 function bytesPerSecondEstimate(width: number, height: number, fps: number, mult: number) {
@@ -47,12 +59,16 @@ function bytesPerSecondEstimate(width: number, height: number, fps: number, mult
 }
 
 export function Video360Modal({ open, onOpenChange, modelId }: Video360ModalProps) {
+  // While server exports are on, the video renders on the server (ADR 0005); else in this browser.
+  const serverExports = useServerExports();
+  const exportScene = useExportScene();
   const [resId, setResId] = useState<VideoResolutionId>("1080p");
   const [frames, setFrames] = useState<FrameCount>(120);
-  const [fps, setFps] = useState<FpsOption>(30);
+  const [pickedFps, setFps] = useState<FpsOption>(30);
+  const fps = serverExports ? jobVideoFps(pickedFps) : pickedFps;
   const [bitrateId, setBitrateId] = useState<BitrateId>("med");
   const run = useCaptureRun();
-  const { busy, progress, error, status, notice, etaLabel, reset, cancel } = run;
+  const { busy, reset, cancel } = run;
   const [hasWebCodecs] = useState(() => isWebCodecsSupported());
 
   const handleDialogOpenChange = useCallback(
@@ -98,6 +114,15 @@ export function Video360Modal({ open, onOpenChange, modelId }: Video360ModalProp
     });
   }
 
+  /** The turntable a Render click starts: an orbit from the view as it is then, at the size, length, rate and quality picked. */
+  function turntableJob(): RenderJobRequest[] | null {
+    const camera = liveViewCamera();
+    if (!exportScene || !camera) return null;
+    const settings = { width: resolution.width, height: resolution.height, fps, frames, quality: bitrate.quality };
+    const spec = turntableJobSpec(settings, orbitPath(camera));
+    return [turntableJobRequest(spec, { sceneId: exportScene.sceneId, look: exportScene.look(), name: `${modelId}-360` })];
+  }
+
   return (
     <Dialog open={open} onOpenChange={handleDialogOpenChange}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto border-border bg-card sm:max-w-lg">
@@ -107,12 +132,13 @@ export function Video360Modal({ open, onOpenChange, modelId }: Video360ModalProp
             360 turntable
           </DialogTitle>
           <DialogDescription className="text-muted-foreground">
-            Render a full orbit of the current scene to MP4. Scene: {" "}
+            Render a full orbit of the current scene to MP4{serverExports ? " on our servers" : null}. Scene: {" "}
             <span className="text-foreground/80">{modelId}</span>
           </DialogDescription>
         </DialogHeader>
 
-        {!hasWebCodecs ? (
+        {/* The server encodes the MP4, so this browser's encoder doesn't matter there. */}
+        {!serverExports && !hasWebCodecs ? (
           <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-foreground/90">
             <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-500" aria-hidden />
             <p>
@@ -123,7 +149,14 @@ export function Video360Modal({ open, onOpenChange, modelId }: Video360ModalProp
         ) : null}
 
         <div className="space-y-4">
-          <VideoResolutionField value={resId} onChange={setResId} disabled={busy} showSize />
+          <VideoResolutionField
+            value={resId}
+            onChange={setResId}
+            // Until the flag loads it isn't known which picks the server would take.
+            disabled={busy || serverExports === null}
+            showSize
+            isServerExport={serverExports === true}
+          />
 
           <ChipField
             label="Frames"
@@ -133,16 +166,16 @@ export function Video360Modal({ open, onOpenChange, modelId }: Video360ModalProp
             disabled={busy}
           />
 
-          <ChipField
-            label="FPS"
-            options={FPS_OPTIONS.map((f) => ({ value: f, label: `${f} fps` }))}
+          <VideoFpsField
+            options={FPS_OPTIONS}
             value={fps}
             onChange={setFps}
-            disabled={busy}
+            disabled={busy || serverExports === null}
+            isServerExport={serverExports === true}
           />
 
           <ChipField
-            label="Bitrate"
+            label={serverExports ? "Quality" : "Bitrate"}
             options={BITRATES.map((b) => ({ value: b.id, label: b.label }))}
             value={bitrateId}
             onChange={setBitrateId}
@@ -160,91 +193,126 @@ export function Video360Modal({ open, onOpenChange, modelId }: Video360ModalProp
             </div>
           </div>
 
-          {busy ? (
-            <div className="space-y-2">
-              <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                <div
-                  className="h-full bg-primary transition-all"
-                  style={{ width: `${Math.round(progress * 100)}%` }}
-                />
-              </div>
-              <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-                <span role="status">Recording… {Math.round(progress * 100)}%</span>
-                {etaLabel ? <span>{etaLabel}</span> : null}
-              </div>
-            </div>
-          ) : null}
-
-          {error ? (
-            <div className="space-y-2">
-              <p className="text-sm text-destructive" role="alert">
-                {error}
-              </p>
-              {!busy ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="gap-2 border-border"
-                  onClick={() => {
-                    run.setError(null);
-                    void handleRender();
-                  }}
-                >
-                  <Video className="size-4" aria-hidden />
-                  Retry
-                </Button>
-              ) : null}
-            </div>
-          ) : null}
-          <CaptureNotice message={notice} />
-          {status ? (
-            <p className="text-xs text-muted-foreground" role="status">
-              {status}
-            </p>
-          ) : null}
-
-          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-            {busy ? (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={cancel}
-                className="border-border"
-              >
-                <X className="size-4" aria-hidden />
-                Cancel
-              </Button>
-            ) : (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => handleDialogOpenChange(false)}
-                className="border-border"
-              >
-                Close
-              </Button>
-            )}
-            <Button
-              type="button"
-              onClick={() => void handleRender()}
-              disabled={busy}
-              className="gap-2"
-            >
-              {busy ? (
-                <>
-                  <Loader2 className="size-4 animate-spin" aria-hidden />
-                  Recording… {Math.round(progress * 100)}%
-                </>
-              ) : (
-                <>
-                  <Video className="size-4" aria-hidden />
-                  Render video
-                </>
+          {serverExports ? (
+            <>
+              {exportScene ? null : (
+                <p className="text-xs text-muted-foreground" role="note">
+                  Videos render from a saved piece: open one of yours in the studio to render it.
+                </p>
               )}
-            </Button>
-          </div>
+              <RenderJobButton requests={turntableJob}>Render video</RenderJobButton>
+            </>
+          ) : (
+            <TurntableRecording
+              run={run}
+              onRender={() => void handleRender()}
+              onClose={() => handleDialogOpenChange(false)}
+              // Until the flag is read, neither way can start.
+              canStart={serverExports !== null}
+            />
+          )}
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+type TurntableRecordingProps = {
+  run: ReturnType<typeof useCaptureRun>;
+  /** Records the turntable in this browser. */
+  onRender: () => void;
+  onClose: () => void;
+  canStart: boolean;
+};
+
+/** Recording in this browser: its progress, its error with a Retry, its fallback notice and status, and the buttons. */
+function TurntableRecording({ run, onRender, onClose, canStart }: TurntableRecordingProps) {
+  const { busy, progress, error, status, notice, etaLabel, cancel } = run;
+  return (
+    <>
+      {busy ? (
+        <div className="space-y-2">
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-full bg-primary transition-all"
+              style={{ width: `${Math.round(progress * 100)}%` }}
+            />
+          </div>
+          <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+            <span role="status">Recording… {Math.round(progress * 100)}%</span>
+            {etaLabel ? <span>{etaLabel}</span> : null}
+          </div>
+        </div>
+      ) : null}
+
+      {error ? (
+        <div className="space-y-2">
+          <p className="text-sm text-destructive" role="alert">
+            {error}
+          </p>
+          {!busy ? (
+            <Button
+              type="button"
+              variant="outline"
+              className="gap-2 border-border"
+              onClick={() => {
+                run.setError(null);
+                onRender();
+              }}
+            >
+              <Video className="size-4" aria-hidden />
+              Retry
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+      <CaptureNotice message={notice} />
+      {status ? (
+        <p className="text-xs text-muted-foreground" role="status">
+          {status}
+        </p>
+      ) : null}
+
+      <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+        {busy ? (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={cancel}
+            className="border-border"
+          >
+            <X className="size-4" aria-hidden />
+            Cancel
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onClose}
+            className="border-border"
+          >
+            Close
+          </Button>
+        )}
+        <Button
+          type="button"
+          onClick={onRender}
+          disabled={busy || !canStart}
+          className="gap-2"
+        >
+          {busy ? (
+            <>
+              <Loader2 className="size-4 animate-spin" aria-hidden />
+              Recording… {Math.round(progress * 100)}%
+            </>
+          ) : (
+            <>
+              <Video className="size-4" aria-hidden />
+              Render video
+            </>
+          )}
+        </Button>
+      </div>
+    </>
   );
 }

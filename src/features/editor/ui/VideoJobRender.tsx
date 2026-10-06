@@ -51,7 +51,6 @@ export function VideoJobRender({ mode, settings, poses, viewerId, batch }: Video
         <p className="text-xs text-muted-foreground">Select at least one variant or save variants in Settings.</p>
       ) : null}
       <RenderJobButton
-        key={mode}
         requests={videoJobs}
         bulk={mode === "multiple"}
         disabled={mode === "multiple" && !batch.batchExportEnabled}

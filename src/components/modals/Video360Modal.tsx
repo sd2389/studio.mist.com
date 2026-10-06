@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   CaptureNotice,
+  jobVideoFps,
   liveViewCamera,
   orbitPath,
   RenderJobButton,
@@ -63,7 +64,8 @@ export function Video360Modal({ open, onOpenChange, modelId }: Video360ModalProp
   const exportScene = useExportScene();
   const [resId, setResId] = useState<VideoResolutionId>("1080p");
   const [frames, setFrames] = useState<FrameCount>(120);
-  const [fps, setFps] = useState<FpsOption>(30);
+  const [pickedFps, setFps] = useState<FpsOption>(30);
+  const fps = serverExports ? jobVideoFps(pickedFps) : pickedFps;
   const [bitrateId, setBitrateId] = useState<BitrateId>("med");
   const run = useCaptureRun();
   const { busy, reset, cancel } = run;
@@ -150,7 +152,8 @@ export function Video360Modal({ open, onOpenChange, modelId }: Video360ModalProp
           <VideoResolutionField
             value={resId}
             onChange={setResId}
-            disabled={busy}
+            // Until the flag loads it isn't known which picks the server would take.
+            disabled={busy || serverExports === null}
             showSize
             isServerExport={serverExports === true}
           />
@@ -167,7 +170,7 @@ export function Video360Modal({ open, onOpenChange, modelId }: Video360ModalProp
             options={FPS_OPTIONS}
             value={fps}
             onChange={setFps}
-            disabled={busy}
+            disabled={busy || serverExports === null}
             isServerExport={serverExports === true}
           />
 

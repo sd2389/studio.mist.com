@@ -22,6 +22,7 @@ export { VideoFpsField } from "./ui/VideoFpsField";
 export {
   exportPlanFromSnapshot,
   FREE_EXPORT_PLAN,
+  jobVideoFps,
   loadExportPlan,
   maxVideoSeconds,
   type ExportPlan,

@@ -140,16 +140,28 @@ function inStudio(children: ReactNode, sceneId: number | null = 812) {
   );
 }
 
+/** The text markup shows: everything outside its tags. */
+function textOf(markup: string): string {
+  let text = "";
+  let inTag = false;
+  for (const char of markup) {
+    if (char === "<") inTag = true;
+    else if (char === ">") inTag = false;
+    else if (!inTag) text += char;
+  }
+  return text;
+}
+
 /** A picker chip as drawn, by the start of its text: whether it can be picked, and whether the plan locks it. */
 function chip(html: string, label: string): { disabled: boolean; locked: boolean } {
   const chips = html.split("<button").slice(1).map((part) => `<button${part.slice(0, part.indexOf("</button>"))}`);
-  const found = chips.find((markup) => markup.replace(/<[^>]+>/g, "").startsWith(label));
+  const found = chips.find((markup) => textOf(markup).startsWith(label));
   if (!found) throw new Error(`No chip "${label}"`);
   return { disabled: /\sdisabled=""/.test(found.slice(0, found.indexOf(">"))), locked: found.includes("(needs a plan upgrade)") };
 }
 
 function hasChip(html: string, label: string): boolean {
-  return html.split("<button").some((part) => part.slice(part.indexOf(">") + 1).replace(/<[^>]+>/g, "").startsWith(label));
+  return html.split("<button").some((part) => textOf(part.slice(part.indexOf(">") + 1)).startsWith(label));
 }
 
 const dialog = <Video360Modal open onOpenChange={() => {}} modelId="ring-abc" />;

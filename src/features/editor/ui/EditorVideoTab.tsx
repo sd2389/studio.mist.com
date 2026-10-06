@@ -11,12 +11,14 @@ import {
   CampaignPackLauncher,
   CaptureNotice,
   FREE_EXPORT_PLAN,
+  jobVideoFps,
   maxVideoSeconds,
   useExportPlan,
   useServerExports,
   VideoFpsField,
   VideoResolutionField,
   videoSizeLabel,
+  type ExportPlan,
 } from "@/features/render";
 import { ModelMultiSelect, VariantMultiSelect } from "@/features/variants";
 import {
@@ -35,6 +37,33 @@ import { VideoJobRender } from "./VideoJobRender";
 /** The duration field's longest video, in seconds. */
 const LONGEST_DURATION_SECONDS = 60;
 
+/** The Videos tab's picked size, length and rate, and what they come to. */
+function useVideoSettings(serverExports: boolean | null, plan: ExportPlan | null) {
+  const [resId, setResId] = useState<VideoResolutionId>("1080p");
+  const [durationSec, setDurationSec] = useState("4");
+  const [pickedFps, setFps] = useState<VideoFps>(30);
+  const fps = serverExports ? jobVideoFps(pickedFps) : pickedFps;
+  const resolution = VIDEO_RESOLUTIONS.find((r) => r.id === resId) ?? VIDEO_RESOLUTIONS[1];
+  const duration = Math.max(1, Number.parseFloat(durationSec) || 4);
+  // A server video is as long as the plan lets it be at this size (Free: 20 s); the API refuses longer.
+  const longestDuration = serverExports
+    ? Math.max(1, Math.min(LONGEST_DURATION_SECONDS, maxVideoSeconds(plan ?? FREE_EXPORT_PLAN, resolution.width, resolution.height)))
+    : LONGEST_DURATION_SECONDS;
+  return {
+    resId,
+    setResId,
+    durationSec,
+    setDurationSec,
+    fps,
+    setFps,
+    resolution,
+    duration,
+    frameCount: Math.max(1, Math.round(duration * fps)),
+    bps: Math.round(resolution.width * resolution.height * fps * 0.12),
+    longestDuration,
+  };
+}
+
 export function EditorVideoTab(props: BatchExportTabProps) {
   const { sceneId, viewerId, modelConfig, variantItems } = props;
   // While server exports are on, videos render on the server (ADR 0005); else in this browser.
@@ -52,20 +81,10 @@ export function EditorVideoTab(props: BatchExportTabProps) {
   );
 
   const [mode, setMode] = useState<VideoMode>("simple");
-  const [resId, setResId] = useState<VideoResolutionId>("1080p");
-  const [durationSec, setDurationSec] = useState("4");
-  const [fps, setFps] = useState<VideoFps>(30);
+  const { resId, setResId, durationSec, setDurationSec, fps, setFps, resolution, duration, frameCount, bps, longestDuration } =
+    useVideoSettings(serverExports, plan);
   const batch = useBatchExport(props);
   const [hasWebCodecs] = useState(() => isWebCodecsSupported());
-
-  const resolution = VIDEO_RESOLUTIONS.find((r) => r.id === resId) ?? VIDEO_RESOLUTIONS[1];
-  const duration = Math.max(1, Number.parseFloat(durationSec) || 4);
-  const frameCount = Math.max(1, Math.round(duration * fps));
-  const bps = Math.round(resolution.width * resolution.height * fps * 0.12);
-  // A server video is as long as the plan lets it be at this size (Free: 20 s); the API refuses longer.
-  const longestDuration = serverExports
-    ? Math.max(1, Math.min(LONGEST_DURATION_SECONDS, maxVideoSeconds(plan ?? FREE_EXPORT_PLAN, resolution.width, resolution.height)))
-    : LONGEST_DURATION_SECONDS;
 
   const fileSizeStr = videoSizeLabel(bps, duration);
 
@@ -127,7 +146,13 @@ export function EditorVideoTab(props: BatchExportTabProps) {
           </>
         ) : null}
 
-        <VideoResolutionField value={resId} onChange={setResId} disabled={busy} isServerExport={serverExports === true} />
+        <VideoResolutionField
+          value={resId}
+          onChange={setResId}
+          // Until the flag loads it isn't known which picks the server would take.
+          disabled={busy || serverExports === null}
+          isServerExport={serverExports === true}
+        />
 
         <div className="space-y-2">
           <Label htmlFor="video-duration" className="text-muted-foreground">
@@ -150,7 +175,7 @@ export function EditorVideoTab(props: BatchExportTabProps) {
           options={VIDEO_FPS_OPTIONS}
           value={fps}
           onChange={setFps}
-          disabled={busy}
+          disabled={busy || serverExports === null}
           isServerExport={serverExports === true}
         />
 

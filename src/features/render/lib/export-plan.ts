@@ -41,6 +41,14 @@ export const FREE_EXPORT_PLAN: ExportPlan = {
  * backend/app/features/render_jobs/specs.py): the Videos tab's 90 and 120 fps are dropped.
  */
 export const JOB_VIDEO_MAX_FPS = 60;
+
+/**
+ * The rate a video renders at on the server: one picked for the browser's recorder before the
+ * flag loaded (90 or 120 fps) comes down to the server's fastest, which the API accepts.
+ */
+export function jobVideoFps<Fps extends number>(fps: Fps): Fps {
+  return (fps > JOB_VIDEO_MAX_FPS ? JOB_VIDEO_MAX_FPS : fps) as Fps;
+}
 /** The longest video the studio asks for: the Videos tab's duration goes up to a minute. */
 const LONGEST_VIDEO_SECONDS = 60;
 /** A frame of more megapixels than 4K's is 8K video (VIDEO_4K_MEGAPIXELS in backend/app/features/billing/plans.py). */

@@ -147,6 +147,11 @@ describe("a server video's caps", () => {
     expect(fitsVideoSize(FREE_EXPORT_PLAN, 4096, 2304)).toBe(false);
   });
 
+  it("bring a rate picked for the browser's recorder down to the server's fastest", async () => {
+    const { jobVideoFps } = await loadModule();
+    expect([24, 30, 60, 90, 120].map((fps) => jobVideoFps(fps))).toEqual([24, 30, 60, 60, 60]);
+  });
+
   it("are as long as the plan's videos run at that size: shorter at 8K, none at 8K on Free", async () => {
     const { exportPlanFromSnapshot, maxVideoSeconds, FREE_EXPORT_PLAN } = await loadModule();
     const studio = exportPlanFromSnapshot(snapshot("studio"));

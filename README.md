@@ -169,6 +169,15 @@ To try the API locally, `cp docker-compose.override.example.yml docker-compose.o
 
 Only a claim takes back a job whose lease ran out, so with no worker polling it stays `running`.
 
+## Bulk uploads (optional)
+
+Grow and Studio customers can upload a batch of CAD files, which workers convert into published scenes ([ADR 0006](docs/adr/0006-bulk-pipeline.md)). The API is under `/ingest`, behind the `bulk_pipeline` flag (off by default): while it is off, nothing can start or add to a batch, but batches can still be read and canceled.
+
+- `POST /batches` takes the files (relative paths and sizes, with an OBJ's MTL or a glTF's `.bin`) and an optional CSV manifest (`file,sku,name,category,note,units`). Every design, row and SKU is checked at once, and a batch with any problem is 422 with each one by item and row; SKUs must be free of scenes and of other open batches. Limits: 100 MB a file; Studio 500 designs and 20 GB a batch, Grow 100 and 5 GB, Free none (402); 3 open batches at once (429). An optional `render_plan` (stills for now) is priced as the angle-set jobs it becomes.
+- `POST /batches/{id}/uploads` signs a PUT for each file of up to 100 designs, its size and type signed in; `POST /batches/{id}/uploaded` checks the stored sizes. Raw CAD goes straight to cloud storage, never through the API, so local storage takes no bulk uploads.
+- `POST /batches/{id}/submit` holds a model credit and the render plan's credits for every design in one conditional UPDATE, and queues a `convert` render job for each uploaded design. `retry-failed` (and `items/{item_id}/retry`) hold again; `cancel` refunds what hasn't finished. `GET /batches`, `/batches/{id}` and `/batches/{id}/items?status=&page=&limit=` read them.
+- A `convert` job's payload is its spec and signed GETs for the design's files (on local storage, `GET /render-jobs/{id}/inputs/source` and `/inputs/companions/{index}`). The worker uploads `model.glb`, `conversion.json` and optionally `thumbnail.webp`; completing the job runs the direct upload's GLB checks, makes and publishes the scene, and spends the design's held credit, once.
+
 ## Project layout
 
 | Path | Contents |

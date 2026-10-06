@@ -15,7 +15,8 @@
 | Gem rendering | `src/lib/gem-gpu` | Ray-traced gem shader, facet-plane atlas, jewelry light tents, gem presets |
 | CAD import | `src/lib/convert` | Format loaders (GLB, STL, 3DM, OBJ, FBX, PLY, 3MF, STEP, IGES), units, metal/gem segmentation |
 | Design system | `src/components/ui` | Buttons, dialogs, primitives |
-| Backend upload | `backend/app/features/upload` | Register/multipart ingest orchestration |
+| Backend upload | `backend/app/features/upload` | Register/multipart ingest orchestration; `create_scene_from_glb`, shared with bulk uploads |
+| Backend bulk ingest | `backend/app/features/ingest` | Batches of CAD files: manifests, SKU checks, plan limits, signed uploads, credit holds, convert jobs and the scenes they make ([ADR 0006](adr/0006-bulk-pipeline.md)) |
 | Backend scene | `backend/app/features/scene` | Scene queries and patches |
 | Backend render | `backend/app/features/render` | Render save and listing |
 | Backend files | `backend/app/features/file_access` | Static file streaming |

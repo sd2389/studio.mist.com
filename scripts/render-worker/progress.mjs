@@ -11,13 +11,16 @@ export const UPLOADING_AT = 0.95;
 /**
  * The share of the bar rendering and encoding fill, by kind. A turntable's frames go into ffmpeg
  * as they are rendered, so the two fill it together; a spin's ZIP is written after its frames, in
- * seconds; stills and angle sets go up as the page encoded them.
+ * seconds; stills and angle sets go up as the page encoded them. A Campaign Pack's rendering is
+ * the page's own measure of its whole run (its stills, spins and turntables, each turntable's
+ * MP4 finished before the next part starts); its ZIP is written after, from disk.
  */
 const SHARES = {
   still: { rendering: 0.95, encoding: 0 },
   angle_set: { rendering: 0.95, encoding: 0 },
   turntable: { rendering: 0.475, encoding: 0.475 },
   spin: { rendering: 0.9, encoding: 0.05 },
+  campaign_pack: { rendering: 0.9, encoding: 0.05 },
 };
 
 const share = (value) => Math.min(Math.max(Number(value) || 0, 0), 1);

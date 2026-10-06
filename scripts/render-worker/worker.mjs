@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 import { createApiClient } from "./api.mjs";
 import { createAssetCache } from "./assets.mjs";
 import { launchBrowser, selfCheck } from "./browser.mjs";
-import { readConfig } from "./config.mjs";
+import { readConfig, VIDEO_KINDS } from "./config.mjs";
 import { checkFfmpeg } from "./encode.mjs";
 import { startHarness } from "./harness.mjs";
 import { runJob } from "./job.mjs";
@@ -102,11 +102,11 @@ async function runSlot(slot, { api, config, assets, stopping }) {
 
 export async function main() {
   const config = readConfig();
-  if (config.kinds.includes("turntable")) {
+  if (config.kinds.some((kind) => VIDEO_KINDS.includes(kind))) {
     try {
       log(`turntables encode with ${await checkFfmpeg(config.ffmpegPath)}`);
     } catch (error) {
-      log(`${error.message}; claiming nothing (WORKER_FFMPEG names ffmpeg, WORKER_KINDS can leave turntables out)`);
+      log(`${error.message}; claiming nothing (WORKER_FFMPEG names ffmpeg, WORKER_KINDS can leave turntables and Campaign Packs out)`);
       return 1;
     }
   }

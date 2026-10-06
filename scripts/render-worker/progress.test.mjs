@@ -34,8 +34,18 @@ describe("jobProgress", () => {
     ])).toEqual([[0.9, "rendering"], [0.925, "encoding"], [0.95, "encoding"]]);
   });
 
+  // The page measures the whole pack, its turntables' MP4s finished as it goes; the ZIP comes after.
+  it("fills a Campaign Pack's bar with the page's own measure of it, then its ZIP", () => {
+    expect(along("campaign_pack", [
+      { stage: "rendering", rendered: 0.5 },
+      { stage: "rendering", rendered: 1, encoded: 0 },
+      { stage: "encoding", rendered: 1, encoded: 0.5 },
+      { stage: "uploading", rendered: 1, encoded: 1 },
+    ])).toEqual([[0.45, "rendering"], [0.9, "rendering"], [0.925, "encoding"], [0.95, "uploading"]]);
+  });
+
   it("never goes back, from loading to uploading, for any kind", () => {
-    for (const kind of ["still", "angle_set", "turntable", "spin"]) {
+    for (const kind of ["still", "angle_set", "turntable", "spin", "campaign_pack"]) {
       const steps = [{ stage: "loading" }];
       for (let rendered = 0; rendered <= 1; rendered += 0.25) steps.push({ stage: "rendering", rendered, encoded: rendered * 0.8 });
       for (let encoded = 0.8; encoded <= 1; encoded += 0.1) steps.push({ stage: "encoding", rendered: 1, encoded });

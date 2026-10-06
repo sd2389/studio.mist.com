@@ -10,11 +10,23 @@ import { finished, pipeline } from "node:stream/promises";
 export const SINK_TOKEN_HEADER = "x-sink-token";
 /** File names the API gives outputs (OUTPUT_NAME in backend/app/schemas/render_job.py). */
 const FILE_NAME = /^[A-Za-z0-9._-]{1,255}$/;
+/** The longest path a Campaign Pack's entry may have in its ZIP. */
+const MAX_PATH_LENGTH = 1024;
 /** What the page reports; the worker adds `encoding` (a turntable's MP4, a spin's ZIP) and `uploading` itself. */
 const PAGE_STAGES = new Set(["loading", "rendering"]);
 const MAX_PROGRESS_BYTES = 1024;
 /** The API's cap on one image (MAX_IMAGE_BYTES in backend/app/features/render_jobs/job_files.py). */
 export const MAX_FILE_BYTES = 256 * 1024 * 1024;
+
+/**
+ * A Campaign Pack's entry: a relative path in its ZIP whose every part is a file name the API
+ * would give (`packPaths` in src/features/render/campaign-pack/domain/naming.ts makes them so),
+ * none of them `.` or `..`.
+ */
+export function isEntryPath(name) {
+  if (name.length > MAX_PATH_LENGTH) return false;
+  return name.split("/").every((part) => FILE_NAME.test(part) && part !== "." && part !== "..");
+}
 
 class SinkError extends Error {
   constructor(status, message) {
@@ -88,18 +100,29 @@ function decodeName(raw) {
   }
 }
 
-function readProgress(body) {
-  let entry;
+function readJson(body, what) {
   try {
-    entry = JSON.parse(body.toString("utf8"));
+    return JSON.parse(body.toString("utf8")) ?? {};
   } catch {
-    throw new SinkError(400, "progress is not JSON");
+    throw new SinkError(400, `${what} is not JSON`);
   }
-  const { progress, stage } = entry ?? {};
+}
+
+function readProgress(body) {
+  const { progress, stage } = readJson(body, "progress");
   if (typeof progress !== "number" || !(progress >= 0 && progress <= 1) || !PAGE_STAGES.has(stage)) {
     throw new SinkError(400, "progress is {progress: 0 to 1, stage: loading or rendering}");
   }
   return { progress, stage };
+}
+
+/** A video as its page opens it (`VideoClip`, src/features/render/harness/sink-client.ts). */
+function readClip(body) {
+  const { width, height, fps, frames } = readJson(body, "a video");
+  if (![width, height, fps, frames].every((value) => Number.isInteger(value) && value > 0)) {
+    throw new SinkError(400, "a video is {width, height, fps, frames}, each a whole number");
+  }
+  return { width, height, fps, frames };
 }
 
 async function serveModel(model, response) {
@@ -119,27 +142,43 @@ async function serveModel(model, response) {
  *
  * - `GET /inputs/model.glb`: the job's model, as the worker downloaded it.
  * - `POST /files/<name>`: one encoded file, streamed to `outDir/<name>`. Only the names in
- *   `names` (the spec's `output_names`), each once; 409 for one already in.
+ *   `names` (the spec's `output_names`), each once; 409 for one already in. With `paths` (a
+ *   Campaign Pack), a name is the file's path in the pack's ZIP (`isEntryPath`), and the file
+ *   goes to `outDir/entry-<n>`, n counting the files from 0.
  * - `POST /frames/<n>`: frame n of a video, raw RGBA of `frameSize`, one at a time and in order
  *   from 0 (409 otherwise). A frame comes whole, or in parts in order, each
  *   `?offset=<its first byte>&length=<the frame's>` (the harness sends parts of at most 16 MB:
  *   DevTools copies every request body to the worker, and a whole 8K frame would not fit one
  *   message). Each part goes to `onFrameBytes`, which feeds it to ffmpeg.
+ * - `POST /videos/<name>` (a Campaign Pack's turntables): `{width, height, fps, frames}` opens a
+ *   video, `<name>` being its MP4's path in the ZIP. `videos.open` takes it or refuses it (400);
+ *   its frames then come by `POST /frames/<n>`, of its size, from 0, and go to the `write` it
+ *   answered. One video at a time.
+ * - `POST /videos/<name>/end`: once all its frames are in, closes the video; `finish` stores the
+ *   MP4, which is answered with `{bytes}`.
  * - `POST /progress`: `{progress, stage}`.
  *
- * Each response goes back once its body is stored, or a frame's bytes have gone through
- * `onFrameBytes` (ffmpeg has them), which is what makes the page wait before the next file, frame
- * or part: the backpressure. The sink holds at most one frame's bytes.
+ * Each response goes back once its body is stored, or a frame's bytes have gone to the encoder
+ * (ffmpeg has them), which is what makes the page wait before the next file, frame or part: the
+ * backpressure. The sink holds at most one frame's bytes. `files` holds every file in the order it
+ * was stored, a pack's MP4s among them.
  *
  * @param {object} options
  * @param {string} options.origin The harness origin, the one page origin allowed to call.
  * @param {string | Buffer} options.model The model: a file path, or its bytes.
  * @param {string} options.outDir Where files go.
  * @param {string[] | null} [options.names] The only file names taken; any well-formed one when null.
+ * @param {boolean} [options.paths] Names are paths in a ZIP.
+ * @param {number} [options.maxFiles] The most files (videos included) it takes.
  * @param {number} [options.maxFileBytes]
  * @param {{ width: number, height: number } | null} [options.frameSize] Takes frames of this size.
  * @param {(index: number, bytes: Buffer) => Promise<void> | void} [options.onFrameBytes] Frame `index`'s
  *   bytes, whole or a part, in order.
+ * @param {{ open: (name: string, clip: { width: number, height: number, fps: number, frames: number }) =>
+ *   Promise<{ write: (bytes: Buffer) => Promise<void>, finish: () => Promise<{ path: string, bytes: number, sha256: string }> }> } | null}
+ *   [options.videos] Takes videos.
+ * @param {(name: string, file: { path: string, bytes: number, sha256: string, contentType: string }) => void} [options.onStored]
+ *   Each file, once it is stored.
  * @param {(entry: { progress: number, stage: string, at: number }) => void} [options.onProgress]
  */
 export async function startSink({
@@ -147,52 +186,81 @@ export async function startSink({
   model,
   outDir,
   names = null,
+  paths = false,
+  maxFiles = Infinity,
   maxFileBytes = MAX_FILE_BYTES,
   frameSize = null,
   onFrameBytes = null,
+  videos = null,
+  onStored = null,
   onProgress = null,
 }) {
   const token = randomBytes(24).toString("hex");
   const allowed = names ? new Set(names) : null;
-  /** Name → `{ path, bytes, sha256, contentType }`, in the order the page posted them. */
+  /** Name → `{ path, bytes, sha256, contentType }`, in the order they were stored. */
   const files = new Map();
   /** Every `{progress, stage, at}` the page posted, in order; `at` is ms since the sink started. */
   const progress = [];
   const startedAt = Date.now();
   /** Names whose body is still coming in, so a second post of one at once is refused too. */
   const receiving = new Set();
-  /** Frames `onFrameBytes` has taken whole, how much of the next is in, and whether bytes are on their way there. */
+  /** Files whose body has started coming in: a pack's entries are named on disk by it. */
+  let started = 0;
+  /** A pack's open video: its name, size and frame count, and where its bytes go. */
+  let clip = null;
+  /** Frames the encoder has taken whole, how much of the next is in, and whether bytes are on their way there. */
   let frames = 0;
   let frameBytesIn = 0;
   let takingFrame = false;
 
+  /** A name the job may store a file under now: well formed, the job's, not in yet, and within the count. */
+  const checkName = (name) => {
+    const wellFormed = paths ? isEntryPath(name) : FILE_NAME.test(name);
+    if (!wellFormed || (allowed && !allowed.has(name))) throw new SinkError(400, `no file "${name}" in this job`);
+    if (files.has(name) || receiving.has(name) || clip?.name === name) throw new SinkError(409, `"${name}" is in already`);
+    if (files.size + receiving.size + (clip ? 1 : 0) >= maxFiles) throw new SinkError(413, `this job makes at most ${maxFiles} files`);
+  };
+
+  const store = (name, file) => {
+    files.set(name, file);
+    onStored?.(name, file);
+  };
+
   const takeFile = async (request, rawName) => {
     const name = decodeName(rawName);
-    if (!FILE_NAME.test(name) || (allowed && !allowed.has(name))) throw new SinkError(400, `no file "${name}" in this job`);
-    if (files.has(name) || receiving.has(name)) throw new SinkError(409, `"${name}" is in already`);
+    checkName(name);
     receiving.add(name);
     try {
-      const filePath = path.join(outDir, name);
+      const filePath = path.join(outDir, paths ? `entry-${started}` : name);
+      started += 1;
       const stored = await receiveFile(request, filePath, maxFileBytes);
-      files.set(name, { path: filePath, ...stored, contentType: String(request.headers["content-type"] ?? "") });
+      store(name, { path: filePath, ...stored, contentType: String(request.headers["content-type"] ?? "") });
     } finally {
       receiving.delete(name);
     }
   };
 
+  /** Where frames go: the open video's encoder, or the turntable's. */
+  const frameTarget = () => {
+    if (clip) return { width: clip.width, height: clip.height, write: (bytes) => clip.writer.write(bytes) };
+    if (frameSize && onFrameBytes) return { ...frameSize, write: (bytes) => onFrameBytes(frames, bytes) };
+    throw new SinkError(404, videos ? "no video is open" : "this job has no frames");
+  };
+
   const takeFrame = async (request, index, query) => {
-    if (!frameSize || !onFrameBytes) throw new SinkError(404, "this job has no frames");
-    const frameBytes = frameSize.width * frameSize.height * 4;
+    const target = frameTarget();
+    const frameBytes = target.width * target.height * 4;
     const isPart = query.has("offset");
     if (isPart && query.get("length") !== String(frameBytes)) throw new SinkError(400, `a frame is ${frameBytes} bytes`);
     if (takingFrame) throw new SinkError(409, `frame ${frames} is still going to the encoder`);
+    if (clip && frames >= clip.frames) throw new SinkError(409, `"${clip.name}" has all its ${clip.frames} frames`);
     if (index !== String(frames)) throw new SinkError(409, `frame ${frames} comes next`);
     if ((isPart ? query.get("offset") : "0") !== String(frameBytesIn)) throw new SinkError(409, `frame ${frames} goes on from byte ${frameBytesIn}`);
     takingFrame = true;
     try {
       const bytes = await readFrameBytes(request, frameBytes - frameBytesIn);
       if (!bytes.length || (!isPart && bytes.length !== frameBytes)) throw new SinkError(400, `a frame is ${frameBytes} bytes`);
-      await onFrameBytes(frames, bytes);
+      await target.write(bytes);
       frameBytesIn += bytes.length;
       if (frameBytesIn === frameBytes) {
         frames += 1;
@@ -201,6 +269,44 @@ export async function startSink({
     } finally {
       takingFrame = false;
     }
+  };
+
+  const openVideo = async (request, name) => {
+    if (clip) throw new SinkError(409, `"${clip.name}" is still open`);
+    checkName(name);
+    const params = readClip(await readBody(request, MAX_PROGRESS_BYTES));
+    let writer;
+    try {
+      writer = await videos.open(name, params);
+    } catch (error) {
+      throw new SinkError(400, error.message);
+    }
+    clip = { name, ...params, writer };
+    frames = 0;
+    frameBytesIn = 0;
+  };
+
+  /** Closes the open video once all its frames are in, and stores the MP4 its encoder made. */
+  const endVideo = async (name) => {
+    if (clip?.name !== name) throw new SinkError(409, `"${name}" is not open`);
+    if (takingFrame || frames !== clip.frames) throw new SinkError(409, `"${name}" has ${frames} of its ${clip.frames} frames`);
+    const { writer } = clip;
+    clip = null;
+    const file = { ...(await writer.finish()), contentType: "video/mp4" };
+    store(name, file);
+    return file.bytes;
+  };
+
+  const takeVideo = async (request, response, rest) => {
+    if (!videos) throw new SinkError(404, "this job has no videos");
+    if (!rest.endsWith("/end")) {
+      await openVideo(request, decodeName(rest));
+      response.writeHead(204).end();
+      return;
+    }
+    request.resume();
+    const bytes = await endVideo(decodeName(rest.slice(0, -"/end".length)));
+    response.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ bytes }));
   };
 
   const takeProgress = async (request) => {
@@ -212,6 +318,7 @@ export async function startSink({
   const route = async (request, response, { pathname, searchParams }) => {
     if (request.method === "GET" && pathname === "/inputs/model.glb") return serveModel(model, response);
     if (request.method !== "POST") throw new SinkError(404, "not found");
+    if (pathname.startsWith("/videos/")) return takeVideo(request, response, pathname.slice("/videos/".length));
     if (pathname.startsWith("/files/")) await takeFile(request, pathname.slice("/files/".length));
     else if (pathname.startsWith("/frames/")) await takeFrame(request, pathname.slice("/frames/".length), searchParams);
     else if (pathname === "/progress") await takeProgress(request);
@@ -254,9 +361,13 @@ export async function startSink({
     token,
     files,
     progress,
-    /** How many frames `onFrameBytes` has taken whole. */
+    /** How many frames the encoder has taken whole: the turntable's, or the open video's. */
     get frames() {
       return frames;
+    },
+    /** The open video's name; null when none is. */
+    get openVideo() {
+      return clip?.name ?? null;
     },
     close: () =>
       new Promise((resolve) => {

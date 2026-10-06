@@ -90,6 +90,9 @@ function billing(tier: "free" | "studio"): UserBillingSnapshot {
       embed_enabled: true,
       batch_export_enabled: studio,
       video_8k_enabled: studio,
+      max_video_fps: studio ? 60 : 30,
+      max_video_seconds: studio ? 60 : 10,
+      max_8k_video_seconds: studio ? 20 : 0,
       bulk_upload: studio
         ? { max_designs: 500, max_bytes: 20 * GB, max_file_bytes: 100 * MB, max_open_batches: 3 }
         : { max_designs: 0, max_bytes: 0, max_file_bytes: 100 * MB, max_open_batches: 3 },

@@ -18,7 +18,14 @@ export {
 } from "./ui/StillExportSettings";
 export { turntableCaptureOptions, videoSizeLabel, type TurntableSettings } from "./lib/turntable-capture";
 export { VideoResolutionField } from "./ui/VideoResolutionField";
-export { exportPlanFromSnapshot, loadExportPlan, type ExportPlan } from "./lib/export-plan";
+export { VideoFpsField } from "./ui/VideoFpsField";
+export {
+  exportPlanFromSnapshot,
+  FREE_EXPORT_PLAN,
+  loadExportPlan,
+  maxVideoSeconds,
+  type ExportPlan,
+} from "./lib/export-plan";
 export { useExportPlan } from "./ui/useExportPlan";
 export { useCaptureRun } from "./ui/useCaptureRun";
 export { ExportPlanNote } from "./ui/ExportPlanNote";

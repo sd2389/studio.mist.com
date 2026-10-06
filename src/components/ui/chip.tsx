@@ -3,13 +3,18 @@
 import { Check } from "lucide-react";
 import type { ReactNode } from "react";
 import { Label } from "@/components/ui/label";
+import { PlanLock } from "@/components/ui/plan-lock";
 import { cn } from "@/lib/utils";
 
-/** Pill toggle for option rows: export settings, pack outputs. An optional colour dot leads the label. */
+/**
+ * Pill toggle for option rows: export settings, pack outputs. An optional colour dot leads the
+ * label; an option the plan doesn't include is locked, with the lock after it.
+ */
 export function Chip({
   selected,
   onClick,
   disabled,
+  locked = false,
   swatch,
   children,
   title,
@@ -17,6 +22,8 @@ export function Chip({
   selected: boolean;
   onClick: () => void;
   disabled?: boolean;
+  /** Not in the plan: it can't be picked, and shows the lock. */
+  locked?: boolean;
   swatch?: string;
   children: ReactNode;
   title?: string;
@@ -25,7 +32,7 @@ export function Chip({
     <button
       type="button"
       onClick={onClick}
-      disabled={disabled}
+      disabled={disabled || locked}
       title={title}
       aria-pressed={selected}
       className={cn(
@@ -45,9 +52,13 @@ export function Chip({
         <Check className="size-3" aria-hidden />
       ) : null}
       {children}
+      {locked ? <PlanLock /> : null}
     </button>
   );
 }
+
+/** One option of a `ChipField`; a locked one is shown but can't be picked (the plan doesn't include it). */
+export type ChipOption<T extends string | number> = { value: T; label: string; locked?: boolean };
 
 /** A labelled row of chips that picks one option, such as a frame count or frame rate. */
 export function ChipField<T extends string | number>({
@@ -58,7 +69,7 @@ export function ChipField<T extends string | number>({
   disabled,
 }: {
   label: string;
-  options: readonly { value: T; label: string }[];
+  options: readonly ChipOption<T>[];
   value: T;
   onChange: (next: T) => void;
   disabled?: boolean;
@@ -73,6 +84,7 @@ export function ChipField<T extends string | number>({
             selected={value === option.value}
             onClick={() => onChange(option.value)}
             disabled={disabled}
+            locked={option.locked}
           >
             {option.label}
           </Chip>

@@ -1,7 +1,7 @@
 "use client";
 
-import { Lock } from "lucide-react";
 import { Label } from "@/components/ui/label";
+import { PlanLock } from "@/components/ui/plan-lock";
 import { Switch } from "@/components/ui/switch";
 import { readViewportBackdrop } from "@/lib/export-backdrop";
 import { fitsExportLimits } from "@/lib/export-limits";
@@ -124,12 +124,7 @@ export function StillExportSettings({
               >
                 <span className="flex items-center gap-1">
                   {IMAGE_RESOLUTIONS[id].label}
-                  {locked ? (
-                    <>
-                      <Lock className="size-3" aria-hidden />
-                      <span className="sr-only">(needs a plan upgrade)</span>
-                    </>
-                  ) : null}
+                  {locked ? <PlanLock /> : null}
                 </span>
                 <span className="block text-[10px] font-normal text-muted-foreground">
                   {size.width}×{size.height}

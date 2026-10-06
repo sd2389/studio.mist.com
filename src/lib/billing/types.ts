@@ -17,6 +17,10 @@ export type PlanFeatures = {
   embed_enabled: boolean;
   batch_export_enabled: boolean;
   video_8k_enabled: boolean;
+  /** What a video rendered on the server may be: its frame rate, its length, and its length at 8K (0: none). */
+  max_video_fps: number;
+  max_video_seconds: number;
+  max_8k_video_seconds: number;
 };
 
 export type UserBillingSnapshot = {

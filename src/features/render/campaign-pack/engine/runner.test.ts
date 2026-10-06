@@ -4,6 +4,7 @@ import { DEFAULT_CAMPAIGN_PACK_CONFIG } from "../domain/defaults";
 import { buildPackDocuments } from "../domain/documents";
 import { planCampaignPack } from "../domain/plan";
 import type { CampaignPackConfig, PackMetalId } from "../domain/types";
+import { PackZipWriter } from "../domain/zip-writer";
 import type { PackRenderBackend } from "./pack-backend";
 import { runCampaignPack, type PackProgress } from "./runner";
 
@@ -45,30 +46,32 @@ function fakeBackend(overrides: Partial<PackRenderBackend> = {}) {
   return { backend, metals };
 }
 
+/** A run into a ZIP in memory, as the browser's pack runs; resolves with what it made and the ZIP. */
 function run(
   backend: PackRenderBackend,
   extra: { signal?: AbortSignal; onProgress?: (p: PackProgress) => void; hasTracedGems?: boolean } = {},
 ) {
-  const plan = planCampaignPack(config, { identity, savedPoses: [], hasTracedGems: extra.hasTracedGems });
-  return {
+  const { hasTracedGems, ...options } = extra;
+  const plan = planCampaignPack(config, { identity, savedPoses: [], hasTracedGems });
+  const writer = new PackZipWriter(new Date("2026-09-30T00:00:00Z"));
+  const ran = runCampaignPack({
     plan,
-    promise: runCampaignPack({
-      plan,
-      backend,
-      ...extra,
-      buildDocuments: (files, failures) =>
-        buildPackDocuments({
-          plan,
-          config,
-          identity,
-          backgroundLabel: "#FFFFFF",
-          origin: "https://studio.example",
-          files,
-          failures,
-          generatedAt: new Date("2026-09-30T00:00:00Z"),
-        }),
-    }),
-  };
+    backend,
+    writer,
+    ...options,
+    buildDocuments: (files, failures) =>
+      buildPackDocuments({
+        plan,
+        config,
+        identity,
+        backgroundLabel: "#FFFFFF",
+        origin: "https://studio.example",
+        files,
+        failures,
+        generatedAt: new Date("2026-09-30T00:00:00Z"),
+      }),
+  });
+  return { plan, promise: ran.then((result) => ({ ...result, zip: writer.finish(), zipName: plan.zipName })) };
 }
 
 describe("runCampaignPack", () => {
@@ -137,6 +140,33 @@ describe("runCampaignPack", () => {
       },
     });
     await expect(run(backend, { signal: controller.signal }).promise).rejects.toMatchObject({ name: "AbortError" });
+  });
+
+  it("lists a turntable its encoder stored itself at the size it reports, writing nothing for it", async () => {
+    const { backend } = fakeBackend({
+      async renderTurntable(job, onFrame) {
+        for (let i = 0; i < job.frameCount; i++) onFrame(i);
+        return 4096;
+      },
+    });
+    const result = await run(backend).promise;
+    const entries = unzipSync(new Uint8Array(await result.zip.arrayBuffer()));
+    const video = result.files.find((file) => file.path === "R-1/video/18k-rose-gold_turntable_1080x1080.mp4");
+    expect(video).toEqual({ path: "R-1/video/18k-rose-gold_turntable_1080x1080.mp4", kind: "video", metal: "18k-rose-gold", width: 1080, height: 1080, bytes: 4096 });
+    expect(entries["R-1/video/18k-rose-gold_turntable_1080x1080.mp4"]).toBeUndefined();
+    expect(JSON.parse(strFromU8(entries["R-1/manifest.json"]!)).files).toContainEqual(video);
+  });
+
+  it("stops for whatever aborted it, even when that also failed the job under way", async () => {
+    const controller = new AbortController();
+    const lost = new Error("sink POST /files/R-1%2Fstills%2F18k-yellow-gold_front.jpg: 500");
+    const { backend } = fakeBackend({
+      async renderStill() {
+        controller.abort(lost);
+        throw lost;
+      },
+    });
+    await expect(run(backend, { signal: controller.signal }).promise).rejects.toBe(lost);
   });
 
   it("retries the metal on the next job when applying it failed", async () => {

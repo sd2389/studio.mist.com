@@ -17,7 +17,7 @@ import { useExportPlan } from "../../ui/useExportPlan";
 import { DEFAULT_CAMPAIGN_PACK_CONFIG } from "../domain/defaults";
 import { planCampaignPack } from "../domain/plan";
 import type { CampaignPackConfig, PackPlan, SavedPoseLike } from "../domain/types";
-import { readStudioLook } from "../engine/start-pack";
+import { readStudioLook } from "../engine/studio-look";
 import { PackOutputOptions } from "./PackOutputOptions";
 import { PackMessageView, PackProgressView, PackSummaryView } from "./PackRunViews";
 import { PackAnglePicker, PackMetalPicker } from "./PackSubjectPickers";

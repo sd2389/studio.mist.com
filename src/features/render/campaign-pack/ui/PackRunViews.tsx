@@ -2,7 +2,8 @@
 
 import { AlertTriangle, CheckCircle2, Download, RotateCcw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import type { PackProgress, PackRunResult } from "../engine/runner";
+import type { PackProgress } from "../engine/runner";
+import type { PackRunResult } from "../engine/start-pack";
 import { formatBytes, formatDuration } from "./pack-ui";
 import { triggerDownload } from "./useCampaignPackRun";
 

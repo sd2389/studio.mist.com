@@ -29,6 +29,8 @@ describe("CI change detection", () => {
     [["tests/goldens/studio.png"], { web: true, backend: false, render: true }],
     [["tests/goldens/fixtures/export-still.json"], { web: true, backend: false, render: true }],
     [["src/app/render-harness/page.worker.tsx"], { web: true, backend: false, render: true }],
+    // The export goldens capture through the render worker's sink.
+    [["scripts/render-worker/sink.mjs"], { web: true, backend: false, render: true }],
     [[".github/workflows/ci.yml"], { web: true, backend: true, render: true }],
     [["package-lock.json"], { web: true, backend: true, render: true }],
   ])("%j needs %j", (paths, areas) => {

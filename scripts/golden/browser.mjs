@@ -1,7 +1,9 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { chromium } from "playwright";
 import { PNG } from "pngjs";
-import { startSink } from "./sink.mjs";
+import { startSink } from "../render-worker/sink.mjs";
 
 export const LIGHTING_IDS = ["studio", "soft", "dark", "catalog", "dramatic"];
 /**
@@ -19,12 +21,13 @@ export const GOLDEN_IDS = [...EXPORT_IDS, ...LIGHTING_IDS];
  */
 export const WARMUP_FRAMES = 24;
 /**
- * What the export goldens draw with. CI uses WebGL 2, like the lighting goldens: on Linux, headless
- * Chromium's SwiftShader WebGPU either lost its device (the headless shell) or drew the live stage
- * into a canvas left at the default 300x150 (new headless), so frames went invalid and the readback
- * never returned. The export pipeline (cameras, sink, watermark, outputs) is the same either way;
- * WebGPU is checked by the worker's self-check on the GPU host. `GOLDEN_EXPORT_BACKEND=webgpu`
- * runs them on SwiftShader WebGPU instead.
+ * What the export goldens draw with. CI uses WebGL 2, like the lighting goldens, which its
+ * baselines were made on. On Linux the headless shell's SwiftShader WebGPU lost its device, and
+ * new headless drew the live stage at 300x150: a second renderer had got onto the canvas, which
+ * `createR3FWebGPURenderer` now prevents and every export capture provokes (`holdRendererStart`).
+ * The export pipeline (cameras, sink, watermark, outputs) is the same either way; WebGPU is
+ * checked by the render worker's self-check. `GOLDEN_EXPORT_BACKEND=webgpu` runs them on
+ * SwiftShader WebGPU instead.
  */
 const EXPORT_BACKEND = process.env.GOLDEN_EXPORT_BACKEND === "webgpu" ? "webgpu" : "webgl";
 export const BASE_URL = process.env.HARNESS_BASE_URL ?? "http://localhost:3000";
@@ -165,23 +168,72 @@ function frameStrip(frames, { width, height }) {
 }
 
 /** What an export golden compares: the still's image, or the strip of a turntable's frames. */
-function exportedImage(id, payload, outputs, sink) {
+function exportedImage(id, payload, outputs, sink, frames) {
   if (sink.progress.at(-1)?.progress !== 1) throw new Error(`harness ${id}: the page never reported it had finished`);
   if (payload.kind === "turntable") {
-    const { frames } = payload.spec;
-    if (sink.frames.length !== frames) throw new Error(`harness ${id}: the sink got ${sink.frames.length} of ${frames} frames`);
-    return frameStrip(sink.frames, payload.spec);
+    const expected = payload.spec.frames;
+    if (frames.length !== expected) throw new Error(`harness ${id}: the sink got ${frames.length} of ${expected} frames`);
+    return frameStrip(frames, payload.spec);
   }
   const file = sink.files.get(outputs[0]?.name);
   if (!file) throw new Error(`harness ${id}: the sink did not get the finished image`);
-  return file.body;
+  return readFileSync(file.path);
+}
+
+/** How long the live canvas's renderer is held in its start-up; the catalogue answers meanwhile. */
+const RENDERER_START_HOLD_MS = 3000;
+
+/**
+ * Holds the live canvas's renderer in its start-up (its first WebGPU adapter request) while the
+ * catalogue's answer re-renders the stage, on any machine. R3F used to ask for a renderer on
+ * every render until the first was ready, and the second renderer on the canvas drew at 300x150
+ * (on Linux the readback then hung); the harness's canvas check now fails such a capture.
+ * The capture's image doesn't change: its frames run on a fixed clock.
+ */
+async function holdRendererStart(page) {
+  let release;
+  const adapterRequested = new Promise((resolve) => {
+    release = resolve;
+  });
+  await page.exposeFunction("__goldenAdapterRequested", () => release());
+  await page.route(
+    (url) => url.pathname === "/api/catalog/source",
+    async (route) => {
+      await adapterRequested;
+      await route.continue().catch(() => {});
+    },
+  );
+  await page.addInitScript((holdMs) => {
+    const gpu = navigator.gpu ? Object.getPrototypeOf(navigator.gpu) : null;
+    if (!gpu) return;
+    const requestAdapter = gpu.requestAdapter;
+    let held = false;
+    gpu.requestAdapter = async function (...args) {
+      if (!held) {
+        held = true;
+        await window.__goldenAdapterRequested();
+        await new Promise((resolve) => setTimeout(resolve, holdMs));
+      }
+      return requestAdapter.apply(this, args);
+    };
+  }, RENDERER_START_HOLD_MS);
 }
 
 async function captureExport(id, outDir) {
   const payload = JSON.parse(readFileSync(`tests/goldens/fixtures/${id}.json`, "utf8"));
-  // A turntable's frames come raw: the sink refuses any of another size.
+  // The render worker's own sink. A turntable's frames come raw: it refuses any of another size.
   const frameSize = payload.kind === "turntable" ? { width: payload.spec.width, height: payload.spec.height } : null;
-  const sink = await startSink({ model: readFileSync(FIXTURE_MODEL), origin: new URL(BASE_URL).origin, frameSize });
+  const frames = [];
+  const sinkDir = mkdtempSync(path.join(os.tmpdir(), "export-sink-"));
+  const sink = await startSink({
+    origin: new URL(BASE_URL).origin,
+    model: FIXTURE_MODEL,
+    outDir: sinkDir,
+    frameSize,
+    onFrame: (index, pixels) => {
+      frames[index] = pixels;
+    },
+  });
   const browser = EXPORT_BACKEND === "webgpu" ? await launchWebGpuBrowser() : await launchDeterministicBrowser();
   const console_ = [];
   try {
@@ -189,6 +241,7 @@ async function captureExport(id, outDir) {
     page.setDefaultTimeout(EXPORT_CAPTURE_TIMEOUT_MS);
     page.on("console", (message) => console_.push(`[${message.type()}] ${message.text()}`));
     page.on("pageerror", (error) => console_.push(`[pageerror] ${error.message}`));
+    await holdRendererStart(page);
     // As the worker hands a job over: set before the page loads, never in the URL.
     await page.addInitScript((job) => {
       window.__RENDER_JOB__ = job;
@@ -198,7 +251,7 @@ async function captureExport(id, outDir) {
       // Where it stopped: the page's last state, what reached the sink, and the page's own log.
       const seen = await page.evaluate(() => String(window.__HARNESS_STATE__)).catch(() => "unreadable");
       throw new Error(
-        `harness ${id}: ${error.message}\nstate: ${seen}\nsink progress: ${JSON.stringify(sink.progress.map((entry, index) => ({ ...entry, at_ms: sink.progressAt[index] })).slice(-6))}, frames: ${sink.frames.length}\n${console_.slice(-40).join("\n")}`,
+        `harness ${id}: ${error.message}\nstate: ${seen}\nsink progress: ${JSON.stringify(sink.progress.slice(-6))}, frames: ${sink.frames}\n${console_.slice(-40).join("\n")}`,
       );
     });
     if (state !== "done") throw new Error(`harness ${id}: ${state}`);
@@ -208,11 +261,12 @@ async function captureExport(id, outDir) {
     if (!wanted) {
       throw new Error(`harness ${id}: drew with ${renderer.backend} on ${JSON.stringify(renderer.adapter)}, not ${EXPORT_BACKEND}`);
     }
-    writeFileSync(`${outDir}/${id}.png`, exportedImage(id, payload, outputs, sink));
+    writeFileSync(`${outDir}/${id}.png`, exportedImage(id, payload, outputs, sink, frames));
     console.log(`captured ${id} (${renderer.backend}, ${renderer.adapter?.architecture ?? "no WebGPU adapter"})`);
   } finally {
     await browser.close();
     await sink.close();
+    rmSync(sinkDir, { recursive: true, force: true });
   }
 }
 

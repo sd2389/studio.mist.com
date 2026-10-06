@@ -3,7 +3,8 @@
 // GitHub step outputs:
 //   web=true      lint, type check and frontend unit tests
 //   backend=true  backend unit tests
-//   render=true   render goldens: any file the render-harness page (worker build only) can load
+//   render=true   render goldens: any file the render-harness page (worker build only) can load,
+//                 and the scripts that capture it (the export goldens write to the worker's sink)
 // Changes to CI itself or to dependencies run everything; docs alone run nothing.
 import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
@@ -61,7 +62,7 @@ export function changedAreas(paths, rendered = harnessFiles()) {
       // Docs need no checks.
     } else if (
       rendered.has(file) ||
-      /^(public|scripts\/golden|tests\/goldens|src\/app\/render-harness)\//.test(file) ||
+      /^(public|scripts\/golden|scripts\/render-worker|tests\/goldens|src\/app\/render-harness)\//.test(file) ||
       /^(next\.config\.|postcss\.config\.|tsconfig\.json$)/.test(file)
     ) {
       areas.web = true;

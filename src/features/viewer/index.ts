@@ -16,5 +16,6 @@ export { ViewerStage } from "./ui/ViewerStage";
 export { useLookStage } from "./ui/useLookStage";
 export { useFixedClockWarmup } from "./ui/useFixedClockWarmup";
 export { applySavedLook, resolveModelConfig, type LookSnapshot } from "./domain/saved-look";
+export { pinFullQuality } from "./domain/full-quality";
 export { lookSnapshot, type LookState } from "./domain/look-snapshot";
 export type { LookStage } from "./domain/look-stage";

@@ -5,7 +5,50 @@
 # (API_URL stays the internal backend URL). Rebuild web after changing NEXT_PUBLIC_*.
 #
 # Local worker smoke testing: copy docker-compose.override.example.yml to
-# docker-compose.override.yml (git-ignored; auto-merged by `docker compose up`).
+# docker-compose.override.yml (git-ignored; auto-merged by `docker compose up`), or set
+# RENDER_WORKER_TOKEN in .env, then start a render worker with its profile:
+#   docker compose --profile worker-cpu up -d    # SwiftShader, any machine
+#   docker compose --profile worker-gpu up -d    # an NVIDIA GPU (NVIDIA Container Toolkit)
+# Plain `docker compose up` starts no worker. See scripts/render-worker/README.md.
+
+# What both render workers share (ADR 0005, "Isolation"): a non-root user, a read-only root
+# file system with a tmpfs for jobs, Chrome's sandbox, room in /dev/shm, and a volume for the
+# asset cache.
+x-render-worker: &render-worker
+  # Chrome for Testing is built for x86-64 Linux only.
+  platform: linux/amd64
+  build:
+    context: .
+    dockerfile: Dockerfile.worker
+    args:
+      NEXT_PUBLIC_SOURCE_ASSET_ORIGIN: ${NEXT_PUBLIC_SOURCE_ASSET_ORIGIN:-}
+  restart: unless-stopped
+  depends_on:
+    backend:
+      condition: service_healthy
+  read_only: true
+  tmpfs:
+    - /tmp:size=4g
+    - /home/node
+    - /app/.next/cache
+  # Chrome's sandbox makes a user namespace, which Docker's default seccomp profile allows only
+  # with this capability; the worker runs as `node`, so it holds the capability itself nowhere.
+  cap_add:
+    - SYS_ADMIN
+  shm_size: 2gb
+  volumes:
+    - render_worker_cache:/var/cache/render-worker
+
+x-render-worker-env: &render-worker-env
+  RENDER_API_URL: http://backend:8765
+  # The same token as the backend's (the backend reads it from here, or from the override).
+  RENDER_WORKER_TOKEN: ${RENDER_WORKER_TOKEN:-}
+  WORKER_SLOTS: ${WORKER_SLOTS:-1}
+  # The catalogue's files: Compose's URLs name the API as the browser reaches it.
+  WORKER_ASSET_ORIGINS: ${WORKER_ASSET_ORIGINS:-http://localhost:8765/files/=http://backend:8765/files/}
+  # The worker app's own server-side calls (the source catalogue).
+  API_URL: http://backend:8765
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -48,6 +91,8 @@ services:
       DEMO_EMBED_PASSWORD: ${DEMO_EMBED_PASSWORD:-}
       # Same value as the web service's: lets the API believe the caller IP its proxies send.
       INTERNAL_PROXY_TOKEN: ${INTERNAL_PROXY_TOKEN:-}
+      # The render workers' shared secret; unset, nothing claims render jobs.
+      RENDER_WORKER_TOKEN: ${RENDER_WORKER_TOKEN:-}
       # AWS_BUCKET: ${AWS_BUCKET-}
       # AWS_REGION: ${AWS_REGION:-auto}
       # AWS_S3_ENDPOINT: ${AWS_S3_ENDPOINT-}
@@ -86,6 +131,36 @@ services:
       # Sent with the caller's IP on sign-in and sign-up; the backend needs the same value.
       INTERNAL_PROXY_TOKEN: ${INTERNAL_PROXY_TOKEN:-}
 
+  # A render worker on an NVIDIA GPU: WebGPU on Vulkan, through the NVIDIA Container Toolkit.
+  # It refuses to claim unless its self-check finds an NVIDIA adapter on WebGPU.
+  worker-gpu:
+    <<: *render-worker
+    profiles: ["worker-gpu"]
+    environment:
+      <<: *render-worker-env
+      WORKER_GPU: nvidia
+      WORKER_REQUIRE_GPU: "1"
+      # "graphics" mounts the driver's Vulkan ICD, which WebGPU on Vulkan needs.
+      NVIDIA_DRIVER_CAPABILITIES: graphics,utility,compute
+      NVIDIA_VISIBLE_DEVICES: all
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu, graphics, utility, compute]
+
+  # A render worker on the CPU: WebGPU on SwiftShader, slow but the same backend. For local smoke
+  # tests and CPU-only hosts.
+  worker-cpu:
+    <<: *render-worker
+    profiles: ["worker-cpu"]
+    environment:
+      <<: *render-worker-env
+      WORKER_GPU: swiftshader
+
 volumes:
   studio_pg:
   studio_uploads:
+  render_worker_cache:

@@ -12,8 +12,8 @@ from sqlalchemy.orm import Session
 
 from app.features.billing.plans import get_quotas, normalize_tier
 from app.features.billing.quota_service import get_or_create_billing
+from app.features.render_jobs.job_files import frame_size
 from app.features.render_jobs.service import PlannedJob, bulk_refusal, check_bulk_size, plan_job
-from app.features.render_jobs.specs import frame_size
 from app.models.user import User
 from app.schemas.render_job import (
     RenderJobBulkQuote,

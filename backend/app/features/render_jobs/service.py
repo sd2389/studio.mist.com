@@ -22,16 +22,10 @@ from app.core import storage
 from app.features.billing.plans import MAX_BULK_RENDER_JOBS, PLAN_LABELS, PlanTier, get_quotas, normalize_tier
 from app.features.billing.quota_service import get_or_create_billing, hold_render_credits, refund_render_job
 from app.features.render_jobs import idempotency
+from app.features.render_jobs.job_files import normalised_spec, output_names, output_stem
 from app.features.render_jobs.plan_limits import assert_plan_allows
 from app.features.render_jobs.pricing import render_job_cost
-from app.features.render_jobs.specs import (
-    check_poses,
-    normalised_spec,
-    output_names,
-    output_stem,
-    parse_spec,
-    spec_warnings,
-)
+from app.features.render_jobs.specs import check_poses, parse_spec, spec_warnings
 from app.features.scene.look import saved_look, validate_look, variant_look
 from app.features.scene.service import require_owned_scene
 from app.models import Render, RenderJob, Scene
@@ -81,7 +75,7 @@ def plan_job(db: Session, user: User, body: RenderJobCreate) -> PlannedJob:
     assert_plan_allows(db, user, spec)
     scene = require_owned_scene(db.get(Scene, body.scene_id), user.id)
     look = validate_look(db, _look_to_render(scene, body), user.id)
-    check_poses(spec, {pose["id"] for pose in look["scene_settings"].get("poses") or []})
+    check_poses(spec, look["scene_settings"].get("poses") or [])
     names = output_names(spec, output_stem(body.name, scene.sku, scene.name))
     return PlannedJob(
         scene=scene,

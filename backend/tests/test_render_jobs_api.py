@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
+from pack_samples import DEFAULT_PACK, pack
 
 from app.core import storage as storage_mod
 from app.core.public_urls import public_file_url
@@ -159,7 +160,7 @@ def test_a_grow_8k_still_is_queued_without_the_mark(client, db, scene):
     [
         ({"spec": {**FOUR_K, "width": 10}}, "spec.width:"),
         ({"spec": {**FOUR_K, "fps": 30}}, "spec.fps:"),
-        ({"kind": "campaign_pack", "spec": {}}, "kind: 'campaign_pack' is not available yet"),
+        ({"kind": "convert", "spec": {}}, "kind: 'convert' is not available yet"),
         ({"look": {"material": "platinum", "lighting": "neon"}}, "look.lighting:"),
         ({"spec": {**FOUR_K, "camera": {"pose": "pose-nowhere"}}}, "spec.camera.pose: the look has no pose"),
         ({"kind": "turntable", "spec": {**TURNTABLE, "width": 1919}}, "spec.width: must be even"),
@@ -356,6 +357,80 @@ def test_a_turntable_is_asked_for_again_with_its_own_frame_count(client, db, own
 
     assert again.status_code == 201
     assert (again.json()["spec"], again.json()["credits"]) == (first["spec"], first["credits"])
+
+
+# ---------------------------------------------------------------------------
+# Campaign Packs
+# ---------------------------------------------------------------------------
+
+
+def test_a_free_campaign_pack_is_402_and_holds_nothing(client, db, owner, scene):
+    user, headers = owner
+
+    res = _create(client, headers, scene, kind="campaign_pack", spec=DEFAULT_PACK)
+
+    assert res.status_code == 402
+    assert res.json()["detail"] == "The Campaign Pack is part of Grow and Studio, not Free."
+    assert (_job_rows(db), _balance(db, user)) == ([], 25)
+
+
+def test_a_grow_campaign_pack_is_queued_at_the_sum_of_its_parts_as_one_zip(client, db, grower, scene):
+    user, headers = grower
+
+    default = _create(client, headers, scene, kind="campaign_pack", spec=DEFAULT_PACK)
+    with_a_pose = _create(client, headers, scene, kind="campaign_pack", spec=pack(angleIds=["front", "pose:pose-hero"]))
+
+    assert (default.status_code, with_a_pose.status_code) == (201, 201)
+    job = default.json()
+    assert (job["kind"], job["credits"], job["credit_state"], job["watermark"]) == ("campaign_pack", 49, "held", False)
+    assert job["spec"] == {**DEFAULT_PACK, "frames": 2041, "output_names": ["RING-1_campaign-pack.zip"]}
+    # 3 metals × 2 angles × JPG and PNG, six turntables, three spins and the ASET image.
+    assert with_a_pose.json()["credits"] == 12 + 18 + 6 + 1
+    assert _balance(db, user) == 300 - 49 - 37
+
+
+def test_a_campaign_packs_quote_is_49_and_free_is_told_why_not(client, db, owner, grower, scene):
+    body = {"kind": "campaign_pack", "scene_id": scene.id, "spec": DEFAULT_PACK}
+
+    quote = client.post("/render-jobs/quote", headers=grower[1], json=body)
+    bulk = _bulk_quote(client, grower[1], scene, {"kind": "campaign_pack", "spec": DEFAULT_PACK}, {})
+    free = client.post("/render-jobs/quote", headers=owner[1], json=body)
+
+    assert quote.status_code == 200
+    assert {field: quote.json()[field] for field in ("credits", "width", "height", "frames", "outputs")} == {
+        "credits": 49, "width": 2000, "height": 2000, "frames": 2041, "outputs": ["RING-1_campaign-pack.zip"],
+    }
+    assert (bulk.json()["credits"], bulk.json()["refused"]) == (49 + 2, None)
+    assert (free.status_code, free.json()["detail"]) == (402, "The Campaign Pack is part of Grow and Studio, not Free.")
+    assert _job_rows(db) == []
+
+
+def test_a_campaign_pack_is_asked_for_again_less_what_the_api_added(client, db, grower, scene):
+    headers = grower[1]
+    first = _create(client, headers, scene, kind="campaign_pack", spec=pack(background={"kind": "custom", "color": "#f4f2ee"}))
+
+    spec = {key: value for key, value in first.json()["spec"].items() if key not in ("frames", "output_names")}
+    again = _create(client, headers, scene, kind="campaign_pack", spec=spec)
+
+    assert (first.status_code, again.status_code) == (201, 201)
+    assert again.json()["spec"] == first.json()["spec"]
+
+
+@pytest.mark.parametrize(
+    ("spec", "status", "detail"),
+    [
+        (pack(angleIds=["front", "pose:pose-nowhere"]), 400, "spec.angleIds[1]: the look has no saved pose 'pose-nowhere'"),
+        (pack(metals=["unobtainium"]), 400, "spec.metals[0]: 'unobtainium' is neither a metal preset nor 'current'"),
+        (pack(turntable={"durationSec": 61}), 402, "Video length limit exceeded for Grow (max 60 s)."),
+    ],
+)
+def test_a_bad_campaign_pack_holds_nothing(client, db, grower, scene, spec, status, detail):
+    user, headers = grower
+
+    res = _create(client, headers, scene, kind="campaign_pack", spec=spec)
+
+    assert (res.status_code, res.json()["detail"]) == (status, detail)
+    assert (_job_rows(db), _balance(db, user)) == ([], 300)
 
 
 # ---------------------------------------------------------------------------

@@ -10,6 +10,8 @@
   image signed into the payload's copy only; a missing input ends the job refunded.
 - Uploads and complete: signed or local uploads of the files the spec names; complete checks the
   prefix, the names and the stored sizes, creates the renders, charges once, counts storage.
+- Turntables and spins: their own frame counts in the payload, one MP4 or one ZIP each, and
+  their kinds' run times.
 - Fail: a code, a retryable flag and backoff; a final failure refunds.
 """
 
@@ -752,6 +754,20 @@ def test_a_local_upload_is_only_a_file_the_spec_names(db, files, owner, scene, m
     assert files.size(_key(job, name)) is None
 
 
+def test_a_local_upload_streams_to_staging_and_leaves_nothing_behind(db, files, owner, scene, monkeypatch):
+    """The body is written as it arrives; a refused one leaves no staging file."""
+    monkeypatch.setattr("app.features.render_jobs.specs.MAX_IMAGE_BYTES", 32)
+    _queue(db, owner, scene)
+    job = _claim(db)
+
+    assert _http_error(lambda: _put_local(db, job, "RING-1.png", "image/png", b"x" * 20, b"x" * 20)).status_code == 413
+    assert list(files.staging_dir().iterdir()) == []
+
+    _put_local(db, job, "RING-1.png", "image/png", *[bytes([n]) * 8 for n in range(4)])
+    assert files.get_bytes(_key(job, "RING-1.png")) == b"".join(bytes([n]) * 8 for n in range(4))
+    assert list(files.staging_dir().iterdir()) == []
+
+
 def test_on_cloud_storage_the_api_takes_no_uploads(db, cloud, owner, scene):
     _queue(db, owner, scene)
     job = _claim(db)
@@ -925,6 +941,91 @@ def test_storage_is_counted_against_the_plans_limit_in_one_statement(db, owner):
     db.commit()
     assert _http_error(lambda: count_storage_bytes(db, owner.id, 1)).status_code == 402
     assert _storage_used(db, owner) == limit
+
+
+# ---------------------------------------------------------------------------
+# Turntables and spins
+# ---------------------------------------------------------------------------
+
+TURNTABLE = {"width": 1280, "height": 720, "fps": 30, "frames": 120, "path": {"orbit": {"start": {"pose": "pose-hero"}}}}
+SPIN = {"frames": 36, "size": 1080, "format": "jpeg"}
+# Each kind's one file: its name, type and size, and how long one attempt may run.
+FRAME_KINDS = {
+    "turntable": (TURNTABLE, "RING-1.mp4", "video/mp4", (1280, 720), 30 * 60),
+    "spin": (SPIN, "RING-1-spin.zip", "application/zip", (1080, 1080), 15 * 60),
+}
+
+
+def test_a_turntables_payload_keeps_its_frames_and_its_run_time(db, owner, scene):
+    _queue(db, owner, scene, spec=TURNTABLE, kind="turntable")
+    job = _claim(db, kinds=["turntable"])
+
+    payload = payloads.job_payload(db, job.id, job.worker_token).model_dump(mode="json")
+
+    assert (payload["kind"], payload["spec"]) == ("turntable", {**TURNTABLE, "quality": "high", "output_names": ["RING-1.mp4"]})
+    assert payload["limits"] == {"max_edge": 1280, "max_runtime_seconds": 1800}
+
+
+def test_a_spins_payload_has_its_frames_and_its_size_as_the_longest_side(db, owner, scene):
+    _queue(db, owner, scene, spec=SPIN, kind="spin")
+    job = _claim(db, kinds=["spin"])
+
+    payload = payloads.job_payload(db, job.id, job.worker_token).model_dump(mode="json")
+
+    assert payload["spec"] == {**SPIN, "jpeg_quality": 0.95, "transparent": False, "output_names": ["RING-1-spin.zip"]}
+    assert payload["limits"] == {"max_edge": 1080, "max_runtime_seconds": 900}
+
+
+@pytest.mark.parametrize("kind", FRAME_KINDS)
+def test_a_turntable_completes_with_its_mp4_and_a_spin_with_its_zip(db, files, owner, scene, kind):
+    spec, name, content_type, (width, height), _ = FRAME_KINDS[kind]
+    _queue(db, owner, scene, spec=spec, kind=kind)
+    job = _claim(db, kinds=[kind])
+    data = b"encoded" * 10
+
+    [upload] = outputs.upload_targets(
+        db, job.id, job.worker_token, _upload_request({"name": name, "content_type": content_type, "bytes": len(data)})
+    )
+    _upload(files, job, name, data)
+    report = {"name": name, "key": upload.key, "content_type": content_type, "bytes": len(data), "width": width, "height": height}
+    done = _complete(db, job, [report])
+
+    assert (done.status, done.credit_state) == ("completed", "charged")
+    [row] = db.query(Render).filter(Render.job_id == job.id).all()
+    assert (row.kind, row.filename, row.content_type, row.width, row.height, row.label) == (
+        kind, name, content_type, width, height, None,
+    )
+
+
+@pytest.mark.parametrize("kind", FRAME_KINDS)
+def test_a_turntable_or_a_spin_uploads_only_its_one_file_within_its_cap(db, owner, scene, kind):
+    from app.features.render_jobs.specs import MAX_VIDEO_BYTES, MAX_ZIP_BYTES
+
+    spec, name, content_type, _, _ = FRAME_KINDS[kind]
+    cap = MAX_VIDEO_BYTES if kind == "turntable" else MAX_ZIP_BYTES
+    _queue(db, owner, scene, spec=spec, kind=kind)
+    job = _claim(db, kinds=[kind])
+
+    def refused(**file) -> str:
+        request = _upload_request({"name": name, "content_type": content_type, "bytes": 1, **file})
+        return _http_error(lambda: outputs.upload_targets(db, job.id, job.worker_token, request)).detail
+
+    outputs.upload_targets(db, job.id, job.worker_token, _upload_request({"name": name, "content_type": content_type, "bytes": cap}))
+    assert refused(bytes=cap + 1) == f"files[0].bytes: at most {cap} bytes a file"
+    assert refused(content_type="image/png") == f"files[0].content_type: {name} is {content_type}"
+    assert refused(name="RING-1.png") == "files[0].name: the job makes no 'RING-1.png'"
+
+
+@pytest.mark.parametrize("kind", FRAME_KINDS)
+def test_a_turntable_runs_30_minutes_and_a_spin_15(db, clock, owner, scene, kind):
+    spec, _, _, _, runtime = FRAME_KINDS[kind]
+    _queue(db, owner, scene, spec=spec, kind=kind)
+    job = _claim(db, kinds=[kind])
+
+    clock.tick(runtime - 20)
+    assert _heartbeat(db, job).cancel is False
+    clock.tick(20)
+    assert _heartbeat(db, job).cancel is True
 
 
 # ---------------------------------------------------------------------------

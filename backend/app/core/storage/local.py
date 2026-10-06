@@ -25,6 +25,20 @@ class LocalBackend:
             raise HTTPException(status_code=400, detail="Invalid storage key")
         return Path(path)
 
+    def staging_dir(self) -> Path:
+        """Where a file is written until `put_file` moves it in: beside the root, so it is never
+        a key anyone can read, and on the same filesystem, so the move is a rename."""
+        root = Path(os.path.realpath(self._root))
+        staging = root.parent / f"{root.name}.staging"
+        staging.mkdir(parents=True, exist_ok=True)
+        return staging
+
+    def put_file(self, key: str, source: Path) -> None:
+        """Move a finished file into place as `key`."""
+        dest = self._path(key)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        os.replace(source, dest)
+
     def put_bytes(self, key: str, data: bytes, content_type: str | None = None) -> None:
         dest = self._path(key)
         dest.parent.mkdir(parents=True, exist_ok=True)

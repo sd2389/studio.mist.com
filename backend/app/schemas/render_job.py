@@ -57,9 +57,10 @@ class RenderJobOut(BaseModel):
     scene_id: int | None
     batch_id: int | None
     spec: dict[str, Any]
-    # What else the request named. With the spec (less `frames` and `output_names`, which the
-    # API adds) they make the same job again: the look is the stored snapshot, a background
-    # image kept as {"type": "image", "asset_id"}.
+    # What else the request named. With the spec (less what the API adds: `output_names`, and a
+    # still's or an angle set's `frames`; a turntable and a spin ask for their own `frames`) they
+    # make the same job again: the look is the stored snapshot, a background image kept as
+    # {"type": "image", "asset_id"}.
     look: dict[str, Any] | None
     variant_id: str | None
     name: str | None
@@ -93,6 +94,7 @@ class RenderJobQuote(BaseModel):
     """What a job would cost and make, before anything is spent."""
 
     credits: int
+    # The size of every image or frame (a spin's frames are its size square), and how many.
     width: int
     height: int
     frames: int

@@ -46,6 +46,7 @@ next-env.d.ts
 backend/.studiovenv/
 backend/.venv/
 backend/uploads/
+backend/uploads.staging/
 backend/*.db
 backend/*.db-journal
 backend/**/__pycache__/

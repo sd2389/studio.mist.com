@@ -10,15 +10,18 @@ storage, all in one commit.
 
 from __future__ import annotations
 
+import tempfile
 from collections.abc import AsyncIterator
 from datetime import datetime
+from pathlib import Path
+from typing import BinaryIO
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.core import storage
 from app.core import storage_keys as keys
-from app.core.request_body import read_at_most
+from app.core.storage.local import LocalBackend
 from app.features.billing.quota_service import charge_render_job, count_storage_bytes
 from app.features.render_jobs.specs import PlannedOutput, planned_outputs
 from app.features.render_jobs.worker import discard_outputs, end_attempt, running_job
@@ -73,6 +76,18 @@ def upload_targets(db: Session, job_id: int, token: str, files: list[RenderJobUp
     return uploads
 
 
+async def _write_at_most(chunks: AsyncIterator[bytes], limit: int, into: BinaryIO) -> int:
+    """Write the body to `into` as it arrives, or 413 as soon as it passes `limit` bytes, and
+    return its size. No more than a chunk is held in memory, however large the file."""
+    size = 0
+    async for chunk in chunks:
+        size += len(chunk)
+        if size > limit:
+            raise HTTPException(status_code=413, detail=f"At most {limit} bytes a file")
+        into.write(chunk)
+    return size
+
+
 async def save_local_upload(
     db: Session, job_id: int, token: str, name: str, content_type: str | None, body: AsyncIterator[bytes]
 ) -> None:
@@ -86,10 +101,21 @@ async def save_local_upload(
         raise HTTPException(status_code=404, detail=f"The job makes no '{name}'")
     if content_type != output.content_type:
         raise HTTPException(status_code=400, detail=f"Content-Type: {name} is {output.content_type}")
-    data = await read_at_most(body, output.max_bytes)
-    if not data:
+    backend = storage.get_storage()
+    assert isinstance(backend, LocalBackend)  # signs no URLs: local storage
+    # Videos and ZIPs run to gigabytes, so the body goes to a staging file, then into place.
+    with tempfile.NamedTemporaryFile(dir=backend.staging_dir(), delete=False) as staging:
+        staged = Path(staging.name)
+        try:
+            size = await _write_at_most(body, output.max_bytes, staging)
+        except BaseException:
+            staging.close()
+            staged.unlink(missing_ok=True)
+            raise
+    if not size:
+        staged.unlink(missing_ok=True)
         raise HTTPException(status_code=400, detail="The file is empty")
-    storage.write_bytes(keys.render_job_output_key(job.user_id, job.id, name), data, content_type=content_type)
+    backend.put_file(keys.render_job_output_key(job.user_id, job.id, name), staged)
 
 
 def _check_output(job: RenderJob, field: str, plan: PlannedOutput, output: RenderJobOutputReport) -> None:

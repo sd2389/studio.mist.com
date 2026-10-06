@@ -265,6 +265,17 @@ async function settleFailure(job, error, log) {
   return { outcome: "failed", recycleBrowser: failure.recycleBrowser };
 }
 
+/**
+ * Why a job input the page asked for couldn't be had, as the reason the job stops: the API took
+ * the job back, the input is gone (final, so the credits go back), or it may work on a retry.
+ * The page must never render on without it, or a backdrop would silently fall back to a colour.
+ */
+export function inputFailure(error) {
+  if (error instanceof JobLostError) return error;
+  const gone = error instanceof ApiError && [403, 404, 410].includes(error.status);
+  return new JobFailure(gone ? "input_missing" : "unknown", `A job input could not be fetched: ${error?.message || error}`);
+}
+
 async function openJobContext(browser, { job, payload, sink, harnessUrl, assets, assetPrefixes, controller, log }) {
   const context = await browser.newContext({ viewport: PAGE_VIEWPORT, deviceScaleFactor: 1, serviceWorkers: "block", acceptDownloads: false });
   const policy = pagePolicy({ harnessOrigin: harnessUrl, sinkOrigin: sink.url, jobId: job.id, inputUrls: signedInputs(payload), assetPrefixes });
@@ -272,7 +283,7 @@ async function openJobContext(browser, { job, payload, sink, harnessUrl, assets,
     policy,
     assets,
     readInput: (target) => job.read(target, { signal: controller.signal }),
-    onInputError: (error) => error instanceof JobLostError && controller.abort(error),
+    onInputError: (error) => controller.abort(inputFailure(error)),
     log,
   });
   // As the harness expects the job: set before the page loads, never in its URL.

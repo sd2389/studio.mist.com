@@ -61,7 +61,7 @@ The harness must be on loopback: WebGPU and WebCodecs exist only in a secure con
 | Variable | Default | Meaning |
 |---|---|---|
 | `RENDER_API_URL` | required | The API |
-| `RENDER_WORKER_TOKEN` | required | One of the API's `RENDER_WORKER_TOKEN` tokens |
+| `RENDER_WORKER_TOKEN` | required | One of the API's `RENDER_WORKER_TOKEN` tokens; given a comma-separated list (as Compose passes the API's), the worker sends the first |
 | `WORKER_GPU` | `metal` on macOS, else `nvidia` | The launch profile: `nvidia`, `metal` or `swiftshader` |
 | `WORKER_REQUIRE_GPU` | | `1` refuses the `swiftshader` profile (production) |
 | `HARNESS_BASE_URL` | | A running worker build, on loopback |

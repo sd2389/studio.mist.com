@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ApiError, JobLostError } from "./api.mjs";
-import { runJob } from "./job.mjs";
+import { inputFailure, JobFailure, runJob } from "./job.mjs";
 import { SINK_TOKEN_HEADER } from "./sink.mjs";
 
 const HARNESS = "http://127.0.0.1:3000";
@@ -289,5 +289,26 @@ describe("runJob", () => {
     const { outcome } = await run({ browser, stopping: stopper.signal });
     expect(outcome).toBe("failed");
     expect(called("fail")).toEqual([[{ error: "The worker shut down.", code: "unknown", retryable: true }]]);
+  });
+});
+
+describe("inputFailure", () => {
+  it("ends the job for good when an input is gone, so its credits go back", () => {
+    for (const status of [403, 404, 410]) {
+      const failure = inputFailure(new ApiError(`GET background: ${status}`, status));
+      expect(failure).toBeInstanceOf(JobFailure);
+      expect([failure.code, failure.retryable]).toEqual(["input_missing", false]);
+    }
+  });
+
+  it("lets the API retry the job when fetching an input failed for another reason", () => {
+    const failure = inputFailure(new ApiError("GET background: 503", 503));
+    expect([failure.code, failure.retryable]).toEqual(["unknown", true]);
+    expect(inputFailure(new TypeError("fetch failed")).retryable).toBe(true);
+  });
+
+  it("keeps a lost job lost", () => {
+    const lost = new JobLostError("gone", 409);
+    expect(inputFailure(lost)).toBe(lost);
   });
 });

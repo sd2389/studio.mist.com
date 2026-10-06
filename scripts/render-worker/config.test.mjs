@@ -9,6 +9,11 @@ describe("readConfig", () => {
     expect(readConfig(BASE, "darwin").profileName).toBe("metal");
   });
 
+  it("sends the first token of a rotation list", () => {
+    expect(readConfig({ ...BASE, RENDER_WORKER_TOKEN: " new-token , old-token" }, "linux").workerToken).toBe("new-token");
+    expect(() => readConfig({ ...BASE, RENDER_WORKER_TOKEN: " , " }, "linux")).toThrow(/RENDER_WORKER_TOKEN has no token/);
+  });
+
   it("lists every problem at once", () => {
     expect(() => readConfig({ WORKER_GPU: "amd", WORKER_KINDS: "still,turntable", WORKER_SLOTS: "0" }, "linux")).toThrow(
       /RENDER_API_URL is not set; RENDER_WORKER_TOKEN is not set; WORKER_GPU must be one of nvidia, metal, swiftshader; WORKER_KINDS: .*not turntable; set HARNESS_BASE_URL .* or WORKER_APP_DIR .*; WORKER_SLOTS must be/,

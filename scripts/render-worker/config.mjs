@@ -25,6 +25,19 @@ function required(env, name) {
   return env[name];
 }
 
+/**
+ * The token a worker sends: the first of RENDER_WORKER_TOKEN's comma-separated tokens. The API
+ * accepts any token on its list, so a rotation adds the new one there first.
+ */
+function workerTokenFrom(env) {
+  const token = required(env, "RENDER_WORKER_TOKEN")
+    .split(",")
+    .map((part) => part.trim())
+    .find(Boolean);
+  if (!token) throw new Error("RENDER_WORKER_TOKEN has no token");
+  return token;
+}
+
 function profileFrom(env, platform) {
   const name = env.WORKER_GPU || (platform === "darwin" ? "metal" : "nvidia");
   if (!PROFILES[name]) throw new Error(`WORKER_GPU must be one of ${Object.keys(PROFILES).join(", ")}`);
@@ -74,7 +87,7 @@ export function readConfig(env = process.env, platform = process.platform) {
   };
   const config = {
     apiUrl: read(() => required(env, "RENDER_API_URL")),
-    workerToken: read(() => required(env, "RENDER_WORKER_TOKEN")),
+    workerToken: read(() => workerTokenFrom(env)),
     profileName: read(() => profileFrom(env, platform)),
     kinds: read(() => kindsFrom(env)),
     workerId: read(() => workerIdFrom(env)),

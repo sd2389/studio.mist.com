@@ -6,7 +6,7 @@ import { UpgradePrompt } from "@/components/billing/UpgradePrompt";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { Button } from "@/components/ui/button";
 import type { BatchView } from "@/lib/api/ingest";
-import { formatStorageGb } from "@/lib/billing/format";
+import { formatBytesShort } from "@/lib/admin/format";
 import { formatRelativeTime } from "@/lib/relative-time";
 import { canRetryFailed, countOf, finishedCount, isBatchOpen, PIPELINE_NOTE } from "../domain/statuses";
 import { BatchStatusBadge } from "./BatchBadges";
@@ -109,7 +109,7 @@ export function BatchShell({ initial, bulkEnabled, userEmail, isAdmin }: BatchSh
                 {batch.name}
               </h1>
               <p className="mt-4 text-xs text-muted-foreground">
-                {batch.item_count} design{batch.item_count === 1 ? "" : "s"} · {formatStorageGb(batch.total_bytes)} · made{" "}
+                {batch.item_count} design{batch.item_count === 1 ? "" : "s"} · {formatBytesShort(batch.total_bytes)} · made{" "}
                 {formatRelativeTime(batch.created_at)}
               </p>
             </div>

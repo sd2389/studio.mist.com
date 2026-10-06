@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { ChipField } from "@/components/ui/chip";
 import type { IngestBatch, IngestItem, IngestItemStatus, IngestPage, IngestRefusal } from "@/lib/api/ingest";
-import { formatStorageGb } from "@/lib/billing/format";
+import { formatBytesShort } from "@/lib/admin/format";
 import { cn } from "@/lib/utils";
 import { ITEM_STATUS_LABELS, itemErrorText, stageWaitNote, statusesPresent } from "../domain/statuses";
 import { ItemStatusBadge } from "./BatchBadges";
@@ -27,7 +27,7 @@ type BatchItemListProps = {
 };
 
 function itemMeta(item: IngestItem): string {
-  const parts = [item.sku, item.name, item.category, formatStorageGb(item.bytes + item.companions.reduce((total, file) => total + file.bytes, 0))];
+  const parts = [item.sku, item.name, item.category, formatBytesShort(item.bytes + item.companions.reduce((total, file) => total + file.bytes, 0))];
   if (item.size_mm !== null) parts.push(`${Math.round(item.size_mm * 10) / 10} mm long`);
   if (item.polygon_count !== null) parts.push(`${item.polygon_count.toLocaleString("en-US")} triangles`);
   if (item.attempts > 0) parts.push(`retried ${item.attempts === 1 ? "once" : `${item.attempts} times`}`);

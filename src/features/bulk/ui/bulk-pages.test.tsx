@@ -48,6 +48,7 @@ const { groupDesignFiles } = await import("../domain/design-files");
 const { parseManifest } = await import("../domain/manifest");
 const { PIPELINE_NOTE } = await import("../domain/statuses");
 const { BulkDropPanel } = await import("./BulkDropPanel");
+const { BulkUploadActions } = await import("./BulkUploadActions");
 const { DesignList } = await import("./DesignList");
 
 const MB = 1024 ** 2;
@@ -327,5 +328,24 @@ describe("a refused batch's problems", () => {
     expect(panel).toContain("Row 4: No file of the batch is gone.3dm.");
     expect(panel).toContain("old.zip couldn't be opened: invalid zip data");
     expect(panel).toContain("1 file left out");
+  });
+
+  it("leave the request free to be tried again, once what the API found is fixed elsewhere", () => {
+    const flow = {
+      phase: "planning",
+      batch: null,
+      refusedBody: true,
+      refusal: null,
+      error: null,
+      uploads: { totals: { sent: 0, total: 0, confirmed: 0, failed: 0, designs: 0 } },
+      start: () => {},
+    } as never;
+    const refused = renderToStaticMarkup(<BulkUploadActions flow={flow} designCount={3} blocked={null} />);
+    const blocked = renderToStaticMarkup(<BulkUploadActions flow={flow} designCount={3} blocked="Checking the SKUs…" />);
+    const disabled = (html: string) => /<button[^>]*\sdisabled=""/.test(html);
+
+    expect(text(refused)).toContain("Nothing was made: the batch has the problems shown above.");
+    expect(disabled(refused)).toBe(false);
+    expect(disabled(blocked)).toBe(true);
   });
 });

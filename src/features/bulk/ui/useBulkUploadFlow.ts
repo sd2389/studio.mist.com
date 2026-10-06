@@ -65,11 +65,15 @@ export function useBulkUploadFlow(drop: BulkDrop, held: IngestSkuCheck | null) {
     [plan.designs, batchName, drop.manifest, drop.defaultCategory],
   );
   const bodyKey = useMemo(() => JSON.stringify(body), [body]);
-  const problems = useMemo(() => {
-    if (apiProblems?.body === bodyKey) return apiProblems.problems;
+  // What the checks here find: they keep the batch from being made.
+  const localProblems = useMemo(() => {
     const skuProblems = held ? heldSkuProblems(withoutProblems(plan.designs, plan.problems), held) : [];
     return [...plan.problems, ...skuProblems];
-  }, [apiProblems, bodyKey, held, plan]);
+  }, [held, plan]);
+  // What the API found shows instead, while the request is the one it refused; it can be made
+  // again as it is, once what the API found is fixed elsewhere (another batch canceled).
+  const refusedBody = apiProblems?.body === bodyKey;
+  const problems = refusedBody ? apiProblems.problems : localProblems;
 
   function showFailure(failure: unknown, fallback: string) {
     const listed = batchProblems(failure);
@@ -142,6 +146,9 @@ export function useBulkUploadFlow(drop: BulkDrop, held: IngestSkuCheck | null) {
     phase,
     batch,
     problems,
+    localProblems,
+    /** The API refused this very request: its problems are the ones on show. */
+    refusedBody,
     refusal,
     error,
     uploads,

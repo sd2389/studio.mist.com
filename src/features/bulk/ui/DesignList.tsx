@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { ChipField } from "@/components/ui/chip";
 import { Progress } from "@/components/ui/progress";
 import type { IngestProblem } from "@/lib/api/ingest";
-import { formatStorageGb } from "@/lib/billing/format";
+import { formatBytesShort } from "@/lib/admin/format";
 import { baseName } from "@/lib/upload/dropped-files";
 import type { PlannedDesign } from "../domain/design-checks";
 import { designBytes } from "../domain/design-files";
@@ -34,7 +34,7 @@ const UPLOAD_LABELS: Record<DesignUploadState["status"], string> = {
 };
 
 function designMeta(design: PlannedDesign): string {
-  const parts = [design.sku, design.name, design.category, formatStorageGb(designBytes(design.files))];
+  const parts = [design.sku, design.name, design.category, formatBytesShort(designBytes(design.files))];
   if (design.units !== "auto") parts.push(`in ${design.units}`);
   if (design.row !== null) parts.push(`CSV row ${design.row}`);
   return parts.join(" · ");

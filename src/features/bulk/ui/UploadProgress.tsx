@@ -1,5 +1,5 @@
 import { Progress } from "@/components/ui/progress";
-import { formatStorageGb } from "@/lib/billing/format";
+import { formatBytesShort } from "@/lib/admin/format";
 import type { UploadTotals } from "./useBatchUploads";
 
 /** A batch's uploads from this page, in total: designs confirmed and bytes sent. */
@@ -10,7 +10,7 @@ export function UploadProgress({ totals }: { totals: UploadTotals }) {
       <Progress value={percent} aria-label="Upload progress" />
       <p className="text-xs text-muted-foreground">
         {totals.confirmed} of {totals.designs} design{totals.designs === 1 ? "" : "s"} uploaded ·{" "}
-        {formatStorageGb(totals.sent)} of {formatStorageGb(totals.total)}
+        {formatBytesShort(totals.sent)} of {formatBytesShort(totals.total)}
         {totals.failed > 0 ? ` · ${totals.failed} failed` : ""}
       </p>
     </div>

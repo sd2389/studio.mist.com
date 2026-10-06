@@ -148,7 +148,7 @@ export function BulkUploadShell({ billing, recentBatches, userEmail, isAdmin }: 
               <BulkUploadActions
                 flow={flow}
                 designCount={plan.designs.length}
-                blocked={blockedReason(drop, flow.problems.length, skuCheck, refusal)}
+                blocked={blockedReason(drop, flow.localProblems.length, skuCheck, refusal)}
               />
               {!made && plan.designs.length > 0 ? (
                 <Button type="button" variant="ghost" size="sm" onClick={drop.reset}>

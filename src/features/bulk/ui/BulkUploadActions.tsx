@@ -35,6 +35,12 @@ export function BulkUploadActions({ flow, designCount, blocked }: BulkUploadActi
             {phase === "creating" ? "Making the batch…" : `Upload ${designCount} design${designCount === 1 ? "" : "s"}`}
           </Button>
           {blocked ? <p className="text-xs text-muted-foreground">{blocked}</p> : null}
+          {!blocked && flow.refusedBody ? (
+            <p className="text-xs text-muted-foreground">
+              Nothing was made: the batch has the problems shown above. Fix them, or try again once they are fixed
+              elsewhere.
+            </p>
+          ) : null}
         </>
       ) : null}
 

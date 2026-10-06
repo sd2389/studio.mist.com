@@ -25,8 +25,10 @@ export function CancelBatchDialog({ batchName, unfinished, canceling, onConfirm 
           <DialogHeader>
             <DialogTitle>Cancel {batchName}?</DialogTitle>
             <DialogDescription>
-              The {unfinished === 1 ? "design" : `${unfinished} designs`} not finished yet stop, and the credits they hold come
-              back. Scenes already made stay in your workshop. This can&apos;t be undone.
+              {unfinished === 1
+                ? "The design not finished yet stops, and the credits it holds come back."
+                : `The ${unfinished} designs not finished yet stop, and the credits they hold come back.`}{" "}
+              Scenes already made stay in your workshop. This can&apos;t be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

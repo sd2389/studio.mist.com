@@ -28,6 +28,7 @@ from app.features.render_jobs.pricing import render_job_cost
 from app.features.render_jobs.specs import check_poses, parse_spec, spec_warnings
 from app.features.scene.look import saved_look, validate_look, variant_look
 from app.features.scene.service import require_owned_scene
+from app.features.ingest.items import end_item_of_job
 from app.models import Render, RenderJob, Scene
 from app.models.user import User
 from app.schemas.render_job import RenderJobBulkCreate, RenderJobCreate, RenderJobOut, RenderJobOutput
@@ -90,12 +91,13 @@ def plan_job(db: Session, user: User, body: RenderJobCreate) -> PlannedJob:
 
 
 def _assert_queue_room(db: Session, user_id: int, adding: int, tier: PlanTier) -> None:
-    """429 when `adding` more jobs would pass the plan's cap on unfinished jobs."""
+    """429 when `adding` more jobs would pass the plan's cap on unfinished jobs from the studio.
+    A bulk upload's jobs don't count: its own limits bound them (ADR 0006)."""
     cap = get_quotas(tier).max_queued_jobs
     unfinished = db.execute(
         select(func.count())
         .select_from(RenderJob)
-        .where(RenderJob.user_id == user_id, RenderJob.status.in_(UNFINISHED))
+        .where(RenderJob.user_id == user_id, RenderJob.status.in_(UNFINISHED), RenderJob.batch_id.is_(None))
     ).scalar_one()
     if unfinished + adding > cap:
         raise HTTPException(
@@ -290,6 +292,7 @@ def cancel_job(db: Session, user: User, job_id: int) -> RenderJob:
     now = datetime.utcnow()
     if _update_job(db, job.id, RenderJob.status == "queued", status="canceled", finished_at=now, updated_at=now):
         refund_render_job(db, job)
+        end_item_of_job(db, job, "canceled")
     elif not _update_job(
         db,
         job.id,

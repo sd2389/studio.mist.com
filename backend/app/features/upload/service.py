@@ -1,13 +1,16 @@
 """Upload flows: ingest config merge, persist scene metadata, store bytes.
 
 Every stored model is binary glTF 2.0, checked by its bytes; its triangles are counted from
-the file, never taken from the client.
+the file, never taken from the client. A bulk upload's designs become scenes the same way
+(create_scene_from_glb), once a worker has converted them.
 """
 
 from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -168,14 +171,35 @@ def assert_model_fits_plan(db: Session, user: User, model_bytes: bytes, upload_b
     return assert_model_credit(db, user)
 
 
-def save_scene_and_charge(db: Session, scene: Scene, billing: UserBilling, upload_bytes: int) -> None:
-    """Save the scene, its model credit and its storage in one commit: a refused charge
-    leaves no scene behind, and a save that fails takes no credit. An upload that took the
-    same SKU after this one's check wins at the unique index: that is a 409, as the check's."""
+# What pays for a new scene, in the same commit as its save. It gets the scene once it has an
+# id, takes its model credit and counts its storage, and raises to refuse the save.
+PayForScene = Callable[[Scene], None]
+
+
+@dataclass(frozen=True)
+class SceneDetails:
+    """What a new scene is called and filed under, and the slot and scene settings it starts
+    from, as the upload page or a bulk upload's converter gives them."""
+
+    name: str | None = None
+    sku: str | None = None
+    category: str | None = None
+    note: str | None = None
+    material: str = "original"
+    model_config: dict | None = None
+    slot_selections: dict[str, str] | None = None
+    scene_settings: dict[str, Any] | None = None
+
+
+def save_new_scene(db: Session, scene: Scene, pay: PayForScene) -> None:
+    """Save the scene and what pays for it in one commit: a refused charge leaves no scene
+    behind, and a save that fails takes no credit. A save that took the same SKU after this
+    one's check wins at the unique index: that is a 409, as the check's."""
     sku = scene.sku
     db.add(scene)
     try:
-        consume_model_credit(db, billing, upload_bytes)
+        db.flush()  # the SKU's unique index, and the id `pay` may record
+        pay(scene)
         db.commit()
     except IntegrityError as exc:
         db.rollback()
@@ -188,28 +212,72 @@ def save_scene_and_charge(db: Session, scene: Scene, billing: UserBilling, uploa
     db.refresh(scene)
 
 
+def pay_with_model_credit(db: Session, billing: UserBilling, upload_bytes: int) -> PayForScene:
+    """What pays for an uploaded scene: a model credit from the balance, and its storage."""
+    return lambda _scene: consume_model_credit(db, billing, upload_bytes)
+
+
 def store_model_scene(
     db: Session,
     scene: Scene,
     model_bytes: bytes,
-    billing: UserBilling,
-    upload_bytes: int,
+    pay: PayForScene,
     thumbnail: CheckedThumbnail | None = None,
 ) -> None:
-    """Write the checked model (and thumbnail) at the scene's keys, save the scene with its
-    charge, then publish it. A save that fails takes the written objects away again."""
+    """Write the checked model (and thumbnail) at the scene's keys, save the scene with what
+    pays for it, then publish it. A save that fails takes the written objects away again."""
     written = [scene.model_key]
     try:
         storage.write_bytes(scene.model_key, model_bytes, content_type=GLB_CONTENT_TYPE)
         if thumbnail is not None:
             written.append(thumbnail.key)
             storage.write_bytes(thumbnail.key, thumbnail.data, content_type=thumbnail.content_type)
-        save_scene_and_charge(db, scene, billing, upload_bytes)
+        save_new_scene(db, scene, pay)
     except Exception:
         for key in written:
             storage.delete_quietly(key)
         raise
     publish_service.publish_scene(db, scene)
+
+
+def create_scene_from_glb(
+    db: Session,
+    user: User,
+    *,
+    model_key: str,
+    model_bytes: bytes,
+    details: SceneDetails,
+    pay: PayForScene,
+    thumbnail: CheckedThumbnail | None = None,
+) -> Scene:
+    """Make a scene of a checked GLB, as every upload does: its slots and scene settings read
+    from the model and merged with what `details` gives, the model (and thumbnail) written at
+    the scene's keys, the scene saved with `pay` in one commit, then published under its SKU.
+
+    The caller has already checked the model's bytes against the plan and the SKU.
+    """
+    inferred_slots, inferred_scene = build_ingest_configs(model_key, model_bytes)
+    model_config = merge_slot_material_config(inferred_slots, details.model_config)
+    now = datetime.utcnow()
+    scene = Scene(
+        model_key=model_key,
+        material=details.material,
+        name=details.name or display_name_from_key(model_key),
+        sku=details.sku or None,
+        category=details.category,
+        note=details.note,
+        lighting="studio",
+        model_config=model_config,
+        slot_selections=details.slot_selections or dict(model_config.get("defaultMaterials") or {}),
+        scene_settings=merge_scene_settings(inferred_scene, details.scene_settings),
+        thumbnail_key=thumbnail.key if thumbnail else None,
+        user_id=user.id,
+        project_id=1,
+        created_at=now,
+        updated_at=now,
+    )
+    store_model_scene(db, scene, model_bytes, pay, thumbnail)
+    return scene
 
 
 def read_stored_upload(key: str) -> bytes:
@@ -321,31 +389,25 @@ def _register_checked_upload(
     thumbnail = read_checked_thumbnail(user.id, thumbnail_key)
     upload_bytes = len(model_bytes) + (len(thumbnail.data) if thumbnail else 0)
     billing = assert_model_fits_plan(db, user, model_bytes, upload_bytes)
-    key = _key_for_checked_model(user.id, upload_key)
-    inferred_slots, inferred_scene = build_ingest_configs(key, model_bytes)
-    model_config = merge_slot_material_config(inferred_slots, model_config_data)
-    merged_scene = merge_scene_settings(inferred_scene, scene_settings)
-    selections = slot_selections or dict(model_config.get("defaultMaterials") or {})
-    now = datetime.utcnow()
-    scene = Scene(
-        model_key=key,
-        material=material,
-        name=name or display_name_from_key(key),
-        sku=sku or None,
-        category=category,
-        note=note,
-        lighting="studio",
-        model_config=model_config,
-        slot_selections=selections,
-        scene_settings=merged_scene,
-        thumbnail_key=thumbnail.key if thumbnail else None,
-        user_id=user.id,
-        project_id=1,
-        created_at=now,
-        updated_at=now,
+    scene = create_scene_from_glb(
+        db,
+        user,
+        model_key=_key_for_checked_model(user.id, upload_key),
+        model_bytes=model_bytes,
+        details=SceneDetails(
+            name=name,
+            sku=sku,
+            category=category,
+            note=note,
+            material=material,
+            model_config=model_config_data,
+            slot_selections=slot_selections,
+            scene_settings=scene_settings,
+        ),
+        pay=pay_with_model_credit(db, billing, upload_bytes),
+        thumbnail=thumbnail,
     )
-    store_model_scene(db, scene, model_bytes, billing, upload_bytes, thumbnail)
-    return {"scene_id": scene.id, "model_key": key}
+    return {"scene_id": scene.id, "model_key": scene.model_key}
 
 
 def save_direct_multipart(
@@ -374,34 +436,23 @@ def save_direct_multipart(
     assert_sku_available(db, sku)
     billing = assert_model_fits_plan(db, user, body, len(body))
 
-    model_config_payload = parse_json_object(model_config_raw, "model_config")
-    slot_selections_payload = parse_json_object(slot_selections_raw, "slot_selections")
-    scene_settings_payload = parse_json_object(scene_settings_raw, "scene_settings")
-
-    inferred_slots, inferred_scene = build_ingest_configs(safe_name, body)
-    model_config_payload = merge_slot_material_config(inferred_slots, model_config_payload or None)
-    scene_settings_payload = merge_scene_settings(inferred_scene, scene_settings_payload or None)
-    if not slot_selections_payload:
-        slot_selections_payload = dict(model_config_payload.get("defaultMaterials") or {})
-
-    now = datetime.utcnow()
-    scene = Scene(
-        model_key=key,
-        material="original",
-        name=name or display_name_from_key(key),
-        sku=sku or None,
+    details = SceneDetails(
+        name=name,
+        sku=sku,
         category=category,
         note=note,
-        lighting="studio",
-        model_config=model_config_payload,
-        slot_selections=slot_selections_payload,
-        scene_settings=scene_settings_payload,
-        user_id=user.id,
-        project_id=1,
-        created_at=now,
-        updated_at=now,
+        model_config=parse_json_object(model_config_raw, "model_config") or None,
+        slot_selections=parse_json_object(slot_selections_raw, "slot_selections") or None,
+        scene_settings=parse_json_object(scene_settings_raw, "scene_settings") or None,
     )
-    store_model_scene(db, scene, body, billing, len(body))
+    scene = create_scene_from_glb(
+        db,
+        user,
+        model_key=key,
+        model_bytes=body,
+        details=details,
+        pay=pay_with_model_credit(db, billing, len(body)),
+    )
     return {"scene_id": scene.id, "model_key": key}
 
 

@@ -25,6 +25,9 @@ from app.core.storage.local import LocalBackend
 from app.features.billing.quota_service import charge_render_job, count_storage_bytes
 from app.features.render_jobs.job_files import PlannedOutput, planned_outputs
 from app.features.render_jobs.worker import discard_outputs, end_attempt, running_job
+from app.features.render_jobs.convert_spec import OPTIONAL_OUTPUTS as OPTIONAL_CONVERT_OUTPUTS
+from app.features.render_jobs.convert_spec import convert_outputs
+from app.features.ingest.conversions import complete_conversion
 from app.models import Render, RenderJob, Scene
 from app.schemas.render_job import (
     RenderJobCompleteRequest,
@@ -37,7 +40,13 @@ UPLOAD_URL_SECONDS = 900
 
 
 def _planned(job: RenderJob) -> dict[str, PlannedOutput]:
-    return {output.name: output for output in planned_outputs(job.kind, job.spec)}
+    outputs = convert_outputs(job.spec) if job.kind == "convert" else planned_outputs(job.kind, job.spec)
+    return {output.name: output for output in outputs}
+
+
+def _optional(job: RenderJob) -> frozenset[str]:
+    """The files a job may leave out: a convert job's thumbnail."""
+    return OPTIONAL_CONVERT_OUTPUTS if job.kind == "convert" else frozenset()
 
 
 def _check_type_and_size(field: str, output: PlannedOutput, content_type: str, size: int) -> None:
@@ -141,10 +150,14 @@ def _check_output(job: RenderJob, field: str, plan: PlannedOutput, output: Rende
 def _checked_outputs(
     job: RenderJob, reported: list[RenderJobOutputReport]
 ) -> list[tuple[PlannedOutput, RenderJobOutputReport]]:
-    """Each reported output with the file of the spec it is; every one of them, once each."""
-    planned = _planned(job)
-    if sorted(output.name for output in reported) != sorted(planned):
-        raise HTTPException(status_code=400, detail=f"outputs: the job makes {', '.join(planned)}, each once")
+    """Each reported output with the file of the spec it is; every one the job must make, and
+    each at most once."""
+    planned, optional = _planned(job), _optional(job)
+    names = [output.name for output in reported]
+    if len(set(names)) != len(names) or not set(planned) - optional <= set(names) <= set(planned):
+        required = ", ".join(name for name in planned if name not in optional)
+        may_make = f", and may make {', '.join(sorted(optional))}" if optional else ""
+        raise HTTPException(status_code=400, detail=f"outputs: the job makes {required}, each once{may_make}")
     checked = []
     for index, output in enumerate(reported):
         plan = planned[output.name]
@@ -187,10 +200,13 @@ def complete_job(db: Session, job_id: int, token: str, body: RenderJobCompleteRe
     An output that isn't what the spec names, under the job's prefix, at the size stored, is 400
     and the job keeps running. A second complete finds the job completed: 409, nothing charged.
     Outputs that can't be kept end the job, refunded: 409 when its scene was deleted, 402 when
-    the owner's storage is full.
+    the owner's storage is full. A convert job's files make its design's scene instead
+    (features/ingest/conversions.py).
     """
     job = running_job(db, job_id, token)
     checked = _checked_outputs(job, body.outputs)
+    if job.kind == "convert":
+        return complete_conversion(db, job, token, {plan.name: output for plan, output in checked}, body.renderer)
     scene = db.get(Scene, job.scene_id) if job.scene_id is not None else None
     if scene is None:
         raise _ended_without_outputs(db, job, "input_missing", "The job's scene was deleted.", 409)

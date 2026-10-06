@@ -1,0 +1,121 @@
+"""A batch's designs as they move on: the credits they hold, a design ending with its convert job,
+and a batch settling once every design has finished (docs/adr/0006-bulk-pipeline.md).
+
+Changes take their row locks in one order: render jobs, then designs, then the owner's billing
+row, then the batch. A worker finishing a job starts from the job, so a user acting on a batch
+at the same time never waits for a lock while holding one the worker waits for. An owner's own
+changes to their batches go one at a time (lock_owner_batches).
+"""
+
+from __future__ import annotations
+
+from collections import defaultdict
+from collections.abc import Collection
+from datetime import datetime, timedelta
+
+from sqlalchemy import case, exists, func, select, update
+from sqlalchemy.orm import Session
+
+from app.features.billing.quota_service import return_held_credits
+from app.models.ingest import UNFINISHED_ITEM_STATUSES, IngestBatch, IngestItem
+from app.models.render_job import RenderJob
+
+# How long a finished batch's raw CAD files and archives are kept.
+RETENTION_DAYS = 30
+# Postgres advisory lock taken with an owner's id around their changes to their batches.
+_OWNER_BATCHES_LOCK = 6006
+
+
+def uses_row_locks(db: Session) -> bool:
+    """SQLite (tests only, no concurrency) has neither FOR UPDATE nor advisory locks."""
+    return db.get_bind().dialect.name != "sqlite"
+
+
+def lock_owner_batches(db: Session, user_id: int) -> None:
+    """Take an owner's batches for this transaction (Postgres), so their own changes go one at a
+    time: counting their open batches, holding credits for designs, giving them back."""
+    if uses_row_locks(db):
+        db.execute(select(func.pg_advisory_xact_lock(_OWNER_BATCHES_LOCK, user_id)))
+
+
+def locked_items(db: Session, *conditions) -> list[IngestItem]:
+    """The designs that match, their rows locked until the transaction ends (Postgres)."""
+    stmt = (
+        select(IngestItem)
+        .where(*conditions)
+        .order_by(IngestItem.id)
+        .execution_options(populate_existing=True)
+    )
+    if uses_row_locks(db):
+        stmt = stmt.with_for_update()
+    return list(db.execute(stmt).scalars())
+
+
+def release_held_credits(db: Session, item_ids: Collection[int]) -> None:
+    """Give back what these designs still hold, each credit once: their rows are locked, read and
+    zeroed, and the credits go back to the owner's balances unless the billing period has rolled
+    over since they were held. Not committed."""
+    held = [item for item in locked_items(db, IngestItem.id.in_(item_ids)) if item.model_credit_held or item.render_credits_held]
+    if not held:
+        return
+    totals: dict[tuple[int, datetime | None], list[int]] = defaultdict(lambda: [0, 0])
+    for item in held:
+        total = totals[(item.user_id, item.credits_period_start)]
+        total[0] += item.model_credit_held
+        total[1] += item.render_credits_held
+        item.model_credit_held = 0
+        item.render_credits_held = 0
+    db.flush()
+    for (user_id, period_start), (model_credits, render_credits) in totals.items():
+        return_held_credits(db, user_id, period_start, model_credits=model_credits, render_credits=render_credits)
+
+
+def settle_batch(db: Session, batch_id: int | None) -> None:
+    """A processing batch whose designs have all finished becomes completed, or completed with
+    errors when any of them isn't done, and its raw files are kept 30 days more. The batch row is
+    locked first, so two designs finishing at once can't each miss the other. Not committed."""
+    if batch_id is None:
+        return
+    if uses_row_locks(db):
+        db.execute(select(IngestBatch.id).where(IngestBatch.id == batch_id).with_for_update())
+    unfinished = exists().where(IngestItem.batch_id == IngestBatch.id, IngestItem.status.in_(UNFINISHED_ITEM_STATUSES))
+    not_done = exists().where(IngestItem.batch_id == IngestBatch.id, IngestItem.status != "done")
+    now = datetime.utcnow()
+    db.execute(
+        update(IngestBatch)
+        .where(IngestBatch.id == batch_id, IngestBatch.status == "processing", ~unfinished)
+        .values(
+            status=case((not_done, "completed_with_errors"), else_="completed"),
+            finished_at=now,
+            expires_at=now + timedelta(days=RETENTION_DAYS),
+            updated_at=now,
+        )
+        .execution_options(synchronize_session=False)
+    )
+
+
+def end_item_of_job(db: Session, job: RenderJob, status: str) -> None:
+    """A design whose convert job ended without completing ends with it: canceled with a
+    canceled job, else failed with the job's reason. It gets back what it holds, and its batch
+    settles. Not committed."""
+    if job.kind != "convert" or job.ingest_item_id is None:
+        return
+    canceled = status == "canceled"
+    ended = db.execute(
+        update(IngestItem)
+        .where(
+            IngestItem.id == job.ingest_item_id,
+            IngestItem.status == "converting",
+            IngestItem.convert_job_id == job.id,
+        )
+        .values(
+            status="canceled" if canceled else "failed",
+            error=job.error or ("Canceled." if canceled else "The conversion failed."),
+            error_code=job.error_code or ("canceled" if canceled else "unknown"),
+            updated_at=datetime.utcnow(),
+        )
+        .execution_options(synchronize_session=False)
+    ).rowcount
+    if ended:
+        release_held_credits(db, [job.ingest_item_id])
+        settle_batch(db, job.batch_id)

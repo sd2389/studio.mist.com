@@ -9,6 +9,7 @@ from app.routers import (
     feature_flags,
     files,
     health,
+    ingest,
     library,
     render_jobs,
     renders,
@@ -30,3 +31,4 @@ api_router.include_router(billing.router, prefix="/billing", tags=["billing"])
 api_router.include_router(admin.router, prefix="/admin", tags=["admin"])
 api_router.include_router(feature_flags.router, prefix="/features", tags=["features"])
 api_router.include_router(render_jobs.router, prefix="/render-jobs", tags=["render-jobs"])
+api_router.include_router(ingest.router, prefix="/ingest", tags=["ingest"])

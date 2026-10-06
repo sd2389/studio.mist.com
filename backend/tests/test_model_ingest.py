@@ -85,7 +85,7 @@ def test_a_scene_whose_credit_is_gone_at_commit_is_not_saved(db, sample_user):
     scene = Scene(model_key="customers/1/models/a-ring.glb", user_id=sample_user.id, created_at=now, updated_at=now)
 
     with pytest.raises(HTTPException) as exc:
-        upload_service.save_scene_and_charge(db, scene, billing, 1_000)
+        upload_service.save_new_scene(db, scene, upload_service.pay_with_model_credit(db, billing, 1_000))
 
     assert exc.value.status_code == 402
     assert scene_count(db) == 0

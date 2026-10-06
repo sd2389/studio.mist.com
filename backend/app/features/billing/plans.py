@@ -146,6 +146,26 @@ TOP_UP_PACKS: dict[str, dict[str, int | str]] = {
     "ai_150": {"label": "150 AI image credits", "credits": 150, "kind": "ai"},
 }
 
+MB = 1024**2
+
+
+@dataclass(frozen=True)
+class BatchLimits:
+    """What one bulk upload may hold (docs/adr/0006-bulk-pipeline.md, "Limits for batches")."""
+
+    max_designs: int  # 0: the plan has no bulk upload
+    max_bytes: int  # every file of the batch, companions included
+    max_file_bytes: int  # one CAD file or companion
+    max_open_batches: int  # batches not yet finished (draft or processing)
+
+
+# The ADR's defaults, open questions for the owner.
+BATCH_LIMITS: dict[PlanTier, BatchLimits] = {
+    "free": BatchLimits(max_designs=0, max_bytes=0, max_file_bytes=100 * MB, max_open_batches=3),
+    "grow": BatchLimits(max_designs=100, max_bytes=5 * GB, max_file_bytes=100 * MB, max_open_batches=3),
+    "studio": BatchLimits(max_designs=500, max_bytes=20 * GB, max_file_bytes=100 * MB, max_open_batches=3),
+}
+
 
 def normalize_tier(raw: str | None) -> PlanTier:
     value = (raw or "free").lower().strip()
@@ -156,3 +176,7 @@ def normalize_tier(raw: str | None) -> PlanTier:
 
 def get_quotas(tier: PlanTier) -> PlanQuotas:
     return PLAN_QUOTAS[tier]
+
+
+def get_batch_limits(tier: PlanTier) -> BatchLimits:
+    return BATCH_LIMITS[tier]

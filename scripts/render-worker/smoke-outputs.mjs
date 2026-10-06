@@ -103,23 +103,31 @@ async function playInChrome(mp4, profile) {
 }
 
 /**
+ * The MP4 is H.264 High in yuv420p, converted to limited-range BT.709 and tagged so, with every
+ * frame of `width` × `height` at `fps`, and its index ahead of the media. Written to `file` to probe.
+ */
+async function checkMp4(mp4, { width, height, fps, frames }, file) {
+  await writeFile(file, mp4);
+  const stream = await probeVideo(file);
+  const expected = {
+    codec_name: "h264", profile: "High", pix_fmt: "yuv420p", width, height,
+    color_range: "tv", color_space: "bt709", color_transfer: "bt709", color_primaries: "bt709",
+    nb_read_frames: String(frames), r_frame_rate: `${fps}/1`,
+  };
+  const wrong = Object.entries(expected).filter(([key, value]) => stream[key] !== value);
+  if (wrong.length) throw new Error(`${path.basename(file)} has ${wrong.map(([key, value]) => `${key} ${stream[key]}, not ${value}`).join("; ")}`);
+  const boxes = topLevelBoxes(mp4);
+  if (!(boxes.includes("moov") && boxes.indexOf("moov") < boxes.indexOf("mdat"))) throw new Error(`${path.basename(file)}'s boxes are ${boxes.join(", ")}: its index isn't first`);
+  return { stream, boxes };
+}
+
+/**
  * The turntable's MP4 is what ADR 0005 asks for and plays in Chrome, frame 0 matching `still`, the
  * decoded still of the same camera at the same size. Throws with what is wrong; resolves with
  * what it found.
  */
 export async function checkTurntable({ mp4, spec, still, profile, workDir }) {
-  const file = path.join(workDir, "turntable.mp4");
-  await writeFile(file, mp4);
-  const stream = await probeVideo(file);
-  const expected = {
-    codec_name: "h264", profile: "High", pix_fmt: "yuv420p", width: spec.width, height: spec.height,
-    color_range: "tv", color_space: "bt709", color_transfer: "bt709", color_primaries: "bt709",
-    nb_read_frames: String(spec.frames), r_frame_rate: `${spec.fps}/1`,
-  };
-  const wrong = Object.entries(expected).filter(([key, value]) => stream[key] !== value);
-  if (wrong.length) throw new Error(`the MP4 has ${wrong.map(([key, value]) => `${key} ${stream[key]}, not ${value}`).join("; ")}`);
-  const boxes = topLevelBoxes(mp4);
-  if (!(boxes.includes("moov") && boxes.indexOf("moov") < boxes.indexOf("mdat"))) throw new Error(`the MP4's boxes are ${boxes.join(", ")}: its index isn't first`);
+  const { stream, boxes } = await checkMp4(mp4, spec, path.join(workDir, "turntable.mp4"));
 
   const played = await playInChrome(mp4, profile);
   if (!played.ended || played.width !== spec.width || played.height !== spec.height) {
@@ -155,6 +163,77 @@ async function turnInChrome(files, profile) {
   } finally {
     await browser.close();
   }
+}
+
+/** A cutout seen over white: each pixel's colour flattened by its alpha. */
+function overWhite({ data, width, height }) {
+  const flat = new Uint8ClampedArray(data.length);
+  for (let index = 0; index < data.length; index += 4) {
+    const alpha = data[index + 3] / 255;
+    for (let channel = 0; channel < 3; channel += 1) flat[index + channel] = data[index + channel] * alpha + 255 * (1 - alpha);
+    flat[index + 3] = 255;
+  }
+  return { data: flat, width, height };
+}
+
+/**
+ * How alike two cutouts of one size are, seen over white: SSIM, and the mean difference of each
+ * colour channel (0 to 255) on the piece, the pixels at least half opaque in either.
+ */
+export function compareCutouts(a, b) {
+  const [flatA, flatB] = [overWhite(a), overWhite(b)];
+  let difference = 0;
+  let pixels = 0;
+  for (let index = 0; index < a.data.length; index += 4) {
+    if (a.data[index + 3] < 128 && b.data[index + 3] < 128) continue;
+    for (let channel = 0; channel < 3; channel += 1) difference += Math.abs(flatA.data[index + channel] - flatB.data[index + channel]);
+    pixels += 1;
+  }
+  return { similarity: ssim(flatA, flatB).mssim, difference: pixels ? difference / (pixels * 3) : 0 };
+}
+
+const MAGIC = { ".jpg": [0xff, 0xd8, 0xff], ".png": [0x89, 0x50, 0x4e, 0x47] };
+
+/**
+ * The Campaign Pack's ZIP holds `expected`, its entries as the studio's planner names them, in
+ * that order; its images are images, its turntables MP4s as ADR 0005 asks for (`video`), its
+ * manifest lists every other entry at its size, and its spin.html turns. Resolves with what it
+ * found, and how the cutout of a re-skinned metal (`reskinned.entry`) compares with the studio's
+ * own render of that metal from the same camera (`reskinned.studio`, decoded): `compareCutouts`.
+ */
+export async function checkPack({ zip, expected, video, reskinned, profile, workDir }) {
+  const files = unzipSync(zip);
+  const names = Object.keys(files);
+  if (names.join("\n") !== expected.join("\n")) {
+    throw new Error(`the pack's ZIP holds ${names.length} entries, not the ${expected.length} its plan names: ${names.filter((name, index) => name !== expected[index]).slice(0, 4).join(", ")}…`);
+  }
+  const notImages = names.filter((name) => MAGIC[path.extname(name)] && !MAGIC[path.extname(name)].every((byte, index) => files[name][index] === byte));
+  if (notImages.length) throw new Error(`not images: ${notImages.join(", ")}`);
+  const videos = names.filter((name) => name.endsWith(".mp4"));
+  for (const [index, name] of videos.entries()) await checkMp4(Buffer.from(files[name]), video, path.join(workDir, `pack-${index}.mp4`));
+
+  const root = names[0].split("/")[0];
+  const manifestPath = `${root}/manifest.json`;
+  const listed = JSON.parse(new TextDecoder().decode(files[manifestPath])).files.map((file) => `${file.path} ${file.bytes}`);
+  const entries = names.filter((name) => name !== manifestPath).map((name) => `${name} ${files[name].length}`);
+  if (listed.join("\n") !== entries.join("\n")) throw new Error(`the manifest lists ${listed.length} files, the ZIP holds ${entries.length} besides it, or at other sizes`);
+
+  const spinDir = `${root}/spin/`;
+  const spin = Object.fromEntries(names.filter((name) => name.startsWith(spinDir)).map((name) => [name.slice(spinDir.length), files[name]]));
+  const viewer = await turnInChrome(spin, profile);
+  // The viewer loads the metal it shows first, then the others.
+  const frames = Object.keys(spin).filter((name) => name.includes("/"));
+  const shown = frames.filter((name) => name.startsWith(`${frames[0]?.split("/")[0]}/`));
+  const missed = shown.filter((name) => !viewer.served.includes(name));
+  if (missed.length || viewer.isBlank || !viewer.turnsByItself || !viewer.turnsByKey) {
+    throw new Error(`the pack's spin.html: missed ${missed.join(", ") || "nothing"}, ${viewer.isBlank ? "blank" : "drawn"}, turns by itself ${viewer.turnsByItself}, by key ${viewer.turnsByKey}`);
+  }
+
+  return {
+    entries: names.length,
+    videos: videos.length,
+    reskin: compareCutouts(decodePng(Buffer.from(files[reskinned.entry])), reskinned.studio),
+  };
 }
 
 /** The spin's ZIP opens, holds its frames and viewer page, and the viewer loads every frame and turns. */

@@ -1,4 +1,4 @@
-"""Stepping the render job migrations on SQLite.
+"""Stepping the render job and ingest migrations on SQLite.
 
 Older migrations use PostgreSQL-only SQL, so a test builds the schema the models describe (the
 head), stamps it, and steps down to the revision it checks.
@@ -18,7 +18,7 @@ import app.config
 from app.models import Base
 
 ALEMBIC_DIR = Path(__file__).resolve().parent.parent / "alembic"
-TABLES = ("render_jobs", "renders")
+TABLES = ("render_jobs", "renders", "ingest_batches", "ingest_items")
 
 
 def point_alembic_at(url: str, monkeypatch) -> None:
@@ -49,7 +49,7 @@ def columns(engine: Engine, table: str) -> set[str]:
 
 
 def model_diffs(engine: Engine) -> list:
-    """How the render job tables differ from what the models describe."""
+    """How the render job and ingest tables differ from what the models describe."""
     with engine.connect() as connection:
         diffs = compare_metadata(
             MigrationContext.configure(connection, opts={"compare_type": True}), Base.metadata

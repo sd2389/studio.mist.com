@@ -6,6 +6,7 @@ from app.models.catalog import (
     CatalogMetal,
     CatalogScenePreset,
 )
+from app.models.ingest import IngestBatch, IngestItem
 from app.models.project import Project
 from app.models.rate_limit import RateLimitCounter
 from app.models.render import Render
@@ -40,4 +41,6 @@ __all__ = [
     "CreditPurchase",
     "FeatureFlag",
     "RateLimitCounter",
+    "IngestBatch",
+    "IngestItem",
 ]

@@ -74,7 +74,8 @@ def parse_manifest(text: str) -> tuple[list[ManifestRow], list[IngestProblem]]:
         if len(cells) > len(header):
             problems.append(_problem(number, "manifest", "row_too_long", f"The row has {len(cells)} cells for {len(header)} columns."))
             continue
-        values = {column: cell.strip() for column, cell in zip(header, cells) if cell.strip()}
+        # A row may stop short of the header's last columns: those cells are blank.
+        values = {column: cell.strip() for column, cell in zip(header, cells, strict=False) if cell.strip()}
         if "file" not in values:
             problems.append(_problem(number, "file", "file_missing", "The row names no file."))
             continue

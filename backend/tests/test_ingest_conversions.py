@@ -8,8 +8,6 @@ from datetime import datetime, timedelta
 
 import pytest
 from fastapi import HTTPException
-from fastapi.testclient import TestClient
-from image_samples import raster
 from ingest_samples import (  # noqa: F401 - fixtures
     RENDERER,
     STILLS_PLAN,
@@ -45,7 +43,7 @@ from app.features.render_jobs import outputs, worker
 from app.features.render_jobs import payload as payloads
 from app.features.render_jobs.service import cancel_job
 from app.main import app
-from app.models import RenderJob, Scene
+from app.models import Scene
 from app.schemas.render_job import RenderJobUploadFile
 
 STUDIO = (500, 1500)
@@ -484,8 +482,6 @@ def test_canceling_a_queued_convert_job_cancels_its_design(client, db, owner, cl
 
 
 def test_a_design_goes_from_its_cad_file_to_a_published_scene_over_http(client, db, owner, cloud):
-    from app.config import get_settings
-
     user, headers = owner
     settings = get_settings().model_copy(update={"render_worker_token": "worker-secret"})
     app.dependency_overrides[get_settings] = lambda: settings

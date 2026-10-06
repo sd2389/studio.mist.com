@@ -101,6 +101,24 @@ describe("the sink's files", () => {
     expect(fromDisk.body).toEqual(MODEL);
   });
 
+  it("serves a convert job's files at their paths, and nothing else", async () => {
+    const source = path.join(dir, "input-0");
+    const mtl = path.join(dir, "input-1");
+    writeFileSync(source, "o Band\nv 0 0 0\n");
+    writeFileSync(mtl, "newmtl Gold\n");
+    await open({ model: null, inputs: new Map([["/inputs/source", source], ["/inputs/companions/0", mtl]]) });
+
+    const served = await send("/inputs/source", { method: "GET" });
+    expect(served.status).toBe(200);
+    expect(served.headers["content-type"]).toBe("application/octet-stream");
+    expect(served.body.toString()).toBe("o Band\nv 0 0 0\n");
+    expect((await send("/inputs/companions/0", { method: "GET" })).body.toString()).toBe("newmtl Gold\n");
+    for (const route of ["/inputs/companions/1", "/inputs/model.glb", "/inputs/../input-0"]) {
+      expect((await send(route, { method: "GET" })).status, route).toBe(404);
+    }
+    expect((await send("/inputs/source", { method: "GET", token: "nope" })).status).toBe(403);
+  });
+
   it("stores each of the job's files once, in the order the page posts them", async () => {
     await open();
     const top = Buffer.from("top-image");

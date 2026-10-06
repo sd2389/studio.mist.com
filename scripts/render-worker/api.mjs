@@ -28,6 +28,14 @@ export class ApiError extends Error {
   }
 }
 
+/** A download or input that went past the bytes it may have. */
+export class TooLargeError extends ApiError {
+  constructor(message) {
+    super(message);
+    this.name = "TooLargeError";
+  }
+}
+
 /**
  * The API took the job back: a 401 (the lease lapsed and the job was claimed again), a 409 (it
  * is no longer running: canceled, completed or ended) or a 404. Drop it; don't report it.
@@ -64,7 +72,7 @@ function byteMeter(limit, label) {
   const meter = new Transform({
     transform(chunk, _encoding, done) {
       meter.bytes += chunk.length;
-      done(meter.bytes > limit ? new ApiError(`${label} is larger than ${limit} bytes`) : null, chunk);
+      done(meter.bytes > limit ? new TooLargeError(`${label} is larger than ${limit} bytes`) : null, chunk);
     },
   });
   meter.bytes = 0;
@@ -185,7 +193,7 @@ export function createApiClient({ baseUrl, workerToken, fetch = globalThis.fetch
         /** An input the page asked for (the look's background image), as bytes, for `route.fulfill`. */
         async read(target, { maxBytes = MAX_INPUT_BYTES, signal } = {}) {
           const { response, label } = await fetchInput(target, signal);
-          const tooBig = () => new ApiError(`${label} is larger than ${maxBytes} bytes`);
+          const tooBig = () => new TooLargeError(`${label} is larger than ${maxBytes} bytes`);
           if (Number(response.headers.get("content-length")) > maxBytes) {
             await response.body?.cancel();
             throw tooBig();

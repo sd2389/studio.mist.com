@@ -1,6 +1,7 @@
 import os from "node:os";
 import path from "node:path";
 import { PROFILES } from "./browser.mjs";
+import { CONVERT_KIND } from "./convert.mjs";
 import { assetPrefix, DEFAULT_ASSET_PREFIXES } from "./network.mjs";
 
 /** What the harness's export mode renders and this worker can hand in: turntables through ffmpeg, spins as a ZIP. */
@@ -45,10 +46,15 @@ function profileFrom(env, platform) {
   return name;
 }
 
+/**
+ * The kinds a worker claims: the render kinds unless WORKER_KINDS says otherwise. Conversions
+ * (ADR 0006) go to a CPU pool that names `convert`; no worker converts unless told to.
+ */
 function kindsFrom(env) {
+  const known = [...RENDERABLE_KINDS, CONVERT_KIND];
   const kinds = [...new Set(list(env.WORKER_KINDS || RENDERABLE_KINDS.join(",")))];
-  const unknown = kinds.filter((kind) => !RENDERABLE_KINDS.includes(kind));
-  if (unknown.length) throw new Error(`WORKER_KINDS: this worker renders ${RENDERABLE_KINDS.join(", ")}, not ${unknown.join(", ")}`);
+  const unknown = kinds.filter((kind) => !known.includes(kind));
+  if (unknown.length) throw new Error(`WORKER_KINDS: this worker does ${known.join(", ")}, not ${unknown.join(", ")}`);
   if (!kinds.length) throw new Error(`WORKER_KINDS names no kind; leave it unset for ${RENDERABLE_KINDS.join(", ")}`);
   return kinds;
 }
@@ -86,6 +92,7 @@ export function readConfig(env = process.env, platform = process.platform) {
       return undefined;
     }
   };
+  const cacheDir = path.resolve(env.WORKER_CACHE_DIR || path.join(os.tmpdir(), "render-worker-cache"));
   const config = {
     apiUrl: read(() => required(env, "RENDER_API_URL")),
     workerToken: read(() => workerTokenFrom(env)),
@@ -99,8 +106,10 @@ export function readConfig(env = process.env, platform = process.platform) {
     recycleAfterJobs: read(() => integer(env, "WORKER_RECYCLE_JOBS", 50)),
     sandbox: env.WORKER_CHROMIUM_SANDBOX !== "0",
     assetPrefixes: read(() => [...DEFAULT_ASSET_PREFIXES, ...list(env.WORKER_ASSET_ORIGINS).map(assetPrefix)]),
-    cacheDir: path.resolve(env.WORKER_CACHE_DIR || path.join(os.tmpdir(), "render-worker-cache")),
+    cacheDir,
     cacheMaxBytes: read(() => integer(env, "WORKER_CACHE_MAX_MB", 2048) * 1024 * 1024),
+    /** The converters' vendored files (vendor.mjs); the image has them in its read-only root. */
+    vendorDir: path.resolve(env.WORKER_VENDOR_DIR || path.join(cacheDir, "vendor")),
     tmpDir: path.resolve(env.WORKER_TMP_DIR || os.tmpdir()),
     ffmpegPath: env.WORKER_FFMPEG || "ffmpeg",
   };

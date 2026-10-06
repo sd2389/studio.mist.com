@@ -1,8 +1,9 @@
 /*
  * What a job's page may reach (ADR 0005, "Isolation"): the harness it runs in, its job's sink,
- * the job's own inputs and the asset hosts. Everything else is aborted. The page never holds
- * the job's token: the job-token routes it asks for on the harness origin are fetched by the
- * worker, which adds the token, and the reply handed to the page.
+ * the job's own inputs, the asset hosts and the converters' vendored files (vendor.mjs).
+ * Everything else is aborted. The page never holds the job's token: the job-token routes it asks
+ * for on the harness origin are fetched by the worker, which adds the token, and the reply handed
+ * to the page.
  */
 
 function prefixOf(value) {
@@ -44,21 +45,23 @@ export function assetSource(rawUrl, assetPrefixes) {
  * @param {number | null} [options.jobId] The job whose `/render-jobs/<id>/inputs/<name>` routes the page may read.
  * @param {string[]} [options.inputUrls] The job's signed inputs the page loads itself (a background image).
  * @param {{ prefix: string, from: string }[]} [options.assetPrefixes]
+ * @param {Iterable<string>} [options.vendoredUrls] The URLs of the converters' vendored files.
  */
-export function pagePolicy({ harnessOrigin, sinkOrigin = null, jobId = null, inputUrls = [], assetPrefixes = DEFAULT_ASSET_PREFIXES }) {
+export function pagePolicy({ harnessOrigin, sinkOrigin = null, jobId = null, inputUrls = [], assetPrefixes = DEFAULT_ASSET_PREFIXES, vendoredUrls = [] }) {
   return {
     harnessOrigin: new URL(harnessOrigin).origin,
     sinkOrigin: sinkOrigin ? new URL(sinkOrigin).origin : null,
     jobInput: jobId === null ? null : new RegExp(`^/render-jobs/${jobId}/inputs/[a-z]+$`),
     inputUrls: new Set(inputUrls.map((url) => new URL(url).href)),
     assetPrefixes,
+    vendored: new Set(vendoredUrls),
   };
 }
 
 /**
  * Where a page request goes: `continue` (the harness, the sink), `job-input` (a job-token route,
  * fetched by the worker), `input` (one of the job's signed inputs, fetched by the worker), `asset`
- * (from the disk cache) or `abort`.
+ * (a vendored file, or from the disk cache) or `abort`.
  */
 export function routeFor(rawUrl, method, policy) {
   let url;
@@ -76,7 +79,7 @@ export function routeFor(rawUrl, method, policy) {
   if (url.origin === policy.sinkOrigin) return "continue";
   if (method !== "GET") return "abort";
   if (policy.inputUrls.has(url.href)) return "input";
-  if (assetSource(url.href, policy.assetPrefixes)) return "asset";
+  if (policy.vendored.has(url.href) || assetSource(url.href, policy.assetPrefixes)) return "asset";
   return "abort";
 }
 
@@ -103,9 +106,10 @@ const FULFIL_HEADERS = { "access-control-allow-origin": "*", "cache-control": "n
  * @param {(target: string) => Promise<{ body: Buffer, contentType: string }>} [options.readInput]
  *   Reads a job-token route or a signed input, as the worker (the job's `read`).
  * @param {(error: Error) => void} [options.onInputError] Told when reading an input failed (a lost job).
+ * @param {(error: Error, url: string) => void} [options.onAssetError] Told when an asset couldn't be had.
  * @param {(message: string) => void} [options.log]
  */
-export async function guardContext(context, { policy, assets, readInput = null, onInputError = () => {}, log = () => {} }) {
+export async function guardContext(context, { policy, assets, readInput = null, onInputError = () => {}, onAssetError = () => {}, log = () => {} }) {
   const blocked = [];
   const fulfilInput = async (route, target) => {
     if (!readInput) return route.abort("blockedbyclient");
@@ -120,9 +124,10 @@ export async function guardContext(context, { policy, assets, readInput = null, 
   };
   const fulfilAsset = async (route, url) => {
     try {
-      const file = await assets.get(assetSource(url, policy.assetPrefixes));
+      const file = await assets.get(policy.vendored.has(url) ? url : assetSource(url, policy.assetPrefixes));
       return await route.fulfill({ status: 200, path: file.path, headers: { ...FULFIL_HEADERS, "content-type": file.contentType } });
     } catch (error) {
+      onAssetError(error, url);
       log(`asset ${withoutQuery(url)} failed: ${error.message}`);
       return error.status ? route.fulfill({ status: error.status, body: "", headers: FULFIL_HEADERS }) : route.abort("failed");
     }

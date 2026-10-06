@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 /*
  * The render worker (ADR 0005, "The worker"): claims render jobs from the API and renders them
- * in the harness's export mode, in headless Chrome on the host's GPU. `WORKER_SLOTS` slots run
- * one job at a time each, with a browser of their own; every job gets a fresh browser context,
- * and a browser is replaced every `WORKER_RECYCLE_JOBS` jobs and after a crash. A browser whose
- * self-check finds another backend than the `WORKER_GPU` profile promises claims nothing: the
- * worker stops instead, as it does when it claims turntables and its ffmpeg has no libx264. See
+ * in the harness's export mode, in headless Chrome on the host's GPU; with `convert` in
+ * `WORKER_KINDS` (ADR 0006, the CPU pool), it converts bulk uploads' designs in the convert mode.
+ * `WORKER_SLOTS` slots run one job at a time each, with a browser of their own; every job gets a
+ * fresh browser context, and a browser is replaced every `WORKER_RECYCLE_JOBS` jobs and after a
+ * crash. A browser whose self-check finds another backend than the `WORKER_GPU` profile promises
+ * claims nothing: the worker stops instead, as it does when it claims turntables and its ffmpeg
+ * has no libx264, or conversions and the converters' vendored files aren't all there. See
  * scripts/render-worker/README.md to run one.
  */
 import { fileURLToPath } from "node:url";
@@ -16,6 +18,7 @@ import { readConfig } from "./config.mjs";
 import { checkFfmpeg } from "./encode.mjs";
 import { startHarness } from "./harness.mjs";
 import { runJob } from "./job.mjs";
+import { loadVendor, VENDORED_FILES } from "./vendor.mjs";
 
 class SelfCheckFailed extends Error {
   constructor(reason) {
@@ -110,6 +113,13 @@ export async function main() {
       return 1;
     }
   }
+  // A conversion loads its converters from these files and nowhere else: all of them, or no claim.
+  const vendor = await loadVendor(config.vendorDir);
+  if (config.kinds.includes("convert") && vendor.missing.length > 0) {
+    log(`${vendor.missing.length} of the converters' ${VENDORED_FILES.length} files are not in ${config.vendorDir} with their pinned hash; claiming nothing (\`node scripts/render-worker/vendor.mjs ${config.vendorDir}\` fetches them, WORKER_VENDOR_DIR names the folder)`);
+    return 1;
+  }
+  if (vendor.files.size > 0) log(`converters: ${vendor.files.size} of ${VENDORED_FILES.length} files vendored in ${config.vendorDir}`);
   const stopper = new AbortController();
   const stopping = stopper.signal;
   for (const signal of ["SIGTERM", "SIGINT"]) {
@@ -133,7 +143,7 @@ export async function main() {
   log(`profile ${config.profileName}, ${config.slots} slot(s), kinds ${config.kinds.join(", ")}, harness ${config.harnessUrl}, API ${config.apiUrl}`);
   if (!config.sandbox) log("Chromium's sandbox is OFF (WORKER_CHROMIUM_SANDBOX=0): never run customers' jobs like this");
   const api = createApiClient({ baseUrl: config.apiUrl, workerToken: config.workerToken });
-  const assets = createAssetCache({ dir: config.cacheDir, maxBytes: config.cacheMaxBytes, log });
+  const assets = createAssetCache({ dir: config.cacheDir, maxBytes: config.cacheMaxBytes, log, vendor });
   const slots = Array.from({ length: config.slots }, (_, index) => createSlot(index, { config, assets }));
   try {
     await Promise.all(

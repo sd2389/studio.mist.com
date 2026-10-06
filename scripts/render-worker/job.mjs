@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, open, rm } from "node:fs/promises";
 import path from "node:path";
 import { ApiError, JobLostError } from "./api.mjs";
 import { PAGE_VIEWPORT, PROFILES } from "./browser.mjs";
+import { CONVERT_KIND, CONVERT_MODE } from "./convert.mjs";
 import { JobFailure } from "./failure.mjs";
 import { guardContext, pagePolicy } from "./network.mjs";
 import { startOutputs } from "./outputs.mjs";
@@ -130,8 +131,29 @@ function pageFailure(message) {
   return new JobFailure("unknown", message);
 }
 
-/** Opens the export mode and waits until the page says it is done, or fails, crashes or is stopped. */
-async function renderOnPage(context, { harnessUrl, signal, log }) {
+/**
+ * How a render job runs: its scene's model into the sink, the export mode, the catalogue's assets.
+ * A convert job runs in the convert mode instead (CONVERT_MODE in convert.mjs).
+ */
+const EXPORT_MODE = {
+  page: "export",
+  async fetchInputs(job, payload, dir, signal) {
+    const model = path.join(dir, "model.glb");
+    await downloadModel(job, payload, model, signal);
+    return { model };
+  },
+  startOutputs,
+  handOff: (payload) => payload,
+  failure: pageFailure,
+  assetPrefixes: (config) => config.assetPrefixes,
+  /** An asset that can't be had is logged and the page goes on, as the browser would. */
+  assetFailure: null,
+};
+
+const modeOf = (payload) => (payload.kind === CONVERT_KIND ? CONVERT_MODE : EXPORT_MODE);
+
+/** Opens the job's mode and waits until the page says it is done, or fails, crashes or is stopped. */
+async function renderOnPage(context, { harnessUrl, mode, signal, log }) {
   signal.throwIfAborted();
   const page = await context.newPage();
   const failure = new Promise((_, reject) => {
@@ -146,7 +168,7 @@ async function renderOnPage(context, { harnessUrl, signal, log }) {
   });
   page.on("pageerror", (error) => log(`page error: ${error.message}`));
   const done = (async () => {
-    await page.goto(`${harnessUrl}/render-harness?mode=export`, { waitUntil: "domcontentloaded", timeout: 120_000 });
+    await page.goto(`${harnessUrl}/render-harness?mode=${mode.page}`, { waitUntil: "domcontentloaded", timeout: 120_000 });
     await page.waitForFunction(
       () => window.__HARNESS_STATE__ === "done" || String(window.__HARNESS_STATE__).startsWith("error:"),
       null,
@@ -155,7 +177,7 @@ async function renderOnPage(context, { harnessUrl, signal, log }) {
     return page.evaluate(() => ({ state: String(window.__HARNESS_STATE__), result: window.__RENDER_RESULT__ ?? null }));
   })();
   const { state, result } = await race(done, failure);
-  if (state !== "done") throw pageFailure(state.slice("error:".length));
+  if (state !== "done") throw mode.failure(state.slice("error:".length), result);
   return result;
 }
 
@@ -166,7 +188,8 @@ async function uploadOutputs(job, outputs, { signal, log }) {
       const { files } = await job.uploads(outputs.map(({ name, content_type, bytes }) => ({ name, content_type, bytes })), signal);
       return { at: Date.now(), byName: new Map(files.map((target) => [target.name, target])) };
     } catch (error) {
-      if (error instanceof ApiError && error.status === 400) throw new JobFailure("upload_failed", error.message);
+      // A file over its cap ("files[0].bytes: at most …", upload_targets in the API) stays over it.
+      if (error instanceof ApiError && error.status === 400) throw new JobFailure(/\.bytes: at most/.test(error.message) ? "over_limit" : "upload_failed", error.message);
       throw error;
     }
   };
@@ -259,20 +282,28 @@ export function inputFailure(error) {
   return new JobFailure(gone ? "input_missing" : "unknown", `A job input could not be fetched: ${error?.message || error}`);
 }
 
-async function openJobContext(browser, { job, payload, sink, harnessUrl, assets, assetPrefixes, controller, log }) {
+async function openJobContext(browser, { job, payload, mode, sink, harnessUrl, assets, config, controller, log }) {
   const context = await browser.newContext({ viewport: PAGE_VIEWPORT, deviceScaleFactor: 1, serviceWorkers: "block", acceptDownloads: false });
-  const policy = pagePolicy({ harnessOrigin: harnessUrl, sinkOrigin: sink.url, jobId: job.id, inputUrls: signedInputs(payload), assetPrefixes });
+  const policy = pagePolicy({
+    harnessOrigin: harnessUrl,
+    sinkOrigin: sink.url,
+    jobId: job.id,
+    inputUrls: signedInputs(payload),
+    assetPrefixes: mode.assetPrefixes(config),
+    vendoredUrls: assets.vendored ?? [],
+  });
   await guardContext(context, {
     policy,
     assets,
     readInput: (target) => job.read(target, { signal: controller.signal }),
     onInputError: (error) => controller.abort(inputFailure(error)),
+    onAssetError: (error, url) => mode.assetFailure && controller.abort(mode.assetFailure(error, url)),
     log,
   });
   // As the harness expects the job: set before the page loads, never in its URL.
   await context.addInitScript((handOff) => {
     window.__RENDER_JOB__ = handOff;
-  }, { payload, sink: { url: sink.url, token: sink.token } });
+  }, { payload: mode.handOff(payload), sink: { url: sink.url, token: sink.token } });
   return context;
 }
 
@@ -317,11 +348,11 @@ export async function runJob({ claim, api, browser, config, assets, stopping, lo
     heartbeats.now();
     const runFor = (payload.limits?.max_runtime_seconds ?? DEFAULT_RUNTIME_SECONDS) * 1000 - (Date.now() - claimedAt);
     deadline = setTimeout(() => controller.abort(new JobFailure("timeout", "The job ran past its run time.")), Math.max(runFor, 0));
-    const modelPath = path.join(dir, "model.glb");
-    await downloadModel(job, payload, modelPath, signal);
+    const mode = modeOf(payload);
+    const inputs = await mode.fetchInputs(job, payload, dir, signal);
     const outDir = path.join(dir, "out");
     await mkdir(outDir);
-    outputs = startOutputs(payload, {
+    outputs = mode.startOutputs(payload, {
       outDir,
       ffmpegPath: config.ffmpegPath,
       onEncoded: (share) => {
@@ -331,7 +362,7 @@ export async function runJob({ claim, api, browser, config, assets, stopping, lo
     });
     sink = await startSink({
       origin: new URL(config.harnessUrl).origin,
-      model: modelPath,
+      ...inputs,
       outDir,
       ...outputs.sink,
       onProgress: (entry) => {
@@ -339,8 +370,8 @@ export async function runJob({ claim, api, browser, config, assets, stopping, lo
         if (entry.stage !== done.stage) enterStage(entry.stage);
       },
     });
-    context = await openJobContext(browser, { job, payload, sink, harnessUrl: config.harnessUrl, assets, assetPrefixes: config.assetPrefixes, controller, log });
-    const result = await renderOnPage(context, { harnessUrl: config.harnessUrl, signal, log });
+    context = await openJobContext(browser, { job, payload, mode, sink, harnessUrl: config.harnessUrl, assets, config, controller, log });
+    const result = await renderOnPage(context, { harnessUrl: config.harnessUrl, mode, signal, log });
     // A job drawn by anything else than the profile promised doesn't complete: that browser is suspect.
     if (!PROFILES[config.profileName].accepts(result?.renderer)) {
       throw new JobFailure("gpu_lost", `The job drew with ${result?.renderer?.backend} on ${JSON.stringify(result?.renderer?.adapter)}.`, { recycleBrowser: true });

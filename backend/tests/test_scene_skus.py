@@ -1,5 +1,5 @@
 """SKUs are unique across the platform: one already taken is a 409 on upload and on PATCH,
-never a 500 from the unique index."""
+never a 500 from the unique index. A bulk upload's design in progress reserves its SKU too."""
 
 from datetime import datetime
 
@@ -16,8 +16,10 @@ from app.database import get_db
 from app.features.billing.quota_service import get_or_create_billing
 from app.features.scene import service as scene_service
 from app.features.scene.service import patch_scene_by_id
+from app.features.scene.skus import SKU_RESERVED, assert_sku_available
 from app.features.upload import service as upload_service
 from app.main import app
+from app.models import IngestBatch, IngestItem
 from app.models.scene import Scene
 from app.models.user import User
 from app.schemas.scene import ScenePatch
@@ -192,3 +194,47 @@ def test_a_registered_upload_that_loses_a_sku_race_is_409_and_keeps_nothing(db, 
     assert exc.value.status_code == 409
     assert _stored(files) == []  # neither the presigned uploads nor their checked copies
     assert _balances(db, sample_user) == lost_race
+
+
+def _reserving_design(db, user_id: int, sku: str, status: str) -> None:
+    """A bulk upload's design holding `sku` while it is at `status` (docs/adr/0006-bulk-pipeline.md)."""
+    batch = IngestBatch(user_id=user_id, name="Rings", options={}, created_at=NOW, updated_at=NOW)
+    db.add(batch)
+    db.commit()
+    db.add(
+        IngestItem(
+            batch_id=batch.id, user_id=user_id, position=0, filename="r.stl", source_key="k", source_bytes=1,
+            sku=sku, name="R", category="Ring", status=status, created_at=NOW, updated_at=NOW,
+        )
+    )
+    db.commit()
+
+
+def test_a_sku_a_design_in_progress_reserves_is_409_for_an_upload_and_a_patch(db, sample_user, files):
+    _reserving_design(db, _other_user(db).id, "R-1", "converting")
+    mine = _scene(db, sample_user.id, "mine")
+
+    with pytest.raises(HTTPException) as upload:
+        _upload(db, sample_user, sku="R-1")
+    with pytest.raises(HTTPException) as patch:
+        patch_scene_by_id(db, mine.id, sample_user.id, ScenePatch(sku="R-1"))
+
+    assert (upload.value.status_code, upload.value.detail) == (409, SKU_RESERVED)
+    assert (patch.value.status_code, patch.value.detail) == (409, SKU_RESERVED)
+    assert db.query(Scene).filter(Scene.sku == "R-1").count() == 0
+
+
+@pytest.mark.parametrize("status", ["done", "failed", "skipped", "canceled"])
+def test_a_finished_design_reserves_its_sku_no_more(db, sample_user, files, status):
+    _reserving_design(db, _other_user(db).id, "R-1", status)
+
+    assert db.get(Scene, _upload(db, sample_user, sku="R-1")["scene_id"]).sku == "R-1"
+
+
+def test_a_design_may_take_the_sku_it_reserves(db, sample_user):
+    _reserving_design(db, sample_user.id, "R-1", "converting")
+    item_id = db.query(IngestItem).one().id
+
+    assert_sku_available(db, "R-1", item_id=item_id)
+    with pytest.raises(HTTPException):
+        assert_sku_available(db, "R-1")

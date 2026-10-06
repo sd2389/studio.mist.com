@@ -145,6 +145,37 @@ def test_on_local_storage_the_payload_names_the_api_routes_for_the_files(db, con
     assert _error(lambda: payloads.convert_source_file(db, job.id, "wrong")).status_code == 401
 
 
+def test_on_local_storage_a_conversion_goes_through_the_api_from_payload_to_scene(db, owner, converting, tmp_path, monkeypatch):
+    """Local storage signs nothing: the worker reads the design's file and PUTs its own through
+    the API, with the job token, and completing makes the scene as on cloud storage."""
+    import asyncio
+
+    user, job = owner[0], converting["job"]
+    local = LocalBackend(tmp_path / "uploads")
+    monkeypatch.setattr(storage_mod, "get_storage", lambda: local)
+    local.put_bytes(job.spec["source"]["key"], b"o ring")
+
+    async def body(data: bytes):
+        yield data
+
+    files = [("model.glb", "model/gltf-binary", REAL_GLB), ("conversion.json", "application/json", json.dumps(conversion_report()).encode())]
+    targets = outputs.upload_targets(
+        db, job.id, job.worker_token, [RenderJobUploadFile.model_validate({"name": name, "content_type": kind, "bytes": len(data)}) for name, kind, data in files]
+    )
+    for name, kind, data in files:
+        asyncio.run(outputs.save_local_upload(db, job.id, job.worker_token, name, kind, body(data)))
+    done = complete(db, job, [
+        {"name": name, "key": target.key, "content_type": kind, "bytes": len(data), "width": None, "height": None}
+        for target, (name, kind, data) in zip(targets, files, strict=True)
+    ])
+
+    assert [target.url for target in targets] == [f"/render-jobs/{job.id}/uploads/{name}" for name, _, _ in files]
+    assert done.status == "completed"
+    [scene] = _scenes(db)
+    assert local.get_bytes(scene.model_key) == REAL_GLB
+    assert local.local_file_if_exists(f"published/{user.id}/R-1001/model.glb") is not None
+
+
 def test_a_convert_jobs_uploads_are_its_three_files(db, cloud, converting):
     job = converting["job"]
     files = [

@@ -203,8 +203,12 @@ describe("with bulk_pipeline off", () => {
     expect(shell(true)).toContain('href="/bulk/new"');
   });
 
-  it("lets a batch be followed and canceled for its credits, and offers no work", async () => {
-    flags.value = { bulk_pipeline: false };
+  it.each([
+    ["bulk_pipeline off", { bulk_pipeline: false }],
+    // The API's _adds_work takes both switches: with uploads paused it refuses every retry too.
+    ["uploads paused", { bulk_pipeline: true, upload: false }],
+  ])("lets a batch be followed and canceled for its credits, and offers no work, with %s", async (_, value) => {
+    flags.value = value;
     const html = await drawBatchPage(PROCESSING);
     const page = text(html);
 

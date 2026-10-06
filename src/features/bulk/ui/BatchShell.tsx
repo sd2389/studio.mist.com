@@ -18,7 +18,7 @@ import { useBatchView, type BatchViewState } from "./useBatchView";
 
 type BatchShellProps = {
   initial: BatchView;
-  /** The `bulk_pipeline` flag: off, a batch can only be read and canceled, as in the API. */
+  /** The `bulk_pipeline` and `upload` flags both on: else a batch can only be read and canceled, as in the API. */
   bulkEnabled: boolean;
   userEmail?: string | null;
   isAdmin?: boolean;

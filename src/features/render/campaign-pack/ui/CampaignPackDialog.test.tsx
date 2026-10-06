@@ -15,6 +15,8 @@ import { DEFAULT_CAMPAIGN_PACK_CONFIG } from "../domain/defaults";
 
 const flag = vi.hoisted(() => ({ serverExports: false as boolean | null }));
 const studio = vi.hoisted(() => ({ hasTracedGems: false }));
+// The scene lookup that names the pack; pending until the API answers.
+const identity = vi.hoisted(() => ({ pending: false }));
 const browser = vi.hoisted(() => ({
   status: "idle" as "idle" | "running",
   start: vi.fn(async () => {}),
@@ -29,7 +31,12 @@ vi.mock("../../ui/useExportPlan", () => ({
 vi.mock("../engine/studio-look", () => ({
   readStudioLook: () => ({ backdrop: null, hasStudioSet: false, hasTracedGems: studio.hasTracedGems }),
 }));
-vi.mock("./usePackIdentity", () => ({ usePackIdentity: () => ({ modelId: "solitaire.glb", sku: "RING-1", name: "Solitaire ring" }) }));
+vi.mock("./usePackIdentity", () => ({
+  usePackIdentity: () => ({
+    identity: { modelId: "solitaire.glb", sku: "RING-1", name: "Solitaire ring" },
+    pending: identity.pending,
+  }),
+}));
 // The browser's own pack, which the flag off still runs: its state, and what starting it asks for.
 vi.mock("./useCampaignPackRun", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./useCampaignPackRun")>()),
@@ -100,6 +107,7 @@ beforeEach(() => {
   browser.start.mockClear();
   browser.closed.length = 0;
   studio.hasTracedGems = false;
+  identity.pending = false;
   fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     if (String(input) === "/api/render-jobs") return Response.json(JOB, { status: 201 });
     return Response.json({ error: "Not stubbed" }, { status: 404 });
@@ -162,6 +170,19 @@ describe("the Campaign Pack dialog, with server exports on", () => {
     expect(sent().filter((request) => request.includes("/cancel"))).toEqual([]);
   });
 
+  it("waits for the scene's SKU and name before it prices or starts the pack", async () => {
+    // Started sooner, the ZIP would be named from the viewer id and leave out the embed.
+    identity.pending = true;
+    const html = drawDialog();
+    expect(html).toContain("SKU and name…");
+
+    const button = drawnButton("Render campaign pack");
+    expect(button.disabled).toBe(true);
+    button.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(sent()).toEqual([]);
+  });
+
   it("starts nothing without a saved scene to render", () => {
     const html = drawDialog(null);
     expect(html).toContain("Packs render from a saved piece");
@@ -191,6 +212,12 @@ describe("the Campaign Pack dialog, with server exports off", () => {
     drawDialog();
     browser.dialogOpenChange!(false);
     expect(browser.closed).toEqual([]);
+  });
+
+  it("waits for the scene's SKU and name here too", () => {
+    identity.pending = true;
+    drawDialog();
+    expect(drawnButton("Render campaign pack").disabled).toBe(true);
   });
 
   it("starts neither way until the flag is read", () => {

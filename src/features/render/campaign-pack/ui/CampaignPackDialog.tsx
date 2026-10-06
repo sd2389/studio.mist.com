@@ -16,7 +16,6 @@ import { useServerExports } from "../../ui/useServerExports";
 import { DEFAULT_CAMPAIGN_PACK_CONFIG } from "../domain/defaults";
 import { planCampaignPack } from "../domain/plan";
 import type { CampaignPackConfig, PackPlan, SavedPoseLike } from "../domain/types";
-import { readStudioLook } from "../engine/studio-look";
 import { PackOutputOptions } from "./PackOutputOptions";
 import { PackRunFooter, PackRunStateView } from "./PackRunViews";
 import { PackAnglePicker, PackMetalPicker } from "./PackSubjectPickers";
@@ -25,6 +24,7 @@ import { ServerPackFooter, ServerPackJobs } from "./ServerPackViews";
 import { useCampaignPackRun } from "./useCampaignPackRun";
 import { usePackIdentity } from "./usePackIdentity";
 import { useServerPackJob } from "./useServerPackJob";
+import { useStudioLook } from "./useStudioLook";
 
 export type CampaignPackDialogProps = {
   open: boolean;
@@ -56,11 +56,14 @@ function planSummary(plan: PackPlan): string {
   return `${parts.join(" · ") || "Nothing selected"} · ≈ ${formatBytes(plan.totals.estimatedBytes)}`;
 }
 
+type FooterState = { locked: boolean; blocked: string | null; hasScene: boolean; identityPending: boolean };
+
 /** The footer's line: why the pack can't start, or what it makes. */
-function footerSummary(plan: PackPlan, { locked, blocked, hasScene }: { locked: boolean; blocked: string | null; hasScene: boolean }): string {
+function footerSummary(plan: PackPlan, { locked, blocked, hasScene, identityPending }: FooterState): string {
   if (locked) return "Campaign packs come with Grow and Studio.";
   if (blocked) return blocked;
   if (!hasScene) return "Packs render from a saved piece: open one of yours in the studio to render it.";
+  if (identityPending) return "Reading the piece's SKU and name…";
   return `${plan.totals.files} files · ${planSummary(plan)}`;
 }
 
@@ -77,17 +80,16 @@ export function CampaignPackDialog({
   const [backgroundTouched, setBackgroundTouched] = useState(false);
   const poses = useMaterialPresetStore((s) => s.sceneSettings.poses) as SavedPoseLike[] | undefined;
   const savedPoses = poses ?? NO_POSES;
-  const identity = usePackIdentity({ modelId, sku, name, sceneId, enabled: open });
+  // A pack waits for the scene's SKU and name, which name its files and decide its embed.
+  const { identity, pending: identityPending } = usePackIdentity({ modelId, sku, name, sceneId, enabled: open });
   const { state, start, cancel, reset } = useCampaignPackRun();
   // Grow and Studio only: other plans see the pack with an upgrade in place of the run button.
   const exportPlan = useExportPlan();
   const locked = exportPlan !== null && !exportPlan.campaignPack;
   const running = state.status === "running";
   const hasSku = Boolean(identity.sku);
-  const studio = useMemo(
-    () => (open ? readStudioLook() : { backdrop: null, hasStudioSet: false, hasTracedGems: false }),
-    [open],
-  );
+  // Read again while the dialog waits: it can open before the stage has the piece's gems.
+  const studio = useStudioLook(open, !running);
   // A styled studio set (mirror floor, plinth…) is the look the user built: keep it unless
   // they pick a clean background themselves.
   const effectiveConfig = useMemo<CampaignPackConfig>(
@@ -108,7 +110,7 @@ export function CampaignPackDialog({
   const serverExports = useServerExports();
   const server = useServerPackJob({
     // Priced only while the dialog is open, where the price shows.
-    active: open && serverExports === true && !locked && !blocked,
+    active: open && serverExports === true && !locked && !blocked && !identityPending,
     config: effectiveConfig,
     rootName: plan.rootName,
     hasTracedGems: studio.hasTracedGems,
@@ -173,19 +175,19 @@ export function CampaignPackDialog({
             />
             {serverExports ? (
               <ServerPackFooter
-                summary={footerSummary(plan, { locked, blocked, hasScene: server.hasScene })}
+                summary={footerSummary(plan, { locked, blocked, hasScene: server.hasScene, identityPending })}
                 quote={locked ? null : server.quote}
                 locked={locked}
-                canStart={Boolean(exportPlan) && !blocked && server.hasScene}
+                canStart={Boolean(exportPlan) && !blocked && server.hasScene && !identityPending}
                 starting={server.starting}
                 error={server.error}
                 onStart={server.start}
               />
             ) : (
               <PackRunFooter
-                summary={footerSummary(plan, { locked, blocked, hasScene: true })}
+                summary={footerSummary(plan, { locked, blocked, hasScene: true, identityPending })}
                 locked={locked}
-                disabled={Boolean(blocked) || !exportPlan || serverExports === null}
+                disabled={Boolean(blocked) || !exportPlan || serverExports === null || identityPending}
                 onStart={handleStart}
               />
             )}

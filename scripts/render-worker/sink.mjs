@@ -10,10 +10,10 @@ import { finished, pipeline } from "node:stream/promises";
 export const SINK_TOKEN_HEADER = "x-sink-token";
 /** File names the API gives outputs (OUTPUT_NAME in backend/app/schemas/render_job.py). */
 const FILE_NAME = /^[A-Za-z0-9._-]{1,255}$/;
-/** What the page reports; the worker adds `uploading` (and `encoding`, for video) itself. */
+/** What the page reports; the worker adds `encoding` (a turntable's MP4, a spin's ZIP) and `uploading` itself. */
 const PAGE_STAGES = new Set(["loading", "rendering"]);
 const MAX_PROGRESS_BYTES = 1024;
-/** The API's cap on one image (MAX_IMAGE_BYTES in backend/app/features/render_jobs/specs.py). */
+/** The API's cap on one image (MAX_IMAGE_BYTES in backend/app/features/render_jobs/job_files.py). */
 export const MAX_FILE_BYTES = 256 * 1024 * 1024;
 
 class SinkError extends Error {
@@ -39,6 +39,13 @@ async function readBody(request, limit) {
   }
   if (bytes > limit) throw new SinkError(413, `more than ${limit} bytes`);
   return Buffer.concat(chunks);
+}
+
+/** A frame's bytes, whole or a part: at most the `left` bytes it still needs, or a SinkError. */
+async function readFrameBytes(request, left) {
+  // Refused before any of it is read, where the request says how long it is.
+  if (Number(request.headers["content-length"]) > left) throw new SinkError(413, `more than the ${left} bytes the frame needs`);
+  return readBody(request, left);
 }
 
 /**
@@ -113,12 +120,16 @@ async function serveModel(model, response) {
  * - `GET /inputs/model.glb`: the job's model, as the worker downloaded it.
  * - `POST /files/<name>`: one encoded file, streamed to `outDir/<name>`. Only the names in
  *   `names` (the spec's `output_names`), each once; 409 for one already in.
- * - `POST /frames/<n>`: frame n of a video, raw RGBA of `frameSize`, frames in order from 0
- *   (409 otherwise); handed to `onFrame`, which B3's encoder feeds to ffmpeg.
+ * - `POST /frames/<n>`: frame n of a video, raw RGBA of `frameSize`, one at a time and in order
+ *   from 0 (409 otherwise). A frame comes whole, or in parts in order, each
+ *   `?offset=<its first byte>&length=<the frame's>` (the harness sends parts of at most 16 MB:
+ *   DevTools copies every request body to the worker, and a whole 8K frame would not fit one
+ *   message). Each part goes to `onFrameBytes`, which feeds it to ffmpeg.
  * - `POST /progress`: `{progress, stage}`.
  *
- * Each response goes back once its body is stored, which is what makes the page wait before the
- * next file or frame: the backpressure.
+ * Each response goes back once its body is stored, or a frame's bytes have gone through
+ * `onFrameBytes` (ffmpeg has them), which is what makes the page wait before the next file, frame
+ * or part: the backpressure. The sink holds at most one frame's bytes.
  *
  * @param {object} options
  * @param {string} options.origin The harness origin, the one page origin allowed to call.
@@ -127,7 +138,8 @@ async function serveModel(model, response) {
  * @param {string[] | null} [options.names] The only file names taken; any well-formed one when null.
  * @param {number} [options.maxFileBytes]
  * @param {{ width: number, height: number } | null} [options.frameSize] Takes frames of this size.
- * @param {(index: number, frame: Buffer) => Promise<void> | void} [options.onFrame]
+ * @param {(index: number, bytes: Buffer) => Promise<void> | void} [options.onFrameBytes] Frame `index`'s
+ *   bytes, whole or a part, in order.
  * @param {(entry: { progress: number, stage: string, at: number }) => void} [options.onProgress]
  */
 export async function startSink({
@@ -137,7 +149,7 @@ export async function startSink({
   names = null,
   maxFileBytes = MAX_FILE_BYTES,
   frameSize = null,
-  onFrame = null,
+  onFrameBytes = null,
   onProgress = null,
 }) {
   const token = randomBytes(24).toString("hex");
@@ -149,7 +161,10 @@ export async function startSink({
   const startedAt = Date.now();
   /** Names whose body is still coming in, so a second post of one at once is refused too. */
   const receiving = new Set();
+  /** Frames `onFrameBytes` has taken whole, how much of the next is in, and whether bytes are on their way there. */
   let frames = 0;
+  let frameBytesIn = 0;
+  let takingFrame = false;
 
   const takeFile = async (request, rawName) => {
     const name = decodeName(rawName);
@@ -165,14 +180,27 @@ export async function startSink({
     }
   };
 
-  const takeFrame = async (request, index) => {
-    if (!frameSize || !onFrame) throw new SinkError(404, "this job has no frames");
-    if (index !== String(frames)) throw new SinkError(409, `frame ${frames} comes next`);
+  const takeFrame = async (request, index, query) => {
+    if (!frameSize || !onFrameBytes) throw new SinkError(404, "this job has no frames");
     const frameBytes = frameSize.width * frameSize.height * 4;
-    const body = await readBody(request, frameBytes);
-    if (body.length !== frameBytes) throw new SinkError(400, `a frame is ${frameBytes} bytes`);
-    frames += 1;
-    await onFrame(frames - 1, body);
+    const isPart = query.has("offset");
+    if (isPart && query.get("length") !== String(frameBytes)) throw new SinkError(400, `a frame is ${frameBytes} bytes`);
+    if (takingFrame) throw new SinkError(409, `frame ${frames} is still going to the encoder`);
+    if (index !== String(frames)) throw new SinkError(409, `frame ${frames} comes next`);
+    if ((isPart ? query.get("offset") : "0") !== String(frameBytesIn)) throw new SinkError(409, `frame ${frames} goes on from byte ${frameBytesIn}`);
+    takingFrame = true;
+    try {
+      const bytes = await readFrameBytes(request, frameBytes - frameBytesIn);
+      if (!bytes.length || (!isPart && bytes.length !== frameBytes)) throw new SinkError(400, `a frame is ${frameBytes} bytes`);
+      await onFrameBytes(frames, bytes);
+      frameBytesIn += bytes.length;
+      if (frameBytesIn === frameBytes) {
+        frames += 1;
+        frameBytesIn = 0;
+      }
+    } finally {
+      takingFrame = false;
+    }
   };
 
   const takeProgress = async (request) => {
@@ -181,11 +209,11 @@ export async function startSink({
     onProgress?.(entry);
   };
 
-  const route = async (request, response, pathname) => {
+  const route = async (request, response, { pathname, searchParams }) => {
     if (request.method === "GET" && pathname === "/inputs/model.glb") return serveModel(model, response);
     if (request.method !== "POST") throw new SinkError(404, "not found");
     if (pathname.startsWith("/files/")) await takeFile(request, pathname.slice("/files/".length));
-    else if (pathname.startsWith("/frames/")) await takeFrame(request, pathname.slice("/frames/".length));
+    else if (pathname.startsWith("/frames/")) await takeFrame(request, pathname.slice("/frames/".length), searchParams);
     else if (pathname === "/progress") await takeProgress(request);
     else throw new SinkError(404, "not found");
     response.writeHead(204).end();
@@ -209,7 +237,7 @@ export async function startSink({
       response.writeHead(403).end();
       return;
     }
-    await route(request, response, new URL(request.url ?? "/", "http://sink").pathname);
+    await route(request, response, new URL(request.url ?? "/", "http://sink"));
   };
 
   const server = http.createServer((request, response) => {
@@ -226,7 +254,7 @@ export async function startSink({
     token,
     files,
     progress,
-    /** How many frames the page has posted. */
+    /** How many frames `onFrameBytes` has taken whole. */
     get frames() {
       return frames;
     },

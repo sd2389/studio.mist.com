@@ -11,7 +11,7 @@ Automated checks keep the feature-driven layout from regressing.
 | Import boundaries | `npm run check:boundaries` | Blocks `@/components/viewer` and `@/components/upload` in `src/`, any import of the render harness (`src/features/render/harness/`) outside its route, and the render job's token in page code |
 | Unit tests | `npm test` | Vitest |
 | Render goldens | `npm run test:golden` | Needs the worker's app (`BUILD_TARGET=worker`) running at `HARNESS_BASE_URL`; see `tests/goldens/README.md` |
-| Render worker smoke | `npm run worker:smoke` | One still from create to download: an API on SQLite, the worker build and the render worker on SwiftShader, all on this machine; `-- --kill` kills the worker mid-job. Needs a `BUILD_TARGET=worker` build; see `scripts/render-worker/README.md` |
+| Render worker smoke | `npm run worker:smoke` | A still, a turntable and a spin from create to download: an API on SQLite, the worker build and the render worker on SwiftShader, all on this machine; it checks the MP4 with ffprobe and Chrome and turns the spin's `spin.html`. `-- --kill` kills the worker mid-job. Needs a `BUILD_TARGET=worker` build and ffmpeg with libx264; see `scripts/render-worker/README.md` |
 
 ## Backend
 

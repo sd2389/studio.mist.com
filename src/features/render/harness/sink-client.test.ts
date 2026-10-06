@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { startSink } from "../../../../scripts/render-worker/sink.mjs";
-import { createSinkClient } from "./sink-client";
+import { createSinkClient, FRAME_PART_BYTES } from "./sink-client";
 
 /** A 2 × 1 RGBA frame, every byte `value`. */
 const frame = (value: number) => new Uint8ClampedArray(8).fill(value);
@@ -17,7 +17,7 @@ describe("createSinkClient, against the render worker's sink (scripts/render-wor
       model: Buffer.from("glTF"),
       outDir,
       frameSize: { width: 2, height: 1 },
-      onFrame: (_index: number, pixels: Buffer) => {
+      onFrameBytes: (_index: number, pixels: Buffer) => {
         frames.push([...pixels]);
       },
     });
@@ -37,6 +37,31 @@ describe("createSinkClient, against the render worker's sink (scripts/render-wor
 
       await client.postProgress(0.5, "rendering");
       expect(sink.progress).toEqual([{ progress: 0.5, stage: "rendering", at: expect.any(Number) }]);
+    } finally {
+      await sink.close();
+      await rm(outDir, { recursive: true, force: true });
+    }
+  });
+
+  it("hands over a frame larger than a part in parts, in order", async () => {
+    const outDir = await mkdtemp(path.join(os.tmpdir(), "sink-client-"));
+    const parts: number[][] = [];
+    const width = FRAME_PART_BYTES / 4 + 2;
+    const sink = await startSink({
+      origin: "http://127.0.0.1:3000",
+      model: Buffer.from("glTF"),
+      outDir,
+      frameSize: { width, height: 1 },
+      onFrameBytes: (index: number, bytes: Buffer) => {
+        parts.push([index, bytes.length, bytes[0]!, bytes.at(-1)!]);
+      },
+    });
+    try {
+      const pixels = new Uint8ClampedArray(width * 4).fill(5);
+      pixels[FRAME_PART_BYTES] = 6;
+      await createSinkClient({ url: sink.url, token: sink.token }).postFrame(0, pixels);
+      expect(parts).toEqual([[0, FRAME_PART_BYTES, 5, 5], [0, 8, 6, 5]]);
+      expect(sink.frames).toBe(1);
     } finally {
       await sink.close();
       await rm(outDir, { recursive: true, force: true });

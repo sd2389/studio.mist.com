@@ -1,18 +1,22 @@
 #!/usr/bin/env node
 /*
- * `npm run worker:smoke`: one still from create to download, on this machine (ADR 0005, A4).
+ * `npm run worker:smoke`: a still, a turntable and a spin from create to download, on this
+ * machine (ADR 0005, A4 and B3).
  *
  * Starts an API on a free port from 8790 (a throwaway SQLite database, local storage), the worker
  * build of the app from 3900 (`next start`; set HARNESS_BASE_URL to use one already running) and
  * the render worker on the swiftshader profile (WORKER_GPU=metal for a Mac's GPU). A Free user
- * creates a still; the worker claims, renders, uploads and completes it; the user downloads it.
- * Then it checks that the file is what the browser pipeline renders from the same job, the Free
- * mark included, and that a page under the worker's network policy can't reach a host off its
- * allowlist. `--kill` kills the worker mid-job instead, and checks a second one finishes the job
- * once its lease has lapsed. Everything it starts, it stops.
+ * creates the three jobs; the worker claims, renders, encodes, uploads and completes each; the
+ * user downloads them. Then it checks that the still is what the browser pipeline renders from
+ * the same job, the Free mark included; that the MP4 is H.264 High, yuv420p and BT.709 with every
+ * frame, plays in Chrome and starts on that still; that the spin's ZIP opens and its spin.html
+ * turns; and that a page under the worker's network policy can't reach a host off its allowlist.
+ * `--kill` runs the still alone and kills the worker mid-job instead, and checks a second one
+ * finishes the job once its lease has lapsed. Everything it starts, it stops.
  *
  * Needs a worker build in NEXT_BUILD_DIR (default .next), `BUILD_TARGET=worker npm run build`,
- * Playwright's Chromium, and the backend's virtualenv (backend/.venv, or WORKER_SMOKE_PYTHON).
+ * Playwright's Chromium, ffmpeg with libx264 and ffprobe, and the backend's virtualenv
+ * (backend/.venv, or WORKER_SMOKE_PYTHON).
  */
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -22,12 +26,12 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { PNG } from "pngjs";
 import { ssim } from "ssim.js";
 import { createAssetCache } from "./assets.mjs";
 import { launchBrowser, PAGE_VIEWPORT } from "./browser.mjs";
 import { guardContext, pagePolicy } from "./network.mjs";
 import { startSink } from "./sink.mjs";
+import { checkSpin, checkTurntable, decodePng } from "./smoke-outputs.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const BACKEND = path.join(ROOT, "backend");
@@ -38,6 +42,13 @@ const JOB_TIMEOUT_MS = 10 * 60_000;
 const KILL_LEASE_SECONDS = 60;
 /** The still the smoke user asks for: a Campaign Pack angle, framed on the ring. */
 const STILL = { kind: "still", name: "smoke-still", spec: { camera: { angle: "three-quarter" }, width: 640, height: 480, format: "png" } };
+/** A second of turntable from the still's camera, so its frame 0 is that still; and a small spin. */
+const TURNTABLE = {
+  kind: "turntable",
+  name: "smoke-turntable",
+  spec: { width: 640, height: 480, fps: 24, frames: 24, quality: "high", path: { orbit: { start: { angle: "three-quarter" } } } },
+};
+const SPIN = { kind: "spin", name: "smoke", spec: { frames: 12, size: 256, format: "jpeg" } };
 
 const killScenario = process.argv.includes("--kill");
 const started = [];
@@ -133,11 +144,6 @@ async function waitForJob(call, id, onChange = () => {}) {
     await sleep(500);
   }
   throw new Error(`job ${id} did not end within ${JOB_TIMEOUT_MS / 60_000} min`);
-}
-
-function decodePng(buffer) {
-  const png = PNG.sync.read(buffer);
-  return { data: new Uint8ClampedArray(png.data), width: png.width, height: png.height };
 }
 
 /** Share of pixels that differ at all between two images of one size. */
@@ -275,13 +281,40 @@ async function killMidJob({ call, job, workers }) {
   if (finished.status !== "completed" || finished.attempts !== 2 || !seen.some((label) => label.includes("lease_expired"))) {
     throw new Error(`kill: expected a second attempt to complete after the lease lapsed; saw ${seen.join(" → ")}`);
   }
-  return { finished, seen, second };
+  return { finished: [finished], seen, second };
 }
 
-async function renderOnce({ call, job, workers }) {
+/** One worker renders the jobs, which it claims in the order they were made. */
+async function renderAll({ call, jobs, workers }) {
   const worker = workers.start("smoke");
-  const finished = await waitForJob(call, job.id, (_state, label) => log(`job ${job.id}: ${label}`));
+  const finished = [];
+  for (const job of jobs) finished.push(await waitForJob(call, job.id, (_state, label) => log(`job ${job.id} (${job.kind}): ${label}`)));
   return { finished, worker };
+}
+
+/** A job's one output, downloaded, once the job has completed with it as the API planned it. */
+async function downloadOutput(call, job, contentType, [width, height]) {
+  if (job.status !== "completed") throw new Error(`job ${job.id} (${job.kind}) ${job.status}: ${job.error_code} ${job.error}`);
+  const [output] = job.outputs;
+  const planned = { filename: job.spec.output_names[0], content_type: contentType, width, height };
+  const wrong = Object.entries(planned).filter(([key, value]) => output[key] !== value);
+  if (job.outputs.length !== 1 || wrong.length) throw new Error(`job ${job.id}'s output: ${JSON.stringify(job.outputs)}`);
+  const file = await call("GET", output.download_url);
+  if (file.length !== output.bytes) throw new Error(`downloaded ${file.length} bytes of ${output.filename}; the job says ${output.bytes}`);
+  return { output, file };
+}
+
+/** The turntable's MP4 and the spin's ZIP, downloaded and checked; `still` is the decoded still of the turntable's start camera. */
+async function checkVideoJobs({ call, turntable, spin, still, workDir }) {
+  const { output: mp4, file: clip } = await downloadOutput(call, turntable, "video/mp4", [turntable.spec.width, turntable.spec.height]);
+  const video = await checkTurntable({ mp4: clip, spec: turntable.spec, still, profile: PROFILE, workDir });
+  const { stream } = video;
+  log(`downloaded ${mp4.filename}: ${mp4.bytes} bytes, ${stream.codec_name} ${stream.profile} ${stream.pix_fmt} ${stream.color_space}/${stream.color_range}, ${stream.nb_read_frames} frames at ${stream.r_frame_rate}, boxes ${video.boxes.join(" ")}`);
+  const colour = video.colourDifference.map((value) => value.toFixed(2)).join("/");
+  log(`Chrome played it to the end (${video.duration} s); its frame 0 against the still: SSIM ${video.similarity.toFixed(4)}, mean RGB difference ${colour}`);
+  const { output: zip, file: archive } = await downloadOutput(call, spin, "application/zip", [spin.spec.size, spin.spec.size]);
+  const spun = await checkSpin({ zip: archive, spec: spin.spec, profile: PROFILE });
+  log(`downloaded ${zip.filename}: ${zip.bytes} bytes, ${spun.entries} entries; its spin.html loaded every frame and turns`);
 }
 
 async function main() {
@@ -299,9 +332,16 @@ async function main() {
     const call = api(apiUrl, seed.token);
     const workers = { start: (name) => startWorker(name, { workDir, apiUrl, harnessUrl, workerToken }) };
 
-    const job = await call("POST", "/render-jobs", { ...STILL, scene_id: seed.scene_id });
-    log(`created job ${job.id}: ${job.kind} ${job.spec.width}x${job.spec.height}, ${job.credits} credit(s) held, watermark ${job.watermark}`);
-    const { finished, worker, second } = killScenario ? await killMidJob({ call, job, workers }) : await renderOnce({ call, job, workers });
+    const jobs = [];
+    for (const request of killScenario ? [STILL] : [STILL, TURNTABLE, SPIN]) {
+      const created = await call("POST", "/render-jobs", { ...request, scene_id: seed.scene_id });
+      log(`created job ${created.id}: ${created.kind} ${created.spec.output_names.join(", ")}, ${created.credits} credit(s) held, watermark ${created.watermark}`);
+      jobs.push(created);
+    }
+    const [job] = jobs;
+    const rendered = killScenario ? await killMidJob({ call, job, workers }) : await renderAll({ call, jobs, workers });
+    const { worker, second } = rendered;
+    const [finished, turntable, spin] = rendered.finished;
     if (finished.status !== "completed") throw new Error(`job ${job.id} ${finished.status}: ${finished.error_code} ${finished.error}`);
     const running = worker ?? second;
     signal(running, "SIGTERM");
@@ -323,6 +363,7 @@ async function main() {
     const markShare = changedShare(image, unmarked);
     log(`the worker's file against the browser pipeline's: SSIM ${sameAsMarked.toFixed(4)} with the Free mark, ${(markShare * 100).toFixed(1)}% of pixels differ from it without`);
     if (sameAsMarked < 0.99 || markShare < 0.005) throw new Error("the worker's still is not the browser pipeline's, mark included");
+    if (!killScenario) await checkVideoJobs({ call, turntable, spin, still: image, workDir });
 
     const allowlist = await checkAllowlist({ harnessUrl, apiUrl, assets });
     log(`allowlist: ${Object.entries(allowlist).map(([what, result]) => `${what} ${result}`).join(", ")}`);

@@ -2,18 +2,20 @@ import { mkdir, mkdtemp, open, rm } from "node:fs/promises";
 import path from "node:path";
 import { ApiError, JobLostError } from "./api.mjs";
 import { PAGE_VIEWPORT, PROFILES } from "./browser.mjs";
+import { JobFailure } from "./failure.mjs";
 import { guardContext, pagePolicy } from "./network.mjs";
+import { startOutputs } from "./outputs.mjs";
+import { jobProgress } from "./progress.mjs";
 import { startSink } from "./sink.mjs";
 
 /*
  * One job, start to end (ADR 0005, "Process"): payload → the model into the job's folder → a
- * sink with a fresh token → the harness's export mode in a fresh browser context → heartbeats
- * all along → uploads → complete. Any failure is reported with a code, except when the API
+ * sink with a fresh token (and, for a turntable, ffmpeg behind it) → the harness's export mode in
+ * a fresh browser context → a turntable's MP4 finished or a spin's ZIP written → uploads →
+ * complete, with heartbeats all along. Any failure is reported with a code, except when the API
  * has taken the job back (401, 404 or 409), which drops it.
  */
 
-/** Codes another attempt may fix (RETRYABLE_CODES in backend/app/features/render_jobs/worker.py). */
-const RETRYABLE = new Set(["browser_crashed", "gpu_lost", "upload_failed", "unknown"]);
 /** Tries for one PUT, as the ADR says, asking for fresh URLs when storage refuses one. */
 const PUT_ATTEMPTS = 3;
 /** Upload URLs are signed for 15 minutes; ask again a minute before they lapse. */
@@ -22,17 +24,6 @@ const UPLOAD_URLS_FOR_MS = 14 * 60_000;
 const DEFAULT_RUNTIME_SECONDS = 300;
 /** three.js logs this when WebGPU loses its device (a destroyed device it doesn't report). */
 const DEVICE_LOST = /Device Lost/;
-
-export class JobFailure extends Error {
-  /** @param {string} code A FailureCode of backend/app/schemas/render_job.py. */
-  constructor(code, message, { recycleBrowser = false } = {}) {
-    super(message);
-    this.name = "JobFailure";
-    this.code = code;
-    this.retryable = RETRYABLE.has(code);
-    this.recycleBrowser = recycleBrowser;
-  }
-}
 
 const sleep = (ms, signal) =>
   new Promise((resolve, reject) => {
@@ -51,11 +42,19 @@ function race(work, failure) {
   return Promise.race([work, failure]);
 }
 
+/** Rejects with the signal's reason once it aborts. */
+const aborted = (signal) =>
+  new Promise((_, reject) => {
+    if (signal.aborted) reject(signal.reason);
+    else signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+  });
+
 /**
- * Heartbeats every `seconds`, and at once when the job changes stage, carrying its progress; a
- * cancel or a lost job aborts it. One heartbeat at a time: a change during one goes right after.
+ * Heartbeats every `seconds`, and at once when the job changes stage, carrying what `report()`
+ * says of its progress; a cancel or a lost job aborts it. One heartbeat at a time: a change
+ * during one goes right after.
  */
-function startHeartbeats(job, { seconds, state, controller, log }) {
+function startHeartbeats(job, { seconds, report, controller, log }) {
   let busy = false;
   let again = false;
   let stopped = false;
@@ -67,7 +66,7 @@ function startHeartbeats(job, { seconds, state, controller, log }) {
     }
     busy = true;
     try {
-      const answer = await job.heartbeat({ progress: state.progress, stage: state.stage });
+      const answer = await job.heartbeat(report());
       if (answer?.cancel) controller.abort(new JobFailure("canceled", "The job was canceled or ran past its run time."));
     } catch (error) {
       if (error instanceof JobLostError) controller.abort(error);
@@ -158,22 +157,6 @@ async function renderOnPage(context, { harnessUrl, signal, log }) {
   const { state, result } = await race(done, failure);
   if (state !== "done") throw pageFailure(state.slice("error:".length));
   return result;
-}
-
-/** Every file the spec names, as the page reported it and the sink stored it. */
-function collectOutputs(payload, result, sink) {
-  const names = payload.spec.output_names;
-  const reported = new Map((result?.outputs ?? []).map((output) => [output.name, output]));
-  if (reported.size !== names.length || names.some((name) => !reported.has(name))) {
-    throw new JobFailure("unknown", `The page made ${[...reported.keys()].join(", ") || "nothing"}; the job makes ${names.join(", ")}.`);
-  }
-  return names.map((name) => {
-    const output = reported.get(name);
-    const file = sink.files.get(name);
-    if (!file) throw new JobFailure("unknown", `The page reported ${name} but the sink never got it.`);
-    if (file.contentType !== output.content_type) throw new JobFailure("unknown", `${name} came as ${file.contentType}, not ${output.content_type}.`);
-    return { ...output, label: output.label ?? null, path: file.path, bytes: file.bytes, sha256: file.sha256 };
-  });
 }
 
 /** PUTs every output where the API says, asking for new URLs when they near expiry or storage refuses one. */
@@ -300,7 +283,7 @@ async function openJobContext(browser, { job, payload, sink, harnessUrl, assets,
  * @param {object} options.claim What `claim` answered.
  * @param {ReturnType<import("./api.mjs").createApiClient>} options.api
  * @param {import("playwright").Browser} options.browser The slot's browser, self-checked.
- * @param {object} options.config `harnessUrl`, `profileName`, `tmpDir`, `assetPrefixes`.
+ * @param {object} options.config `harnessUrl`, `profileName`, `tmpDir`, `assetPrefixes`, `ffmpegPath`.
  * @param {ReturnType<import("./assets.mjs").createAssetCache>} options.assets
  * @param {AbortSignal} options.stopping Aborted when the worker shuts down.
  * @returns {Promise<{ outcome: "completed" | "failed" | "lost", recycleBrowser: boolean }>}
@@ -316,10 +299,16 @@ export async function runJob({ claim, api, browser, config, assets, stopping, lo
   if (stopping.aborted) stop();
   const browserExited = () => controller.abort(new JobFailure("browser_crashed", "The browser exited.", { recycleBrowser: true }));
   browser.once("disconnected", browserExited);
-  const state = { progress: 0, stage: "loading" };
-  const heartbeats = startHeartbeats(job, { seconds: claim.heartbeat_seconds, state, controller, log });
+  /** The stage, and the shares of the job rendered (as the page reports it) and encoded. */
+  const done = { stage: "loading", rendered: 0, encoded: 0 };
+  const heartbeats = startHeartbeats(job, { seconds: claim.heartbeat_seconds, report: () => jobProgress(claim.kind, done), controller, log });
+  const enterStage = (stage) => {
+    done.stage = stage;
+    heartbeats.now();
+  };
   let dir = null;
   let deadline = null;
+  let outputs = null;
   let sink = null;
   let context = null;
   try {
@@ -332,15 +321,22 @@ export async function runJob({ claim, api, browser, config, assets, stopping, lo
     await downloadModel(job, payload, modelPath, signal);
     const outDir = path.join(dir, "out");
     await mkdir(outDir);
+    outputs = startOutputs(payload, {
+      outDir,
+      ffmpegPath: config.ffmpegPath,
+      onEncoded: (share) => {
+        done.encoded = share;
+      },
+      onFailure: (failure) => controller.abort(failure),
+    });
     sink = await startSink({
       origin: new URL(config.harnessUrl).origin,
       model: modelPath,
       outDir,
-      names: payload.spec.output_names,
+      ...outputs.sink,
       onProgress: (entry) => {
-        const changed = entry.stage !== state.stage;
-        Object.assign(state, { progress: entry.progress, stage: entry.stage });
-        if (changed) heartbeats.now();
+        done.rendered = entry.progress;
+        if (entry.stage !== done.stage) enterStage(entry.stage);
       },
     });
     context = await openJobContext(browser, { job, payload, sink, harnessUrl: config.harnessUrl, assets, assetPrefixes: config.assetPrefixes, controller, log });
@@ -349,11 +345,12 @@ export async function runJob({ claim, api, browser, config, assets, stopping, lo
     if (!PROFILES[config.profileName].accepts(result?.renderer)) {
       throw new JobFailure("gpu_lost", `The job drew with ${result?.renderer?.backend} on ${JSON.stringify(result?.renderer?.adapter)}.`, { recycleBrowser: true });
     }
-    const outputs = collectOutputs(payload, result, sink);
+    if (outputs.encodes) enterStage("encoding");
+    // Within the run time: a timeout or a cancel stops ffmpeg or the ZIP too.
+    const files = await race(outputs.finish(result, sink, signal), aborted(signal));
     signal.throwIfAborted();
-    Object.assign(state, { stage: "uploading" });
-    heartbeats.now();
-    const uploaded = await uploadOutputs(job, outputs, { signal, log });
+    enterStage("uploading");
+    const uploaded = await uploadOutputs(job, files, { signal, log });
     await completeJob(job, uploaded, result.renderer, { signal, log });
     log(`completed: ${uploaded.map((output) => `${output.name} (${output.bytes} bytes)`).join(", ")}`);
     return { outcome: "completed", recycleBrowser: false };
@@ -364,6 +361,8 @@ export async function runJob({ claim, api, browser, config, assets, stopping, lo
     heartbeats.stop();
     stopping.removeEventListener("abort", stop);
     browser.off("disconnected", browserExited);
+    // ffmpeg first: a page waiting on the sink may be waiting on it.
+    await outputs?.stop().catch(() => {});
     await context?.close().catch(() => {});
     await sink?.close().catch(() => {});
     if (dir) await rm(dir, { recursive: true, force: true });

@@ -9,13 +9,19 @@ The worker renders server exports ([ADR 0005](../../docs/adr/0005-server-exports
 | `api.mjs` | The API: claim, payload, inputs, heartbeat, uploads, complete, fail, with retries |
 | `browser.mjs` | Launch profiles and the self-check |
 | `job.mjs` | One job, from payload to complete or fail |
+| `failure.mjs` | The codes a job fails with, and which another attempt may fix |
 | `sink.mjs` | The loopback server the page writes files, frames and progress to |
+| `outputs.mjs` | What each kind's page hands the sink, and the outputs the worker makes of it |
+| `encode.mjs` | ffmpeg: a turntable's raw frames into an MP4 |
+| `zip.mjs` | Files from disk into one ZIP, streamed through fflate |
+| `progress.mjs` | A job's progress and stage, for its heartbeats |
 | `network.mjs` | What a page may reach |
 | `assets.mjs` | The disk cache of catalogue files and decoders |
 | `harness.mjs` | Starts the worker build's server on 127.0.0.1 (in the container) |
-| `smoke.mjs` | `npm run worker:smoke` |
+| `smoke.mjs`, `smoke-outputs.mjs` | `npm run worker:smoke` |
+| `fake-ffmpeg.mjs` | A stand-in ffmpeg for the tests |
 
-It renders stills and angle sets. Turntables and spins come with B3, which adds ffmpeg and ZIP output to the sink's frames and files.
+It renders every kind the export mode does: stills and angle sets, whose images the page encodes; turntables, whose raw frames go through ffmpeg into an MP4; and spins, whose frames and viewer page go into one ZIP (see [Encoders](#encoders)).
 
 ## Run a worker
 
@@ -34,7 +40,7 @@ The worker container runs as `node` with a read-only root file system, its jobs 
 
 ### On the host
 
-For development, on a Mac's GPU or on SwiftShader. You need Playwright's Chromium (`npx playwright install chromium`).
+For development, on a Mac's GPU or on SwiftShader. You need Playwright's Chromium (`npx playwright install chromium`) and, for turntables, ffmpeg with libx264 (Homebrew's `ffmpeg` has it).
 
 ```bash
 BUILD_TARGET=worker npm run build
@@ -47,14 +53,16 @@ The harness must be on loopback: WebGPU and WebCodecs exist only in a secure con
 
 ### Smoke test
 
-`npm run worker:smoke` runs one still end to end on this machine and stops everything it starts. It needs a worker build (`BUILD_TARGET=worker npm run build`, in `.next` or `NEXT_BUILD_DIR`), Playwright's Chromium and the backend's virtualenv (`backend/.venv`, or `WORKER_SMOKE_PYTHON`).
+`npm run worker:smoke` runs a still, a turntable and a spin end to end on this machine and stops everything it starts. It needs a worker build (`BUILD_TARGET=worker npm run build`, in `.next` or `NEXT_BUILD_DIR`), Playwright's Chromium, ffmpeg with libx264 and ffprobe, and the backend's virtualenv (`backend/.venv`, or `WORKER_SMOKE_PYTHON`).
 
 1. An API on a free port from 8790, with a throwaway SQLite database and local storage, seeded by `backend/scripts/seed_worker_smoke.py`: a Free user with credits and a scene of the demo ring. The worker build of the app on a free port from 3900, unless `HARNESS_BASE_URL` names one.
-2. The user creates a still over HTTP; a worker on the `swiftshader` profile (`WORKER_GPU=metal` for a Mac's GPU) claims, renders, uploads and completes it; the user downloads it.
-3. The download must be what the browser pipeline renders from the same job, Free mark included: the harness's export mode is run directly, with and without the mark, and compared.
-4. A page under the worker's network policy must reach its harness and not an outside host, the API on loopback or the cloud metadata address.
+2. The user creates a 640×480 still, a one-second turntable at that size starting from the still's camera, and a 12-frame spin over HTTP; a worker on the `swiftshader` profile (`WORKER_GPU=metal` for a Mac's GPU) claims, renders, encodes, uploads and completes each; the user downloads them.
+3. The still must be what the browser pipeline renders from the same job, Free mark included: the harness's export mode is run directly, with and without the mark, and compared.
+4. The MP4 must be H.264 High, yuv420p, BT.709 and limited range with every frame (ffprobe), its index ahead of the media, and play to its end in Chrome, whose frame 0 must match the still (SSIM ≥ 0.97).
+5. The spin's ZIP must open and hold its frames and `spin.html`, which in Chrome loads every frame and turns, by itself and with the arrow keys.
+6. A page under the worker's network policy must reach its harness and not an outside host, the API on loopback or the cloud metadata address.
 
-`npm run worker:smoke -- --kill` kills the worker and its browser mid-job instead, and checks a second worker completes the job as its second attempt once the lease (60 s there) has lapsed. `WORKER_SMOKE_KEEP=1` keeps the scratch folder with every process's log.
+`npm run worker:smoke -- --kill` runs the still alone, kills the worker and its browser mid-job, and checks a second worker completes the job as its second attempt once the lease (60 s there) has lapsed. `WORKER_SMOKE_KEEP=1` keeps the scratch folder with every process's log and the outputs (under `uploads/`).
 
 ## Settings
 
@@ -68,7 +76,8 @@ The harness must be on loopback: WebGPU and WebCodecs exist only in a secure con
 | `WORKER_APP_DIR` | `/app` in the image | A standalone worker build to start on `127.0.0.1:WORKER_HARNESS_PORT` when `HARNESS_BASE_URL` is unset |
 | `WORKER_HARNESS_PORT` | `3000` | |
 | `WORKER_SLOTS` | `1` | Jobs at once, a browser each: one per GPU, two on 24 GB cards; give each 8 GB of RAM |
-| `WORKER_KINDS` | `still,angle_set` | The kinds it claims |
+| `WORKER_KINDS` | `still,angle_set,turntable,spin` | The kinds it claims, any of those |
+| `WORKER_FFMPEG` | `ffmpeg` | The ffmpeg turntables encode with; it needs libx264. A worker that claims turntables checks it before it claims anything |
 | `WORKER_ID` | the host name | Each slot claims as `<id>-<slot>` |
 | `WORKER_POLL_SECONDS` | `5` | How often an idle slot asks for a job |
 | `WORKER_RECYCLE_JOBS` | `50` | Jobs a browser renders before it is replaced |
@@ -89,6 +98,34 @@ Every profile is Chrome for Testing in new headless mode (Playwright's `channel:
 | `swiftshader` | CI, CPU-only hosts | `--enable-unsafe-webgpu --use-webgpu-adapter=swiftshader --use-angle=swiftshader --enable-features=Vulkan --use-vulkan=swiftshader` | WebGPU on architecture `swiftshader` |
 
 All add `--force-color-profile=srgb --hide-scrollbars`. Before a slot claims anything, and after every browser restart, it opens the harness's `?mode=probe` (which reports the backend three.js picked and the adapter) and runs a WebGPU submit. If either isn't what the profile promises, the worker claims nothing and exits with an error, so a host with broken drivers stays idle rather than rendering slowly or differently. A job drawn by another backend fails as `gpu_lost` and replaces the browser. Every completed job records its browser, backend and adapter.
+
+## Encoders
+
+**Turntables.** ffmpeg starts before the page opens, one per clip. The page posts each frame raw (RGBA, `POST /frames/<n>`, in order); the sink writes it straight to ffmpeg's stdin and answers the page only once ffmpeg's pipe has all of it, so the page draws the next frame only then and at most one frame is in the worker. Once the last frame is in, ffmpeg finishes the MP4:
+
+```
+ffmpeg -f rawvideo -pix_fmt rgba -s <w>x<h> -r <fps> -i pipe:0
+  -vf scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv
+  -c:v libx264 -preset <preset> -crf <crf> -profile:v high
+  -color_primaries bt709 -color_trc bt709 -colorspace bt709 -color_range tv
+  -movflags +faststart -an out.mp4
+```
+
+| `quality` | CRF | Preset |
+|---|---|---|
+| `standard` | 23 | `medium` |
+| `high` | 20 | `medium` |
+| `max` | 17 | `slow` |
+
+H.264 High in yuv420p, converted with the BT.709 matrix to limited range and tagged so in the frames and the stream (without that ffmpeg converts with BT.601, leaves the tags empty, and metals shift colour), with the index ahead of the media (`+faststart`). The API makes width and height even. The MP4 must hold every frame (ffmpeg's last progress report says how many it encoded) and stay under the API's 4 GB.
+
+**Frames in parts.** The network allowlist intercepts every request the page makes, the sink's too, and Chrome hands each intercepted request's body to the worker over DevTools, as text. So the page sends each frame as Blobs of at most 16 MB (`POST /frames/<n>?offset=<first byte>&length=<the frame's bytes>`): a whole 8K frame (133 MB) makes a message larger than Node can read, which crashes the worker, and an ArrayBuffer body is also copied into DevTools' request events, where a Blob isn't. The copy that is left costs about 10 ms a MB. On an M-series Mac (`metal`), a 120-frame 1080p turntable took 15 s from claim to complete (45 s with whole ArrayBuffer frames) and a 30-frame 8K one 66 s; at that rate the longest videos the plans allow, a minute of 4K or 20 s of 8K at 60 fps, would run past the 30-minute limit. Keeping the sink's requests out of the interception would remove the cost.
+
+**Spins.** The page posts each frame (`frame_001.jpg`, …, numbered as the Campaign Pack numbers them) and then `spin.html` as files, which the sink takes under those names only. Once the page is done, the worker streams them from disk into one ZIP with fflate's `Zip`: frames stored, `spin.html` deflated, a chunk at a time, each file deleted once it is in. fflate writes no ZIP64, so the ZIP stops at the API's cap, 4 GB less a byte.
+
+**Progress.** A heartbeat carries `stage` and `progress`: `loading` (0), then `rendering` as the page reports its frames, `encoding` once the page is done and ffmpeg finishes or the ZIP is written, and `uploading` (0.95). A turntable's frames rendered and frames encoded (from ffmpeg's `-progress`) fill the bar together, 0.475 each; a spin's frames fill 0.9 and its ZIP 0.05; stills and angle sets fill 0.95 with their images.
+
+**Failures.** ffmpeg failing (it won't start, dies or encodes fewer frames than it got) fails the job as `encode_failed`, which the API tries again; an MP4 or ZIP over its cap is `over_limit`, which it doesn't. Past the kind's run time (turntable 30 min, spin 15) the job fails as `timeout` and ffmpeg is killed.
 
 ## What a page may reach
 

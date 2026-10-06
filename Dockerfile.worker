@@ -40,10 +40,11 @@ WORKDIR /app
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
-# The worker needs Playwright alone, and Chrome for Testing with the libraries it links to. New
-# headless is the full browser, so no headless shell.
+# The worker needs Playwright, fflate for spins' ZIPs, and Chrome for Testing with the libraries it
+# links to. New headless is the full browser, so no headless shell.
 COPY --from=builder /app/node_modules/playwright ./node_modules/playwright
 COPY --from=builder /app/node_modules/playwright-core ./node_modules/playwright-core
+COPY --from=builder /app/node_modules/fflate ./node_modules/fflate
 RUN node node_modules/playwright/cli.js install --with-deps --no-shell chromium \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app/scripts/render-worker ./scripts/render-worker

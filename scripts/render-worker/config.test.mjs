@@ -4,9 +4,23 @@ import { readConfig } from "./config.mjs";
 const BASE = { RENDER_API_URL: "http://backend:8765", RENDER_WORKER_TOKEN: "t", HARNESS_BASE_URL: "http://127.0.0.1:3000" };
 
 describe("readConfig", () => {
-  it("defaults to the GPU of the platform, one slot, stills and angle sets", () => {
-    expect(readConfig(BASE, "linux")).toMatchObject({ profileName: "nvidia", slots: 1, kinds: ["still", "angle_set"], sandbox: true, harnessUrl: "http://127.0.0.1:3000" });
+  it("defaults to the GPU of the platform, one slot, every kind the harness renders, and ffmpeg on the PATH", () => {
+    expect(readConfig(BASE, "linux")).toMatchObject({
+      profileName: "nvidia",
+      slots: 1,
+      kinds: ["still", "angle_set", "turntable", "spin"],
+      sandbox: true,
+      harnessUrl: "http://127.0.0.1:3000",
+      ffmpegPath: "ffmpeg",
+    });
     expect(readConfig(BASE, "darwin").profileName).toBe("metal");
+    expect(readConfig({ ...BASE, WORKER_FFMPEG: "/opt/ffmpeg/bin/ffmpeg" }).ffmpegPath).toBe("/opt/ffmpeg/bin/ffmpeg");
+  });
+
+  it("claims the kinds it is given, each once, and at least one", () => {
+    expect(readConfig({ ...BASE, WORKER_KINDS: "turntable, spin,turntable" }).kinds).toEqual(["turntable", "spin"]);
+    expect(readConfig({ ...BASE, WORKER_KINDS: "" }).kinds).toEqual(["still", "angle_set", "turntable", "spin"]);
+    expect(() => readConfig({ ...BASE, WORKER_KINDS: " , " })).toThrow(/WORKER_KINDS names no kind/);
   });
 
   it("sends the first token of a rotation list", () => {
@@ -15,8 +29,8 @@ describe("readConfig", () => {
   });
 
   it("lists every problem at once", () => {
-    expect(() => readConfig({ WORKER_GPU: "amd", WORKER_KINDS: "still,turntable", WORKER_SLOTS: "0" }, "linux")).toThrow(
-      /RENDER_API_URL is not set; RENDER_WORKER_TOKEN is not set; WORKER_GPU must be one of nvidia, metal, swiftshader; WORKER_KINDS: .*not turntable; set HARNESS_BASE_URL .* or WORKER_APP_DIR .*; WORKER_SLOTS must be/,
+    expect(() => readConfig({ WORKER_GPU: "amd", WORKER_KINDS: "still,campaign_pack", WORKER_SLOTS: "0" }, "linux")).toThrow(
+      /RENDER_API_URL is not set; RENDER_WORKER_TOKEN is not set; WORKER_GPU must be one of nvidia, metal, swiftshader; WORKER_KINDS: this worker renders still, angle_set, turntable, spin, not campaign_pack; set HARNESS_BASE_URL .* or WORKER_APP_DIR .*; WORKER_SLOTS must be/,
     );
   });
 

@@ -408,40 +408,82 @@ def test_at_most_three_batches_are_open_at_once(client, db, owner):
 # ---------------------------------------------------------------------------
 
 
-def test_a_render_plan_is_priced_as_the_stills_it_renders(client, owner):
-    plan = {"stills": {"angles": ["front", "three-quarter", "side", "top"], "size": 2000}, "thumbnail_from": "front"}
+STILLS = {"angles": ["front", "three-quarter", "side", "top"], "size": 2000}
+TURNTABLE = {"width": 1080, "height": 1080, "fps": 30, "seconds": 6, "quality": "high"}
+SPIN = {"frames": 72, "size": 1080, "format": "jpeg", "jpeg_quality": 0.9}
 
+
+@pytest.mark.parametrize(
+    ("plan", "per_design"),
+    [
+        ({"stills": STILLS}, 4),  # four 2000 px stills, a credit each
+        ({"stills": STILLS, "turntable": TURNTABLE}, 7),  # the ADR's default plan: and 6 s at 1080², 3
+        ({"stills": STILLS, "turntable": TURNTABLE, "spin": SPIN}, 9),  # and 72 frames at 1080², 2
+        ({"turntable": {**TURNTABLE, "fps": 60, "seconds": 15}}, 12),  # two started 10 s, double above 30 fps
+    ],
+)
+def test_a_render_plan_is_priced_as_the_jobs_it_becomes(client, owner, plan, per_design):
     batch = create(client, owner[1], batch_body(*designs(3), render_plan=plan)).json()
 
-    # Four 2000 px stills are a credit each: 4 a design.
-    assert batch["quote"] == {"model_credits": 3, "render_credits": 12}
-    assert batch["render_plan"]["stills"] == {
-        "angles": ["front", "three-quarter", "side", "top"], "size": 2000, "format": "jpeg",
-        "jpeg_quality": 0.92, "transparent": False, "margin_pct": 8.0,
+    assert batch["quote"] == {"model_credits": 3, "render_credits": 3 * per_design}
+
+
+def test_a_render_plan_is_kept_normalised(client, owner):
+    plan = {"stills": STILLS, "turntable": TURNTABLE, "thumbnail_from": "front"}
+
+    kept = create(client, owner[1], batch_body(render_plan=plan)).json()["render_plan"]
+
+    assert kept == {
+        "stills": {**STILLS, "format": "jpeg", "jpeg_quality": 0.92, "transparent": False, "margin_pct": 8.0},
+        "turntable": TURNTABLE,
+        "spin": None,
+        "publish_media": True,
+        "thumbnail_from": "front",
     }
-    assert (batch["render_plan"]["publish_media"], batch["render_plan"]["thumbnail_from"]) == (True, "front")
 
 
 @pytest.mark.parametrize(
     ("plan", "detail"),
     [
-        ({}, "render_plan.stills: Field required"),
+        ({}, "render_plan: a render plan makes stills, a turntable or a spin"),
         ({"stills": {"angles": ["front", "front"], "size": 2000}}, "render_plan.stills.angles: each angle at most once"),
         ({"stills": {"angles": ["back"], "size": 2000}}, "render_plan.stills.angles[0]"),
         ({"stills": {"angles": ["front"], "size": 6001}}, "render_plan.stills.size"),
-        ({"stills": {"angles": ["front"], "size": 2000}, "turntable": {"seconds": 6}}, "render_plan.turntable: not available yet"),
-        ({"stills": {"angles": ["front"], "size": 2000}, "spin": {"frames": 72}}, "render_plan.spin: not available yet"),
-        ({"stills": {"angles": ["front"], "size": 2000}, "thumbnail_from": "top"}, "render_plan: thumbnail_from"),
         ({"stills": {"angles": ["front"], "size": "2000"}}, "render_plan.stills.size"),
-        ({"stills": {"angles": ["front"], "size": 2000}, "look": "gold"}, "render_plan.look"),
+        ({"turntable": {**TURNTABLE, "width": 1081}}, "render_plan.turntable.width: must be even"),
+        ({"turntable": {**TURNTABLE, "fps": 90}}, "render_plan.turntable.fps: Input should be less than or equal to 60"),
+        ({"turntable": {**TURNTABLE, "seconds": 61}}, "render_plan.turntable.seconds"),
+        ({"turntable": {**TURNTABLE, "width": 8192, "height": 8192}}, "render_plan.turntable: at most 36 megapixels a frame"),
+        ({"spin": {**SPIN, "frames": 145}}, "render_plan.spin.frames"),
+        ({"stills": STILLS, "thumbnail_from": "back"}, "render_plan.thumbnail_from"),
+        ({"turntable": TURNTABLE, "thumbnail_from": "front"}, "render_plan: thumbnail_from: one of the stills' angles"),
+        ({"stills": STILLS, "look": "gold"}, "render_plan.look"),
     ],
 )
 def test_a_render_plan_that_isnt_one_is_400(client, db, owner, plan, detail):
     res = create(client, owner[1], batch_body(render_plan=plan))
 
     assert res.status_code == 400
-    assert res.json()["detail"].startswith(detail)
+    assert res.json()["detail"].startswith(detail), res.json()["detail"]
     assert _batches(db) == []
+
+
+@pytest.mark.parametrize(
+    ("plan", "detail"),
+    [
+        ({"turntable": {**TURNTABLE, "width": 7680, "height": 4320, "seconds": 30}}, "Video length limit exceeded for Grow (max 20 s at 8K)."),
+        ({"spin": {**SPIN, "frames": 144, "size": 2048}}, None),
+    ],
+)
+def test_a_render_plan_is_capped_by_the_owners_plan(client, db, plan, detail):
+    _, headers = sign_in(db, "grow@example.com", tier="grow")
+
+    res = create(client, headers, batch_body(render_plan=plan))
+
+    if detail is None:
+        assert res.status_code == 201
+    else:
+        assert (res.status_code, res.json()["detail"]) == (402, detail)
 
 
 # ---------------------------------------------------------------------------

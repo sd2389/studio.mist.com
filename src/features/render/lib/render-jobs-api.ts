@@ -1,7 +1,7 @@
 import type { LookSnapshot } from "@/features/viewer";
 import { apiGet, apiPost } from "@/lib/api/client";
 import type { Vec3 } from "@/lib/camera-orbit";
-import type { BuiltInAngleId } from "../campaign-pack/domain/types";
+import type { BuiltInAngleId, CampaignPackConfig } from "../campaign-pack/domain/types";
 
 /*
  * Server render jobs (ADR 0005), through the Next proxies in src/app/api/render-jobs/. The
@@ -32,6 +32,12 @@ export type StillJobSpec = ImageJobSpec & { camera: RenderJobCamera };
 export type AngleSetJobSpec = ImageJobSpec & { cameras: RenderJobCamera[] };
 
 /**
+ * A Campaign Pack: the dialog's config as it resolves it, and the studio camera (the live view)
+ * that a pack that isn't auto-framed shoots from.
+ */
+export type CampaignPackJobSpec = CampaignPackConfig & { view?: { position: Vec3; target: Vec3 } };
+
+/**
  * The look a job keeps: the snapshot it was sent, validated, with a background image kept as
  * `{ type: "image", asset_id }` rather than an address.
  */
@@ -49,7 +55,11 @@ export type RenderJobRequest = {
   look?: LookSnapshot | RenderJobLook | null;
   /** The outputs' file stem; the scene's SKU or name without it. */
   name?: string | null;
-} & ({ kind: "still"; spec: StillJobSpec } | { kind: "angle_set"; spec: AngleSetJobSpec });
+} & (
+  | { kind: "still"; spec: StillJobSpec }
+  | { kind: "angle_set"; spec: AngleSetJobSpec }
+  | { kind: "campaign_pack"; spec: CampaignPackJobSpec }
+);
 
 export type RenderJobStatus = "queued" | "running" | "completed" | "failed" | "canceled";
 
@@ -147,18 +157,37 @@ export type RenderJobFilter = Partial<{
 
 type CallOptions = { signal?: AbortSignal };
 
+const createdListeners = new Set<() => void>();
+
+/**
+ * Calls `listener` whenever this page has created jobs, so a list of them can read itself again
+ * (a dialog's job shows in the Exports panel once the dialog closes). Returns what stops it.
+ */
+export function onRenderJobsCreated(listener: () => void): () => void {
+  createdListeners.add(listener);
+  return () => {
+    createdListeners.delete(listener);
+  };
+}
+
+function announceCreated(): void {
+  for (const listener of createdListeners) listener();
+}
+
 /**
  * Queues a job; its credits are held until it ends. A repeated `idempotencyKey` with the same
  * request answers the job it made instead of a new one, so a retried click can't render twice.
  */
-export function createRenderJob(
+export async function createRenderJob(
   request: RenderJobRequest,
   { idempotencyKey = crypto.randomUUID(), signal }: CallOptions & { idempotencyKey?: string } = {},
 ): Promise<RenderJob> {
-  return apiPost<RenderJob>("/api/render-jobs", request, {
+  const job = await apiPost<RenderJob>("/api/render-jobs", request, {
     headers: { "Idempotency-Key": idempotencyKey },
     signal,
   });
+  announceCreated();
+  return job;
 }
 
 /**
@@ -174,6 +203,7 @@ export async function createRenderJobs(
     { jobs: requests },
     { headers: { "Idempotency-Key": idempotencyKey }, signal },
   );
+  announceCreated();
   return jobs;
 }
 

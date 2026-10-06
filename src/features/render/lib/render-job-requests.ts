@@ -1,7 +1,8 @@
 import type { LookSnapshot } from "@/features/viewer";
 import { computeImageSize } from "@/lib/export-presets";
+import type { CampaignPackConfig } from "../campaign-pack/domain/types";
 import type { StillExportOptions } from "../ui/StillExportSettings";
-import type { RenderJob, RenderJobCamera, RenderJobRequest, StillJobSpec } from "./render-jobs-api";
+import type { CampaignPackJobSpec, RenderJob, RenderJobCamera, RenderJobRequest, StillJobSpec } from "./render-jobs-api";
 
 /*
  * The create requests the studio sends (ADR 0005). Pure: the camera and the look come in, so
@@ -15,8 +16,11 @@ export const QUICK_STILL_EDGE = 2048;
 /** The shortest side a job renders. */
 const MIN_JOB_EDGE = 64;
 
-/** Kinds whose `frames` the API counts itself; a video's or a spin's is the request's own setting. */
-const IMAGE_JOB_KINDS: ReadonlySet<string> = new Set(["still", "angle_set"]);
+/**
+ * Kinds whose `frames` the API counts itself (an image job's, or every image and frame of a
+ * Campaign Pack); a video's or a spin's is the request's own setting.
+ */
+const COUNTED_FRAME_KINDS: ReadonlySet<string> = new Set(["still", "angle_set", "campaign_pack"]);
 
 /** A still's spec from the still settings (`StillExportSettings`), seen from `camera`. */
 export function stillJobSpec(options: StillExportOptions, camera: RenderJobCamera): StillJobSpec {
@@ -61,10 +65,35 @@ export function stillJobRequest(
   return { kind: "still", scene_id: sceneId, variant_id: variantId, look, name, spec };
 }
 
-/** What the API adds to a spec when it takes a job: the file names (`outputs` before A2), an image job's count. */
+type PackSpecContext = {
+  /** The piece has ray-traced gems, which the ASET image is drawn from. */
+  hasTracedGems: boolean;
+  /** The live view: the studio camera a pack that isn't auto-framed shoots from. */
+  view: { position: [number, number, number]; target: [number, number, number] } | null;
+};
+
+/**
+ * A Campaign Pack's spec from the config the dialog resolved: no ASET image for a piece without
+ * traced gems, so none is paid for that can't be made, and the studio camera when the pack isn't
+ * auto-framed.
+ */
+export function campaignPackJobSpec(config: CampaignPackConfig, { hasTracedGems, view }: PackSpecContext): CampaignPackJobSpec {
+  const spec = { ...config, cutScope: config.cutScope && hasTracedGems };
+  return config.autoFrame || !view ? spec : { ...spec, view };
+}
+
+/** A `campaign_pack` job of a saved scene, in the studio's current look; `name` is the pack's root folder. */
+export function campaignPackJobRequest(
+  spec: CampaignPackJobSpec,
+  { sceneId, look, name }: { sceneId: number; look: LookSnapshot; name: string },
+): RenderJobRequest {
+  return { kind: "campaign_pack", scene_id: sceneId, variant_id: null, look, name, spec };
+}
+
+/** What the API adds to a spec when it takes a job: the file names (`outputs` before A2), an image job's or a pack's count. */
 function addedSpecFields(kind: string): string[] {
   const names = ["output_names", "outputs"];
-  return IMAGE_JOB_KINDS.has(kind) ? [...names, "frames"] : names;
+  return COUNTED_FRAME_KINDS.has(kind) ? [...names, "frames"] : names;
 }
 
 /**

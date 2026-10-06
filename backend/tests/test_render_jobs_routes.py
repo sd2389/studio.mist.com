@@ -251,3 +251,17 @@ def test_fail_answers_what_became_of_the_job(client, job):
 
     assert res.status_code == 200
     assert res.json() == {"id": job.id, "status": "queued", "attempts": 1, "error": "GPU lost", "error_code": "gpu_lost"}
+
+
+def test_an_encoder_failure_is_tried_again(client, job):
+    """ffmpeg failing on a turntable's MP4 (out of memory, killed) may well work on another try."""
+    claimed = _claim(client)
+
+    res = client.post(
+        f"/render-jobs/{job.id}/fail",
+        headers=_as_job(claimed),
+        json={"error": "ffmpeg exited with code 1", "code": "encode_failed", "retryable": True},
+    )
+
+    assert res.status_code == 200
+    assert (res.json()["status"], res.json()["error_code"]) == ("queued", "encode_failed")

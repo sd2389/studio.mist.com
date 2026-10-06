@@ -134,10 +134,11 @@ class RenderJobBulkQuote(BaseModel):
 # Every kind of ADR 0005 and 0006; MAX_RUNTIME_SECONDS in features/render_jobs/worker.py has one
 # run time limit for each.
 JobKind = Literal["still", "angle_set", "turntable", "spin", "campaign_pack", "convert", "batch_archive"]
-# What a worker reports. A failure with one of the first four codes is retried while attempts
-# are left; the others end the job. The API records `lease_expired` itself.
+# What a worker reports. A failure with one of the first five codes is retried while attempts
+# are left; the others end the job. `encode_failed` is ffmpeg failing on a turntable's MP4. The
+# API records `lease_expired` itself.
 FailureCode = Literal[
-    "browser_crashed", "gpu_lost", "upload_failed", "unknown",
+    "browser_crashed", "gpu_lost", "upload_failed", "encode_failed", "unknown",
     "invalid_spec", "model_unreadable", "input_missing", "over_limit", "timeout", "canceled",
 ]
 RenderStage = Literal["loading", "rendering", "encoding", "uploading"]

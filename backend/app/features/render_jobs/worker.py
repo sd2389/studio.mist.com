@@ -38,7 +38,7 @@ MAX_RUNTIME_SECONDS = {
     "batch_archive": 30 * 60,
 }
 # Failures another attempt may fix. They go back to the queue after 30 s, doubling each attempt.
-RETRYABLE_CODES = frozenset({"lease_expired", "browser_crashed", "gpu_lost", "upload_failed", "unknown"})
+RETRYABLE_CODES = frozenset({"lease_expired", "browser_crashed", "gpu_lost", "upload_failed", "encode_failed", "unknown"})
 RETRY_BACKOFF_SECONDS = 30
 LEASE_EXPIRED_ERROR = "worker lease expired"
 # Postgres advisory lock taken with an owner's id while a claim counts their running jobs, so

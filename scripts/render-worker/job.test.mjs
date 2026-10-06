@@ -3,9 +3,12 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { unzipSync } from "fflate";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ApiError, JobLostError } from "./api.mjs";
-import { inputFailure, JobFailure, runJob } from "./job.mjs";
+import { writeFakeFfmpeg } from "./fake-ffmpeg.mjs";
+import { JobFailure } from "./failure.mjs";
+import { inputFailure, runJob } from "./job.mjs";
 import { SINK_TOKEN_HEADER } from "./sink.mjs";
 
 const HARNESS = "http://127.0.0.1:3000";
@@ -33,15 +36,18 @@ const PAYLOAD = {
 const LABELS = { "ring-front.png": "front", "ring-pose-top.png": "pose-top" };
 
 let tmpDir;
+let binDir;
 let calls;
 
 beforeEach(async () => {
   tmpDir = await mkdtemp(path.join(os.tmpdir(), "job-test-"));
+  binDir = await mkdtemp(path.join(os.tmpdir(), "job-test-bin-"));
   calls = [];
 });
 
 afterEach(async () => {
   await rm(tmpDir, { recursive: true, force: true });
+  await rm(binDir, { recursive: true, force: true });
 });
 
 /** The API, as the job's client sees it; `overrides` replace any call. */
@@ -125,13 +131,13 @@ function fakeBrowser(page = (handOff) => renderImages(handOff)) {
   };
 }
 
-async function run({ api = fakeApi(), browser = fakeBrowser(), stopping = new AbortController().signal, heartbeatSeconds = 20 } = {}) {
+async function run({ api = fakeApi(), browser = fakeBrowser(), stopping = new AbortController().signal, heartbeatSeconds = 20, kind = "angle_set", ffmpegPath = "ffmpeg" } = {}) {
   const log = [];
   const result = await runJob({
-    claim: { job_id: 7, job_token: "job-secret", kind: "angle_set", lease_seconds: 120, heartbeat_seconds: heartbeatSeconds },
+    claim: { job_id: 7, job_token: "job-secret", kind, lease_seconds: 120, heartbeat_seconds: heartbeatSeconds },
     api,
     browser,
-    config: { harnessUrl: HARNESS, profileName: "swiftshader", tmpDir, assetPrefixes: [] },
+    config: { harnessUrl: HARNESS, profileName: "swiftshader", tmpDir, assetPrefixes: [], ffmpegPath },
     assets: { get: async () => ({ path: "/dev/null", contentType: "text/plain" }) },
     stopping,
     log: (message) => log.push(message),
@@ -169,8 +175,8 @@ describe("runJob", () => {
     await run();
     expect(called("heartbeat").map(([body]) => body)).toEqual([
       { progress: 0, stage: "loading" },
-      { progress: 1, stage: "rendering" },
-      { progress: 1, stage: "uploading" },
+      { progress: 0.95, stage: "rendering" },
+      { progress: 0.95, stage: "uploading" },
     ]);
   });
 
@@ -289,6 +295,144 @@ describe("runJob", () => {
     const { outcome } = await run({ browser, stopping: stopper.signal });
     expect(outcome).toBe("failed");
     expect(called("fail")).toEqual([[{ error: "The worker shut down.", code: "unknown", retryable: true }]]);
+  });
+});
+
+const TURNTABLE = {
+  ...PAYLOAD,
+  kind: "turntable",
+  spec: { width: 4, height: 2, fps: 30, frames: 3, quality: "high", path: { orbit: { start: { angle: "front" } } }, output_names: ["ring.mp4"] },
+  limits: { max_edge: 4, max_runtime_seconds: 1800 },
+};
+const SPIN = {
+  ...PAYLOAD,
+  kind: "spin",
+  spec: { frames: 3, size: 4, format: "jpeg", jpeg_quality: 0.9, transparent: false, output_names: ["ring-spin.zip"] },
+  limits: { max_edge: 4, max_runtime_seconds: 900 },
+};
+const JPEG = Buffer.from("\xff\xd8 pretend jpeg", "latin1");
+const VIEWER = "<!doctype html><title>Ring</title><canvas id=view></canvas>";
+
+const postProgress = (sink, progress) =>
+  fetch(`${sink.url}/progress`, { method: "POST", headers: { [SINK_TOKEN_HEADER]: sink.token }, body: JSON.stringify({ progress, stage: "rendering" }) });
+
+/** What a harness page does with a turntable: posts each raw frame in order, then says it is done. */
+async function renderFrames({ payload, sink }) {
+  const { width, height, frames } = payload.spec;
+  for (let index = 0; index < frames; index += 1) {
+    const response = await fetch(`${sink.url}/frames/${index}`, { method: "POST", headers: { [SINK_TOKEN_HEADER]: sink.token }, body: Buffer.alloc(width * height * 4, index) });
+    if (!response.ok) return { state: `error:sink POST /frames/${index}: ${response.status}` };
+    await postProgress(sink, (index + 1) / frames);
+  }
+  return { state: "done", result: { renderer: SWIFTSHADER, outputs: [] } };
+}
+
+/** What a harness page does with a spin: posts each frame, then the viewer page, as files. */
+async function renderSpin({ sink }) {
+  const files = [
+    ...["frame_001.jpg", "frame_002.jpg", "frame_003.jpg"].map((name) => ({ name, type: "image/jpeg", body: JPEG })),
+    { name: "spin.html", type: "text/html", body: Buffer.from(VIEWER) },
+  ];
+  for (const [index, { name, type, body }] of files.entries()) {
+    const response = await fetch(`${sink.url}/files/${name}`, { method: "POST", headers: { [SINK_TOKEN_HEADER]: sink.token, "Content-Type": type }, body });
+    if (!response.ok) return { state: `error:sink POST /files/${name}: ${response.status}` };
+    await postProgress(sink, (index + 1) / files.length);
+  }
+  return { state: "done", result: { renderer: SWIFTSHADER, outputs: files.map(({ name, type }) => ({ name, content_type: type, width: 4, height: 4, label: null })) } };
+}
+
+const stages = () => called("heartbeat").map(([body]) => body.stage);
+const rises = (values) => values.every((value, index) => index === 0 || value >= values[index - 1]);
+
+describe("runJob, turntables", () => {
+  it("encodes the frames as they come and completes with the MP4 the API plans", async () => {
+    const ffmpegPath = await writeFakeFfmpeg(binDir);
+    const { outcome } = await run({ api: fakeApi({ payload: TURNTABLE }), browser: fakeBrowser(renderFrames), kind: "turntable", ffmpegPath });
+
+    expect(outcome).toBe("completed");
+    const mp4 = Buffer.from("fake mp4: 3 frames of 4x2");
+    expect(called("uploads")).toEqual([[[{ name: "ring.mp4", content_type: "video/mp4", bytes: mp4.length }]]]);
+    expect(called("put").map(([name, body]) => [name, body.toString()])).toEqual([["ring.mp4", mp4.toString()]]);
+    const [[body]] = called("complete");
+    expect(body.outputs).toEqual([
+      { name: "ring.mp4", key: "customers/1/renders/7/ring.mp4", content_type: "video/mp4", bytes: mp4.length, width: 4, height: 2, label: null, meta: { sha256: createHash("sha256").update(mp4).digest("hex") } },
+    ]);
+    expect(stages()).toEqual(["loading", "rendering", "encoding", "uploading"]);
+    expect(rises(called("heartbeat").map(([beat]) => beat.progress))).toBe(true);
+    expect(await readdir(tmpDir)).toEqual([]);
+  });
+
+  it("fails as encode_failed, to be tried again, when ffmpeg dies mid-clip", async () => {
+    const ffmpegPath = await writeFakeFfmpeg(binDir, { failAfterFrames: 1 });
+    const { outcome } = await run({ api: fakeApi({ payload: TURNTABLE }), browser: fakeBrowser(renderFrames), kind: "turntable", ffmpegPath });
+
+    expect(outcome).toBe("failed");
+    expect(called("fail")).toEqual([[{
+      error: "ffmpeg exited with code 1: [libx264 @ 0x1] fake: out of memory | Error while encoding the stream",
+      code: "encode_failed",
+      retryable: true,
+    }]]);
+    expect(called("complete")).toEqual([]);
+  });
+
+  it("fails as encode_failed when ffmpeg encodes fewer frames than the page sent", async () => {
+    const ffmpegPath = await writeFakeFfmpeg(binDir, { dropFrames: 1 });
+    await run({ api: fakeApi({ payload: TURNTABLE }), browser: fakeBrowser(renderFrames), kind: "turntable", ffmpegPath });
+    expect(called("fail")).toEqual([[{ error: "ffmpeg encoded 2 of the clip's 3 frames.", code: "encode_failed", retryable: true }]]);
+  });
+
+  it("fails as encode_failed when there is no ffmpeg, before the page renders a frame", async () => {
+    let rendered = false;
+    const browser = fakeBrowser((handOff) => {
+      rendered = true;
+      return renderFrames(handOff);
+    });
+    await run({ api: fakeApi({ payload: TURNTABLE }), browser, kind: "turntable", ffmpegPath: path.join(binDir, "no-ffmpeg") });
+    expect(called("fail")[0][0]).toMatchObject({ code: "encode_failed", retryable: true });
+    expect(called("fail")[0][0].error).toMatch(/^ffmpeg could not start \(spawn .*no-ffmpeg ENOENT\)/);
+    expect(rendered).toBe(false);
+  });
+
+  it("stops ffmpeg and fails as timeout when the clip runs past the job's run time", async () => {
+    const ffmpegPath = await writeFakeFfmpeg(binDir, { hang: true });
+    const payload = { ...TURNTABLE, limits: { ...TURNTABLE.limits, max_runtime_seconds: 2 } };
+    const { outcome } = await run({ api: fakeApi({ payload }), browser: fakeBrowser(renderFrames), kind: "turntable", ffmpegPath });
+
+    expect(outcome).toBe("failed");
+    expect(called("fail")).toEqual([[{ error: "The job ran past its run time.", code: "timeout", retryable: false }]]);
+    const { pid } = JSON.parse(readFileSync(`${ffmpegPath}.json`, "utf8"));
+    expect(() => process.kill(pid, 0)).toThrow(/ESRCH/);
+  });
+});
+
+describe("runJob, spins", () => {
+  it("zips the frames and the viewer page and completes with the ZIP the API plans", async () => {
+    const { outcome } = await run({ api: fakeApi({ payload: SPIN }), browser: fakeBrowser(renderSpin), kind: "spin" });
+
+    expect(outcome).toBe("completed");
+    const [[name, archive]] = called("put");
+    expect(name).toBe("ring-spin.zip");
+    const files = unzipSync(archive);
+    expect(Object.keys(files)).toEqual(["frame_001.jpg", "frame_002.jpg", "frame_003.jpg", "spin.html"]);
+    expect(Buffer.from(files["frame_003.jpg"])).toEqual(JPEG);
+    expect(new TextDecoder().decode(files["spin.html"])).toBe(VIEWER);
+    const [[body]] = called("complete");
+    expect(body.outputs).toEqual([
+      { name: "ring-spin.zip", key: "customers/1/renders/7/ring-spin.zip", content_type: "application/zip", bytes: archive.length, width: 4, height: 4, label: null, meta: { sha256: createHash("sha256").update(archive).digest("hex") } },
+    ]);
+    expect(stages()).toEqual(["loading", "rendering", "encoding", "uploading"]);
+    expect(await readdir(tmpDir)).toEqual([]);
+  });
+
+  it("fails a spin whose page left a frame out", async () => {
+    const browser = fakeBrowser(async (handOff) => {
+      const rendered = await renderSpin(handOff);
+      rendered.result.outputs.splice(1, 1);
+      return rendered;
+    });
+    await run({ api: fakeApi({ payload: SPIN }), browser, kind: "spin" });
+    expect(called("fail")[0][0]).toMatchObject({ code: "unknown", retryable: true });
+    expect(called("fail")[0][0].error).toMatch(/^The page made frame_001.jpg, frame_003.jpg, spin.html; the job makes frame_001.jpg, frame_002.jpg/);
   });
 });
 

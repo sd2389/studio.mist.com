@@ -5,13 +5,15 @@
  * one job at a time each, with a browser of their own; every job gets a fresh browser context,
  * and a browser is replaced every `WORKER_RECYCLE_JOBS` jobs and after a crash. A browser whose
  * self-check finds another backend than the `WORKER_GPU` profile promises claims nothing: the
- * worker stops instead. See scripts/render-worker/README.md to run one.
+ * worker stops instead, as it does when it claims turntables and its ffmpeg has no libx264. See
+ * scripts/render-worker/README.md to run one.
  */
 import { fileURLToPath } from "node:url";
 import { createApiClient } from "./api.mjs";
 import { createAssetCache } from "./assets.mjs";
 import { launchBrowser, selfCheck } from "./browser.mjs";
 import { readConfig } from "./config.mjs";
+import { checkFfmpeg } from "./encode.mjs";
 import { startHarness } from "./harness.mjs";
 import { runJob } from "./job.mjs";
 
@@ -100,6 +102,14 @@ async function runSlot(slot, { api, config, assets, stopping }) {
 
 export async function main() {
   const config = readConfig();
+  if (config.kinds.includes("turntable")) {
+    try {
+      log(`turntables encode with ${await checkFfmpeg(config.ffmpegPath)}`);
+    } catch (error) {
+      log(`${error.message}; claiming nothing (WORKER_FFMPEG names ffmpeg, WORKER_KINDS can leave turntables out)`);
+      return 1;
+    }
+  }
   const stopper = new AbortController();
   const stopping = stopper.signal;
   for (const signal of ["SIGTERM", "SIGINT"]) {

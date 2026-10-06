@@ -3,8 +3,8 @@ import path from "node:path";
 import { PROFILES } from "./browser.mjs";
 import { assetPrefix, DEFAULT_ASSET_PREFIXES } from "./network.mjs";
 
-/** What the harness's export mode renders and this worker can hand in; video and spins need B3's encoders. */
-export const RENDERABLE_KINDS = ["still", "angle_set"];
+/** What the harness's export mode renders and this worker can hand in: turntables through ffmpeg, spins as a ZIP. */
+export const RENDERABLE_KINDS = ["still", "angle_set", "turntable", "spin"];
 /** WORKER_ID in backend/app/schemas/render_job.py, less the slot suffix this adds. */
 const WORKER_ID = /^[A-Za-z0-9._:-]{1,60}$/;
 /** Hosts a plain-HTTP page is a secure context on, as WebGPU and WebCodecs need. */
@@ -46,9 +46,10 @@ function profileFrom(env, platform) {
 }
 
 function kindsFrom(env) {
-  const kinds = list(env.WORKER_KINDS || RENDERABLE_KINDS.join(","));
+  const kinds = [...new Set(list(env.WORKER_KINDS || RENDERABLE_KINDS.join(",")))];
   const unknown = kinds.filter((kind) => !RENDERABLE_KINDS.includes(kind));
   if (unknown.length) throw new Error(`WORKER_KINDS: this worker renders ${RENDERABLE_KINDS.join(", ")}, not ${unknown.join(", ")}`);
+  if (!kinds.length) throw new Error(`WORKER_KINDS names no kind; leave it unset for ${RENDERABLE_KINDS.join(", ")}`);
   return kinds;
 }
 
@@ -101,6 +102,7 @@ export function readConfig(env = process.env, platform = process.platform) {
     cacheDir: path.resolve(env.WORKER_CACHE_DIR || path.join(os.tmpdir(), "render-worker-cache")),
     cacheMaxBytes: read(() => integer(env, "WORKER_CACHE_MAX_MB", 2048) * 1024 * 1024),
     tmpDir: path.resolve(env.WORKER_TMP_DIR || os.tmpdir()),
+    ffmpegPath: env.WORKER_FFMPEG || "ffmpeg",
   };
   if (problems.length) throw new Error(`render worker: ${problems.join("; ")}`);
   return config;

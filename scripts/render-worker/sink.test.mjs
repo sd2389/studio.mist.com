@@ -154,7 +154,7 @@ describe("the sink's frames", () => {
 
   it("hands frames to the encoder in order, each once all of it is in", async () => {
     const handed = [];
-    await open({ frameSize, onFrame: (index, pixels) => handed.push([index, pixels[0]]) });
+    await open({ frameSize, onFrameBytes: (index, pixels) => handed.push([index, pixels[0]]) });
     expect((await send("/frames/0", { body: frame(7) })).status).toBe(204);
     expect((await send("/frames/2", { body: frame(9) })).status).toBe(409);
     expect((await send("/frames/1", { body: frame(8) })).status).toBe(204);
@@ -162,10 +162,45 @@ describe("the sink's frames", () => {
     expect(sink.frames).toBe(2);
   });
 
+  // As the harness sends frames: in parts, so that no request body is too large for DevTools.
+  it("takes a frame in parts, in order, each with its offset and the frame's length", async () => {
+    const handed = [];
+    await open({ frameSize, onFrameBytes: (index, bytes) => handed.push([index, [...bytes]]) });
+    const part = (offset, bytes, length = 16) => send(`/frames/0?offset=${offset}&length=${length}`, { body: Buffer.from(bytes) });
+
+    expect((await part(0, [1, 1, 1, 1, 1, 1])).status).toBe(204);
+    expect(sink.frames).toBe(0);
+    expect((await part(4, [2])).status).toBe(409);
+    expect((await send("/frames/1", { body: frame(3) })).status).toBe(409);
+    expect((await part(6, Buffer.alloc(11, 2))).status).toBe(413);
+    expect((await part(6, Buffer.alloc(10, 2), 17)).status).toBe(400);
+    expect((await part(6, Buffer.alloc(10, 2))).status).toBe(204);
+
+    expect(sink.frames).toBe(1);
+    expect(handed).toEqual([[0, [1, 1, 1, 1, 1, 1]], [0, Array(10).fill(2)]]);
+  });
+
+  it("counts a frame once the encoder has it, so one it couldn't take is no frame", async () => {
+    const handed = [];
+    await open({ frameSize, onFrameBytes: (index) => {
+      if (!handed.length) {
+        handed.push("refused");
+        throw new Error("ffmpeg is gone");
+      }
+      handed.push(index);
+    } });
+    expect((await send("/frames/0", { body: frame(7) })).status).toBe(500);
+    expect(sink.frames).toBe(0);
+    expect((await send("/frames/0", { body: frame(7) })).status).toBe(204);
+    expect([handed, sink.frames]).toEqual([["refused", 0], 1]);
+  });
+
   it("refuses a frame of another size, and frames for a job that has none", async () => {
-    await open({ frameSize, onFrame: () => {} });
+    await open({ frameSize, onFrameBytes: () => {} });
     expect((await send("/frames/0", { body: Buffer.alloc(15) })).status).toBe(400);
     expect((await send("/frames/0", { body: Buffer.alloc(17) })).status).toBe(413);
+    // Where the page says how long it is, before the sink reads any of it.
+    expect((await send("/frames/0", { body: Buffer.alloc(17), headers: { "Content-Length": "17" } })).status).toBe(413);
     expect(sink.frames).toBe(0);
     await sink.close();
     await open();

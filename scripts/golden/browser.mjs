@@ -230,8 +230,9 @@ async function captureExport(id, outDir) {
     model: FIXTURE_MODEL,
     outDir: sinkDir,
     frameSize,
-    onFrame: (index, pixels) => {
-      frames[index] = pixels;
+    // A frame comes whole, or in parts in order.
+    onFrameBytes: (index, bytes) => {
+      frames[index] = frames[index] ? Buffer.concat([frames[index], bytes]) : bytes;
     },
   });
   const browser = EXPORT_BACKEND === "webgpu" ? await launchWebGpuBrowser() : await launchDeterministicBrowser();

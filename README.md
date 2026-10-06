@@ -65,7 +65,7 @@ docker compose down              # stop; data is kept
 docker compose down -v           # stop and delete volumes (fresh database)
 ```
 
-Compose reads variables such as `STUDIO_POSTGRES_PORT`, `NEXT_PUBLIC_API_URL`, `APP_PUBLIC_URL` and `CORS_ORIGINS` from a root `.env`. The backend container receives only the variables listed in `docker-compose.yml`. Add others (storage keys, Stripe, SMTP, `RENDER_WORKER_TOKEN`) in a `docker-compose.override.yml`, which Compose merges automatically and git ignores. `docker-compose.override.example.yml` is the template. Without third-party keys, AI features run in stub mode, emails go to the backend log, and paid checkout is unavailable.
+Compose reads variables such as `STUDIO_POSTGRES_PORT`, `NEXT_PUBLIC_API_URL`, `APP_PUBLIC_URL` and `CORS_ORIGINS` from a root `.env`. The backend container receives only the variables listed in `docker-compose.yml`, `RENDER_WORKER_TOKEN` among them, which the render workers get too. Add others (storage keys, Stripe, SMTP) in a `docker-compose.override.yml`, which Compose merges automatically and git ignores. `docker-compose.override.example.yml` is the template. Without third-party keys, AI features run in stub mode, emails go to the backend log, and paid checkout is unavailable.
 
 ## Local development
 
@@ -129,7 +129,8 @@ Templates: [`.env.example`](.env.example) (web, Compose) and [`backend/.env.exam
 | `INTERNAL_PROXY_TOKEN` | web, backend | Shared secret, the same on both: the web server's sign-in and sign-up proxies send it with the caller's IP, and the API believes a forwarded IP only with it (never a bare `X-Forwarded-For`). Unset, sign-ins through the web app share one per-IP budget, and the API warns at startup in production |
 | `RENDER_WORKER_TOKEN` | backend, worker | Shared secret for render workers, or several comma-separated while one is rotated in; the job-claim endpoint returns 503 until it is set |
 | `RENDER_API_URL` | worker | Backend URL |
-| `HARNESS_BASE_URL` | worker, goldens | URL of the worker's app (`BUILD_TARGET=worker`), which serves `/render-harness` |
+| `HARNESS_BASE_URL` | worker, goldens | URL of the worker's app (`BUILD_TARGET=worker`), which serves `/render-harness`; for the worker it must be on loopback, or unset when it starts the app itself |
+| `WORKER_GPU`, `WORKER_SLOTS`, `WORKER_*` | worker | Its launch profile (`nvidia`, `metal`, `swiftshader`), jobs at once, kinds, asset origins and cache: [scripts/render-worker/README.md](scripts/render-worker/README.md) |
 
 ## Deploying
 
@@ -160,12 +161,15 @@ Exports render on GPU workers ([ADR 0005](docs/adr/0005-server-exports.md)). Cre
 - Every other call takes only the job token, in the `X-Job-Token` header, never in a URL: `GET /{id}/payload` (the spec, the look and its catalogue items, the model, the watermark, the limits), `POST /{id}/heartbeat` every 20 s, `POST /{id}/uploads` (signed PUTs with each file's size and name signed in), `POST /{id}/complete` and `POST /{id}/fail` (`{error, code, retryable}`).
 - A heartbeat extends the lease until the job's kind has run out of run time, and answers `cancel` when the owner canceled the job or the time is up. A job whose lease runs out is taken back by the next claim as a failed attempt, and its old token stops working.
 - A retryable failure is queued again after 30 s, then 60 s; after 3 attempts, or on a final code, the job fails and is refunded.
+- The job's spec names its files in `output_names`: a still's or an angle set's images, one per camera; a turntable's one H.264 MP4 (`video/mp4`, at most 4 GB), which the worker encodes from the `frames` the harness renders; a spin's one ZIP (`application/zip`, under 4 GB, no ZIP64) of its frames and `spin.html`. An MP4 or a ZIP is reported with its frames' width and height.
 - Outputs live under `customers/<user>/renders/<job>/`. `complete` checks each file's key, type and stored size against the job, then creates the scene's renders, charges the credits and counts the bytes toward the owner's storage, which deleting the scene gives back.
 - Local storage signs nothing, so there the payload names `GET /{id}/inputs/model` and `/inputs/background`, and uploads go to `PUT /{id}/uploads/{name}`, all with the job token.
 
-The page that renders jobs is only in the render worker's build of the app: `BUILD_TARGET=worker` (for `npm run build`, `npm run start` and `npm run dev` alike) adds `/render-harness`, which the public build does not have. The worker opens it in headless Chromium on loopback. `?mode=probe` reports whether three.js draws with WebGPU or WebGL 2 there, and `?mode=export` renders the job the worker hands the page in `window.__RENDER_JOB__`, sending what it renders to the worker's loopback sink: a still or an angle set (a live view, a saved pose or a Campaign Pack angle) as image files; a turntable (an orbit from a camera, or a cut through saved poses, moved exactly as the studio's video export moves it) as raw RGBA frames, in order, for the worker to encode; a spin (the Campaign Pack's spin orbit) as image files plus the pack's `spin.html` viewer, for the worker to zip. The worker process itself (`npm run worker:render`) is being rebuilt around that mode and this protocol (ADR 0005, A4) and refuses to start until then; `npm run test:golden` drives the export mode with a fixture job.
+The page that renders jobs is only in the render worker's build of the app: `BUILD_TARGET=worker` (for `npm run build`, `npm run start` and `npm run dev` alike) adds `/render-harness`, which the public build does not have. The worker opens it in headless Chromium on loopback. `?mode=probe` reports whether three.js draws with WebGPU or WebGL 2 there, and `?mode=export` renders the job the worker hands the page in `window.__RENDER_JOB__`, sending what it renders to the worker's loopback sink: a still or an angle set (a live view, a saved pose or a Campaign Pack angle) as image files; a turntable (an orbit from a camera, or a cut through saved poses, moved exactly as the studio's video export moves it) as raw RGBA frames, in order, for the worker to encode; a spin (the Campaign Pack's spin orbit) as image files plus the pack's `spin.html` viewer, for the worker to zip. The worker renders stills and angle sets so far; turntables and spins need its encoders (ADR 0005, B3). `npm run test:golden` drives the export mode with fixture jobs.
 
-To try the API locally, `cp docker-compose.override.example.yml docker-compose.override.yml` gives the backend a `RENDER_WORKER_TOKEN`, and `docker compose exec backend python -m scripts.seed_smoke_job` queues a still for a smoke-test user (`--bogus`: one whose model file is missing).
+The worker (`npm run worker:render`, [scripts/render-worker/README.md](scripts/render-worker/README.md)) runs Chrome for Testing in new headless mode on the host's GPU, with a launch profile per kind of host: `nvidia`, `metal` (a Mac) or `swiftshader` (CPU). Before it claims anything its self-check opens `?mode=probe`, and it stops if the backend there isn't what the profile promises. `docker compose --profile worker-cpu up` runs one on SwiftShader, `--profile worker-gpu` on an NVIDIA GPU; `npm run worker:smoke` takes one still from create to download on this machine.
+
+To try the API locally, `cp docker-compose.override.example.yml docker-compose.override.yml` gives the backend and the workers a `RENDER_WORKER_TOKEN`, and `docker compose exec backend python -m scripts.seed_smoke_job` queues a still for a smoke-test user (`--bogus`: one whose model file is missing).
 
 Only a claim takes back a job whose lease ran out, so with no worker polling it stays `running`.
 
@@ -205,6 +209,7 @@ npx tsc --noEmit           # type check
 npm run check:boundaries   # fails on the removed @/components/viewer and upload paths, and on render harness imports outside its route
 npm test                   # Vitest unit tests (src/**/*.test.ts, *.test.tsx)
 npm run build              # production build
+npm run worker:smoke       # one server still, create to download, on a local stack (needs a BUILD_TARGET=worker build)
 ```
 
 Backend dependencies: `backend/requirements.txt` holds version ranges; the Docker image and CI install the hash-pinned `requirements.lock` and `requirements-dev.lock` (Linux, Python 3.12). After changing a requirements file, regenerate both with `backend/scripts/lock-requirements.sh` (needs [uv](https://docs.astral.sh/uv/)).

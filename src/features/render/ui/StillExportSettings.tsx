@@ -93,9 +93,12 @@ function FieldTitle({ children }: { children: string }) {
 export function StillExportSettings({
   value,
   onChange,
+  jpegQualityMin,
 }: {
   value: StillExportOptions;
   onChange: (next: StillExportOptions) => void;
+  /** The lowest JPEG quality offered, 0 to 1: a server job takes 0.8 and up. */
+  jpegQualityMin?: number;
 }) {
   const plan = useExportPlan();
   const limits = plan ?? FREE_EXPORT_PLAN;
@@ -165,7 +168,13 @@ export function StillExportSettings({
         </div>
       </div>
 
-      {value.format === "jpeg" ? <JpegQualityField value={value.jpegQuality} onChange={(q) => set("jpegQuality", q)} /> : null}
+      {value.format === "jpeg" ? (
+        <JpegQualityField
+          value={value.jpegQuality}
+          onChange={(q) => set("jpegQuality", q)}
+          min={jpegQualityMin === undefined ? undefined : Math.round(jpegQualityMin * 100)}
+        />
+      ) : null}
 
       <div className="flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2">
         <Label htmlFor="still-transparent" className="cursor-pointer text-xs">

@@ -363,7 +363,7 @@ A job is all or nothing: an angle set with one failed angle retries the whole se
 A screenshot of the live viewer can't be prevented, and the live viewer stays unmarked (the studio and the embed need it clean). So the browser keeps one capture that is no more than a screenshot, and every rendered file comes from the server.
 
 - **Download PNG** becomes **Quick still**: a `still` job of the current view (`camera.view`), at the viewport's aspect ratio and 2048 px on the long side, PNG, priority 100, 1 credit, the mark on Free. The button shows progress and downloads the file when it is ready; it also lands in Exports. "Hi-res PNG" opens the still dialog with the same camera.
-- **Capture still** becomes **Set as thumbnail**, and the Settings tab's "Update thumbnail" uses the same call. The browser reads the live canvas at no more than 1024 px on the long side and sends it to `PUT /scenes/{id}/thumbnail`. The API checks it is a PNG, JPEG or WebP under 2 MB, fits it to 1024 px, re-encodes it as WebP, sets `thumbnail_key` and republishes. It is not a render, costs nothing, and carries no mark: it is the piece's public product thumbnail, and no bigger than a screenshot.
+- **Capture still** becomes **Set as thumbnail**, and the Settings tab's "Update thumbnail" uses the same call. The browser reads the live canvas at no more than 1024 px on the long side and sends it to `PUT /scenes/{id}/thumbnail`. The API, for the owner's scene only, checks by its bytes that it is a PNG, JPEG or WebP under 2 MB and at most 1024 px a side (the studio never sends more), re-encodes it as WebP under the owner's thumbnails, sets `thumbnail_key` and republishes. It is not a render, costs nothing, and carries no mark: it is the piece's public product thumbnail, and no bigger than a screenshot. Like an upload's thumbnail it counts toward storage, and the uploaded thumbnail it replaces is freed, as a still replacing it would free it; a render it replaces stays a render.
 - `POST /renders` (a data URL saved as a render) and `/api/render/save` are removed in C4. Renders come only from jobs.
 
 ### The worker
@@ -376,7 +376,7 @@ A screenshot of the live viewer can't be prevented, and the live viewer stays un
 |---|---|---|
 | `nvidia` | Linux GPU hosts | `--enable-unsafe-webgpu --use-angle=vulkan --enable-features=Vulkan,VulkanFromANGLE --disable-vulkan-surface --ignore-gpu-blocklist --force-color-profile=srgb --hide-scrollbars`; container `NVIDIA_DRIVER_CAPABILITIES=graphics,utility,compute` |
 | `metal` | a Mac, local development | `--force-color-profile=srgb --hide-scrollbars` (Metal needs no flags) |
-| `swiftshader` | CI and CPU-only hosts | `chrome-headless-shell` with `--enable-unsafe-webgpu`: WebGPU on SwiftShader, slow but the same backend as production |
+| `swiftshader` | CI and CPU-only hosts | new headless with `--enable-unsafe-webgpu --use-webgpu-adapter=swiftshader --use-angle=swiftshader --enable-features=Vulkan --use-vulkan=swiftshader`: WebGPU on SwiftShader, slow but the same backend as production. (As built in A4: on Linux, `chrome-headless-shell`'s SwiftShader WebGPU lost its device.) |
 
 At start the worker opens `/render-harness?mode=probe`, which reports `navigator.gpu.requestAdapter()` and whether three.js picked the WebGPU backend. With `WORKER_REQUIRE_GPU=1` (production) it refuses to claim on SwiftShader or WebGL 2, so a host with broken drivers stays idle rather than producing slow, different output. Every job's `renderer` field records what drew it.
 
@@ -402,7 +402,7 @@ The `scale` and `setparams` filters matter: without them ffmpeg converts RGB wit
 
 **Concurrency and scaling.** One slot per GPU by default (`WORKER_SLOTS`), two on 24 GB cards; an 8K still holds about 1 GB of GPU memory and, at 4000², the sample averager alone allocates 256 MB of CPU memory, so give each slot 8 GB of RAM and `shm_size: 2gb`. Studio jobs (priority 100) go before batch jobs (10), and the per-user running cap keeps one customer's 500-design batch from starving everyone else. An admin endpoint, `GET /render-jobs/stats` (queued by kind and priority, oldest wait, running per worker), feeds autoscaling: start a host when the oldest studio job has waited 30 s or the batch backlog exceeds an hour of work, stop it after 15 idle minutes, never above `WORKER_MAX_HOSTS`.
 
-**Image and compose.** `scripts/render-worker/Dockerfile`, on `node:22-bookworm-slim` (Playwright doesn't support Alpine, which the web image uses):
+**Image and compose.** `Dockerfile.worker` at the repo root (as built in A4: a build stage makes the worker build's standalone server, which the worker starts on 127.0.0.1, and the image keeps Playwright alone of the dev dependencies), on `node:22-bookworm-slim` (Playwright doesn't support Alpine, which the web image uses). The sketch:
 
 ```dockerfile
 FROM node:22-bookworm-slim
@@ -417,7 +417,7 @@ USER node
 CMD ["node", "scripts/render-worker/worker.mjs"]
 ```
 
-`docker-compose.yml` gains two services that plain `docker compose up` leaves off: `render-worker` (profile `worker`, `nvidia` profile, one GPU reserved through `deploy.resources.reservations.devices`) and `render-worker-cpu` (profile `worker-cpu`, `swiftshader`, for local smoke tests with `STORAGE_BACKEND=local`). Both get `RENDER_API_URL`, `RENDER_WORKER_TOKEN` and `shm_size`. On a Mac, `WORKER_GPU=metal npm run worker:render` runs the worker against a local stack. Chrome for Testing is x86-64 on Linux; arm64 Linux hosts would get Playwright's Chromium and are out of scope.
+`docker-compose.yml` gains two services that plain `docker compose up` leaves off: `worker-gpu` (profile `worker-gpu`, `nvidia` profile, one GPU reserved through `deploy.resources.reservations.devices`) and `worker-cpu` (profile `worker-cpu`, `swiftshader`, for local smoke tests with `STORAGE_BACKEND=local`). Both get `RENDER_API_URL`, `RENDER_WORKER_TOKEN` and `shm_size`. On a Mac, `WORKER_GPU=metal npm run worker:render` runs the worker against a local stack. Chrome for Testing is x86-64 on Linux; arm64 Linux hosts would get Playwright's Chromium and are out of scope.
 
 ### The harness export mode
 
@@ -446,7 +446,7 @@ New, in `src/features/render` (exported from its barrel):
 
 - `lib/render-jobs-api.ts`: `createRenderJob`, `createRenderJobs`, `quoteRenderJob`, `getRenderJob`, `listRenderJobs`, `cancelRenderJob`, `outputDownloadUrl`, through new Next routes in `src/app/api/render-jobs/`.
 - `ui/useRenderJob.ts`: polls one job (every second, slowing to every 5 s, stopping at a final status).
-- `ui/ExportJobsPanel.tsx`: the downloads and results panel. It lists the scene's recent jobs (status, progress bar, credits, Cancel, Download for each output, Retry for a failed one) at the top of "Export & share", and the same component with no scene filter is an "Exports" page linked from the dashboard. A finished job raises a toast through the viewer toast store; the dialog that started a job downloads its file when it finishes, if the dialog is still open.
+- `ui/ExportJobsPanel.tsx`: the downloads and results panel. It lists the scene's recent jobs (status, progress bar, credits, Cancel, Download for each output, Retry for a failed one) in "Export & share", under the Quick still that starts one, and the same component with no scene filter is an "Exports" page linked from the dashboard. A finished job raises a toast through the viewer toast store; the dialog that started a job downloads its file when it finishes, if the dialog is still open.
 - `src/features/viewer/domain/look-snapshot.ts`: `lookSnapshot(store, modelConfig)`, used by the autosave in `useSavedScene` and by every export, so a job renders exactly what the studio would save.
 
 Reused:

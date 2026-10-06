@@ -260,3 +260,25 @@ export function batchFilenamePrefix(job: BatchExportJob): string {
   const variantPart = job.variant ? variantSlug(job.variant.name) : "live";
   return `${scenePart}-${variantPart}`;
 }
+
+/**
+ * What one job of a batch renders on the server (ADR 0005): a scene and one of its saved
+ * variants, or the scene's saved look. The current scene without a variant renders the live
+ * look instead, unsaved edits included.
+ */
+export type BatchJobTarget = {
+  sceneId: number;
+  variantId: string | null;
+  live: boolean;
+  /** The file stem the batch gives the job, as `batchFilenamePrefix` names its downloads. */
+  label: string;
+};
+
+export function batchJobTarget(job: BatchExportJob, currentSceneId: number): BatchJobTarget {
+  return {
+    sceneId: job.sceneId,
+    variantId: job.variant?.id ?? null,
+    live: job.sceneId === currentSceneId && job.variant === null,
+    label: batchFilenamePrefix(job),
+  };
+}

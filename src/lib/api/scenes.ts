@@ -1,4 +1,4 @@
-import { apiDelete, apiGet, apiPatch } from "@/lib/api/client";
+import { apiDelete, apiGet, apiPatch, apiPutFile } from "@/lib/api/client";
 import type { BackgroundItem, EnvironmentItem, GemItem, GroundItem, MetalItem } from "@/lib/catalog/types";
 import type { UserMaterialItem } from "@/lib/library/types";
 import type { ProductSpecs } from "@/lib/product-specs/types";
@@ -130,4 +130,15 @@ export function updateSceneByViewerId(viewerId: string, patch: ScenePatch): Prom
 
 export function deleteScene(id: number): Promise<void> {
   return apiDelete<void>(`/api/scenes/${id}`);
+}
+
+/** The largest thumbnail the API takes (`PUT /scenes/{id}/thumbnail`). */
+export const MAX_THUMBNAIL_BYTES = 2 * 1024 * 1024;
+
+/**
+ * Makes `image`, a PNG, JPEG or WebP of at most 1024 px a side, the scene's thumbnail: free and
+ * unmarked, kept as WebP and published with the scene. Answers the scene with its new thumbnail.
+ */
+export function setSceneThumbnail(id: number, image: Blob): Promise<Scene> {
+  return apiPutFile<Scene>(`/api/scenes/${id}/thumbnail`, image);
 }

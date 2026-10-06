@@ -106,6 +106,10 @@ PLAN_QUOTAS: dict[PlanTier, PlanQuotas] = {
     ),
 }
 
+# A video frame of more megapixels than 4K's tier is 8K: it is priced as 8K, and a turntable of
+# such frames runs at most its plan's max_8k_video_seconds.
+VIDEO_4K_MEGAPIXELS = 8.3
+
 # Render credits, as ADR 0005 proposes them (an open question for the owner); pricing.py applies
 # them. One credit is about one 2K still. Each tier is (up to this many megapixels, credits).
 RENDER_CREDIT_COSTS: dict[str, tuple[tuple[float, int], ...]] = {
@@ -113,12 +117,17 @@ RENDER_CREDIT_COSTS: dict[str, tuple[tuple[float, int], ...]] = {
     "still_image": ((4.2, 1), (9.0, 2), (17.0, 3), (36.0, 4)),
     # A turntable, per started 10 seconds, by frame size: 720p → 2; 1080p and 1080² → 3;
     # 4K → 8; 8K → 20. Above 30 fps it counts double.
-    "video_10s": ((1.0, 2), (2.1, 3), (8.3, 8), (36.0, 20)),
+    "video_10s": ((1.0, 2), (2.1, 3), (VIDEO_4K_MEGAPIXELS, 8), (36.0, 20)),
     # A spin of up to 72 frames: 1080² → 2; 2048² → 4. Up to 144 frames counts double.
     "spin": ((1.2, 2), (4.2, 4)),
     # A Campaign Pack is the sum of its images, turntables and spins, plus 1 for the ASET image.
     # A conversion costs no render credit: a design costs 1 model credit, as an upload does.
 }
+# The rest of the turntable and spin prices above: a turntable pays for every started 10
+# seconds, and counts double above 30 fps; a spin counts double above 72 frames.
+VIDEO_CREDIT_SECONDS = 10
+VIDEO_DOUBLE_ABOVE_FPS = 30
+SPIN_DOUBLE_ABOVE_FRAMES = 72
 
 # Most jobs one POST /render-jobs/bulk may create (ADR 0005's default, an open question).
 MAX_BULK_RENDER_JOBS = 100

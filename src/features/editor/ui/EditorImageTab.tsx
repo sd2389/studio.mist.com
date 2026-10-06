@@ -5,6 +5,8 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   useBatchExport,
+  useBatchTargets,
+  type BatchExport,
   type BatchExportTabProps,
   type BatchTileResult,
 } from "@/features/editor/hooks/useBatchExport";
@@ -12,8 +14,16 @@ import {
   CampaignPackLauncher,
   DEFAULT_STILL_EXPORT,
   exportStill,
+  JOB_JPEG_QUALITY_MIN,
+  liveViewCamera,
+  RenderJobButton,
   StillExportSettings,
   stillExportLabel,
+  stillJobRequest,
+  stillJobSpec,
+  useExportScene,
+  useServerExports,
+  type RenderJobRequest,
   type StillExportOptions,
 } from "@/features/render";
 import { ModelMultiSelect, VariantMultiSelect } from "@/features/variants";
@@ -29,6 +39,8 @@ type ExportMode = "single" | "multiple";
 
 export function EditorImageTab(props: BatchExportTabProps) {
   const { sceneId, viewerId, modelConfig, variantItems } = props;
+  // While server exports are on, stills render on the server (ADR 0005); else in this browser.
+  const serverExports = useServerExports();
   const [mode, setMode] = useState<ExportMode>("single");
   const [options, setOptions] = useState<StillExportOptions>(DEFAULT_STILL_EXPORT);
   const batch = useBatchExport(props);
@@ -160,54 +172,125 @@ export function EditorImageTab(props: BatchExportTabProps) {
           </>
         ) : null}
 
-        <StillExportSettings value={options} onChange={setOptions} />
+        <StillExportSettings
+          value={options}
+          onChange={setOptions}
+          jpegQualityMin={serverExports ? JOB_JPEG_QUALITY_MIN : undefined}
+        />
 
-        {options.resolution === "8k" ? (
-          <div
-            className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-400"
-            role="note"
-          >
-            <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
-            <p>
-              8K requires significant GPU memory. Older devices may fail or stutter.
-            </p>
-          </div>
-        ) : null}
+        {serverExports ? (
+          <ImageJobRender mode={mode} options={options} viewerId={viewerId} batch={batch} />
+        ) : (
+          <>
+            {options.resolution === "8k" ? (
+              <div
+                className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-400"
+                role="note"
+              >
+                <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
+                <p>
+                  8K requires significant GPU memory. Older devices may fail or stutter.
+                </p>
+              </div>
+            ) : null}
 
-        {mode === "multiple" ? (
-          <BatchJobEstimate count={batch.estimatedJobCount} enabled={batch.batchExportEnabled} />
-        ) : null}
+            {mode === "multiple" ? (
+              <BatchJobEstimate count={batch.estimatedJobCount} enabled={batch.batchExportEnabled} />
+            ) : null}
 
-        <Button
-          type="button"
-          className="w-full gap-2"
-          disabled={busy || (mode === "multiple" && !batch.batchExportEnabled)}
-          onClick={() => void handleExport()}
-        >
-          {busy ? (
-            <>
-              <Loader2 className="size-4 animate-spin" aria-hidden />
-              Rendering…
-            </>
-          ) : (
-            <>
-              <Download className="size-4" aria-hidden />
-              {mode === "single" ? "Render & download" : `Render ${batch.estimatedJobCount} images`}
-            </>
-          )}
-        </Button>
+            {/* Until the flag is read, neither way can start. */}
+            <Button
+              type="button"
+              className="w-full gap-2"
+              disabled={busy || serverExports === null || (mode === "multiple" && !batch.batchExportEnabled)}
+              onClick={() => void handleExport()}
+            >
+              {busy ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" aria-hidden />
+                  Rendering…
+                </>
+              ) : (
+                <>
+                  <Download className="size-4" aria-hidden />
+                  {mode === "single" ? "Render & download" : `Render ${batch.estimatedJobCount} images`}
+                </>
+              )}
+            </Button>
 
-        {error ? (
-          <p className="text-sm text-destructive" role="alert">
-            {error}
-          </p>
-        ) : null}
-        {status ? (
-          <p className="text-xs text-muted-foreground" role="status">
-            {status}
-          </p>
-        ) : null}
+            {error ? (
+              <p className="text-sm text-destructive" role="alert">
+                {error}
+              </p>
+            ) : null}
+            {status ? (
+              <p className="text-xs text-muted-foreground" role="status">
+                {status}
+              </p>
+            ) : null}
+          </>
+        )}
       </div>
     </div>
+  );
+}
+
+type ImageJobRenderProps = {
+  mode: ExportMode;
+  options: StillExportOptions;
+  viewerId: string;
+  batch: BatchExport;
+};
+
+/**
+ * The Images tab's Render on the server: one still of the live look, or in "Multiple" one per
+ * scene and variant picked, in one bulk request, priced before it starts. The price says how
+ * many images it makes, and offers the upgrade where the plan has no batch export.
+ */
+function ImageJobRender({ mode, options, viewerId, batch }: ImageJobRenderProps) {
+  const exportScene = useExportScene();
+  const { targets, error } = useBatchTargets(batch, mode === "multiple");
+  const jobCount = targets?.length ?? batch.estimatedJobCount;
+
+  /** The jobs a click starts, from the view as it is then. */
+  function stillJobs(): RenderJobRequest[] | null {
+    const camera = liveViewCamera();
+    if (!exportScene || !camera) return null;
+    const spec = stillJobSpec(options, camera);
+    const look = exportScene.look();
+    if (mode === "single") {
+      return [stillJobRequest(spec, { sceneId: exportScene.sceneId, look, name: `${viewerId}-${stillExportLabel(options)}` })];
+    }
+    const size = IMAGE_RESOLUTIONS[options.resolution].label;
+    return (targets ?? []).map((target) =>
+      stillJobRequest(spec, {
+        sceneId: target.sceneId,
+        variantId: target.variantId,
+        // The current scene renders as the studio shows it; the others as they were saved.
+        look: target.live ? look : null,
+        name: `${target.label}-${size}`,
+      }),
+    );
+  }
+
+  return (
+    <>
+      {error ? (
+        <p className="text-sm text-destructive" role="alert">
+          {error}
+        </p>
+      ) : null}
+      {targets?.length === 0 ? (
+        <p className="text-xs text-muted-foreground">Select at least one variant or save variants in Settings.</p>
+      ) : null}
+      <RenderJobButton
+        key={mode}
+        requests={stillJobs}
+        bulk={mode === "multiple"}
+        disabled={mode === "multiple" && !batch.batchExportEnabled}
+      >
+        {mode === "single" ? "Render & download" : `Render ${jobCount} ${jobCount === 1 ? "image" : "images"}`}
+      </RenderJobButton>
+    </>
   );
 }

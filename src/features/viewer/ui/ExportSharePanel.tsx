@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import Link from "next/link";
 import {
   Camera,
   Download,
@@ -10,7 +11,16 @@ import {
   Video,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { CampaignPackLauncher, ExportPlanNote, loadExportPlan, useExportPlan } from "@/features/render";
+import {
+  CampaignPackLauncher,
+  ExportJobsPanel,
+  ExportPlanNote,
+  loadExportPlan,
+  RenderJobError,
+  useExportPlan,
+  useServerExports,
+  type RenderJob,
+} from "@/features/render";
 import type { PersistedModelConfig } from "@/lib/slot-materials/model-config";
 import { readViewportBackdrop } from "@/lib/export-backdrop";
 import { pixelRatioWithinLimits } from "@/lib/export-limits";
@@ -20,6 +30,7 @@ import { captureFrameToDataUrl } from "@/stores/screenshot-store";
 import { getHiresRefs } from "@/stores/hires-export-store";
 import { getRenderFidelity } from "@/stores/render-fidelity-store";
 import { useMaterialPresetStore } from "@/stores/material-preset-store";
+import { useViewExports } from "./useViewExports";
 
 type ExportSharePanelProps = {
   modelId: string;
@@ -58,6 +69,10 @@ export function ExportSharePanel({
   const [status, setStatus] = useState<string | null>(null);
   const exportPlan = useExportPlan();
   const embedReady = canOpenEmbed(sku);
+  // While server exports are on, the still renders on the server and the thumbnail comes from the
+  // view (ADR 0005); else both work as they always have. Until the flag is read, neither starts.
+  const serverExports = useServerExports();
+  const view = useViewExports(modelId, setStatus);
 
   async function handleCapture() {
     setSaving(true);
@@ -148,6 +163,8 @@ export function ExportSharePanel({
     onOpenExport();
   }
 
+  const spinner = <Loader2 className="size-4 animate-spin" aria-hidden />;
+
   return (
     <div
       className={cn(
@@ -162,22 +179,16 @@ export function ExportSharePanel({
         <ExportPlanNote plan={exportPlan} />
         <CampaignPackLauncher modelId={modelId} sku={sku} name={displayName} modelConfig={modelConfig} />
         <ExportActionButton
-          icon={
-            saving ? (
-              <Loader2 className="size-4 animate-spin" aria-hidden />
-            ) : (
-              <Camera className="size-4" aria-hidden />
-            )
-          }
-          title="Capture still"
-          hint="Pushes current frame to cloud"
-          onClick={() => void handleCapture()}
-          disabled={saving}
+          icon={saving || view.settingThumbnail ? spinner : <Camera className="size-4" aria-hidden />}
+          {...(serverExports
+            ? { title: "Set as thumbnail", hint: "Current view · up to 1024 px · free", onClick: () => void view.setThumbnail() }
+            : { title: "Capture still", hint: "Pushes current frame to cloud", onClick: () => void handleCapture() })}
+          disabled={saving || view.settingThumbnail || serverExports === null}
         />
         <ExportActionButton
           icon={<Download className="size-4" aria-hidden />}
           title="Hi-res PNG"
-          hint="HD · 2K · 4K · 8K offscreen"
+          hint={serverExports ? "HD · 2K · 4K · 8K on our servers" : "HD · 2K · 4K · 8K offscreen"}
           onClick={onOpenHiResExport}
         />
         <ExportActionButton
@@ -211,11 +222,13 @@ export function ExportSharePanel({
           Downloads
         </h3>
         <ExportActionButton
-          icon={<Download className="size-4" aria-hidden />}
-          title="Download PNG"
-          hint="Current frame · full fidelity"
-          onClick={() => void downloadPng()}
+          icon={view.quickStills.starting ? spinner : <Download className="size-4" aria-hidden />}
+          {...(serverExports
+            ? { title: "Quick still", hint: "Current view · 2048 px · 1 credit", onClick: () => void view.quickStill() }
+            : { title: "Download PNG", hint: "Current frame · full fidelity", onClick: () => void downloadPng() })}
+          disabled={serverExports === null || view.quickStills.starting}
         />
+        <RenderJobError error={view.quickStills.error} className="text-[10.5px]" />
         <ExportActionButton
           icon={<Download className="size-4" aria-hidden />}
           title="Download source model"
@@ -224,12 +237,31 @@ export function ExportSharePanel({
         />
       </section>
 
+      {serverExports && view.exportScene ? (
+        <SceneExports sceneId={view.exportScene.sceneId} started={view.quickStills.jobs} />
+      ) : null}
+
       {status ? (
         <p className="text-[10.5px] leading-snug text-muted-foreground" role="status">
           {status}
         </p>
       ) : null}
     </div>
+  );
+}
+
+/** The scene's server exports, newest first, with the Quick stills started here on top. */
+function SceneExports({ sceneId, started }: { sceneId: number; started: RenderJob[] }) {
+  return (
+    <section className="space-y-2">
+      <div className="flex items-baseline justify-between gap-3">
+        <h3 className="text-[10.5px] font-medium uppercase tracking-[0.16em] text-foreground/80">Exports</h3>
+        <Link href="/exports" className="text-[10.5px] text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
+          All exports
+        </Link>
+      </div>
+      <ExportJobsPanel sceneId={sceneId} started={started} />
+    </section>
   );
 }
 

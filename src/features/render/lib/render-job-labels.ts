@@ -45,10 +45,14 @@ function specNumber(spec: Record<string, unknown>, key: string): number | null {
   return typeof value === "number" ? value : null;
 }
 
-/** The file names the job makes, as the API named them when it took the job. */
+/**
+ * The file names the job makes, as the API named them when it took the job: `output_names`.
+ * A2's migration (12a67b9ab68f) renames `outputs` to that in every stored row, so `outputs` only
+ * comes from an API older than A2, or one rolled back past it.
+ */
 function specOutputs(spec: Record<string, unknown>): string[] {
-  const outputs = spec.outputs;
-  return Array.isArray(outputs) ? outputs.filter((name): name is string => typeof name === "string") : [];
+  const names = spec.output_names ?? spec.outputs;
+  return Array.isArray(names) ? names.filter((name): name is string => typeof name === "string") : [];
 }
 
 /** "solitaire-4K.png", or "solitaire-front.png + 3 more"; the kind for jobs that name no file. */
@@ -83,8 +87,7 @@ export function jobCreditsLabel(job: Pick<RenderJob, "credits" | "credit_state">
   return creditsLabel(job.credits);
 }
 
-/** "3 minutes ago". The API sends UTC times without a zone designator. */
+/** "3 minutes ago", read as UTC whether the time ends in Z (as the API sends it) or not. */
 export function jobAge(job: Pick<RenderJob, "created_at">): string {
-  const iso = job.created_at;
-  return formatRelativeTime(/(Z|[+-]\d{2}:?\d{2})$/i.test(iso) ? iso : `${iso}Z`);
+  return formatRelativeTime(job.created_at);
 }

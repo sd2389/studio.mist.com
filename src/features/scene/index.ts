@@ -7,6 +7,7 @@ export {
   getScene,
   getSceneByViewerId,
   listScenes,
+  setSceneThumbnail,
   updateScene,
   updateSceneByViewerId,
 } from "@/lib/api/scenes";

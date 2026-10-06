@@ -33,6 +33,11 @@ class PlanFeatures(BaseModel):
     video_8k_enabled: bool
     campaign_pack_enabled: bool
     bulk_upload: BulkUploadLimits
+    # What a server video may be (render_jobs/plan_limits.py refuses the rest): its frame rate,
+    # its length, and its length at 8K (0: no 8K video). The studio's pickers lock past them.
+    max_video_fps: int
+    max_video_seconds: int
+    max_8k_video_seconds: int
 
 
 class UserBillingSnapshot(BaseModel):

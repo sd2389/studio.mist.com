@@ -16,6 +16,7 @@ import {
   exportStill,
   JOB_JPEG_QUALITY_MIN,
   liveViewCamera,
+  outputsLabel,
   RenderJobButton,
   StillExportSettings,
   stillExportLabel,
@@ -30,7 +31,7 @@ import { ModelMultiSelect, VariantMultiSelect } from "@/features/variants";
 import {
   IMAGE_RESOLUTIONS,
 } from "@/lib/export-presets";
-import { batchFilenamePrefix, runBatchExportJobs } from "@/lib/variants/batch-export";
+import { batchFilenamePrefix, batchRenderTargets, runBatchExportJobs } from "@/lib/variants/batch-export";
 import { cn } from "@/lib/utils";
 import { getHiresRefs } from "@/stores/hires-export-store";
 import { BatchJobEstimate } from "./BatchJobEstimate";
@@ -262,15 +263,7 @@ function ImageJobRender({ mode, options, viewerId, batch }: ImageJobRenderProps)
       return [stillJobRequest(spec, { sceneId: exportScene.sceneId, look, name: `${viewerId}-${stillExportLabel(options)}` })];
     }
     const size = IMAGE_RESOLUTIONS[options.resolution].label;
-    return (targets ?? []).map((target) =>
-      stillJobRequest(spec, {
-        sceneId: target.sceneId,
-        variantId: target.variantId,
-        // The current scene renders as the studio shows it; the others as they were saved.
-        look: target.live ? look : null,
-        name: `${target.label}-${size}`,
-      }),
-    );
+    return batchRenderTargets(targets ?? [], look, size).map((target) => stillJobRequest(spec, target));
   }
 
   return (
@@ -289,7 +282,7 @@ function ImageJobRender({ mode, options, viewerId, batch }: ImageJobRenderProps)
         bulk={mode === "multiple"}
         disabled={mode === "multiple" && !batch.batchExportEnabled}
       >
-        {mode === "single" ? "Render & download" : `Render ${jobCount} ${jobCount === 1 ? "image" : "images"}`}
+        {mode === "single" ? "Render & download" : `Render ${outputsLabel("still", jobCount)}`}
       </RenderJobButton>
     </>
   );

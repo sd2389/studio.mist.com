@@ -3,6 +3,7 @@
 | Feature / area | Path | Owns |
 |----------------|------|------|
 | Upload & slot review | `src/features/upload` | File pick, presign/register flow, slot review UI |
+| Bulk upload | `src/features/bulk`, `src/app/bulk`, `src/app/api/ingest` | Many CAD files at once (files, folders, ZIPs opened in the browser) with a CSV manifest, checked as the API checks them, uploaded straight to storage on signed URLs; the batch page with retries, resumed uploads and cancel ([ADR 0006](adr/0006-bulk-pipeline.md) E3) |
 | Viewer (3D studio) | `src/features/viewer` | Canvas, model, sidebar, shell, embed; the one studio (`/viewer`) |
 | Scene editing | `src/features/editor` | The studio's Edit tab (`SceneEditPanel`): details and variants, specs, full catalogues and user library, position, camera, layers, batch exports, embed settings. `/model/:id` redirects to `/viewer` |
 | Scene persistence | `src/features/scene` | Scene API client, types re-exports |

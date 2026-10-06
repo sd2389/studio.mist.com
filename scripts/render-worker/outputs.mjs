@@ -11,7 +11,7 @@ import { writeZip, ZipTooLarge } from "./zip.mjs";
  * still's or an angle set's images go up as the page encoded them; a turntable's raw frames go
  * into ffmpeg as the sink takes them, and its MP4 goes up; a spin's frames and viewer page go into
  * one ZIP once the page is done. Each output is the file the API planned (planned_outputs in
- * backend/app/features/render_jobs/specs.py): its name, content type, size cap and frame size.
+ * backend/app/features/render_jobs/job_files.py): its name, content type, size cap and frame size.
  */
 
 /** A turntable's MP4 and a spin's ZIP, as the API plans them. fflate writes no ZIP64. */

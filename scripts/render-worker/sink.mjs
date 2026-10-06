@@ -13,7 +13,7 @@ const FILE_NAME = /^[A-Za-z0-9._-]{1,255}$/;
 /** What the page reports; the worker adds `encoding` (a turntable's MP4, a spin's ZIP) and `uploading` itself. */
 const PAGE_STAGES = new Set(["loading", "rendering"]);
 const MAX_PROGRESS_BYTES = 1024;
-/** The API's cap on one image (MAX_IMAGE_BYTES in backend/app/features/render_jobs/specs.py). */
+/** The API's cap on one image (MAX_IMAGE_BYTES in backend/app/features/render_jobs/job_files.py). */
 export const MAX_FILE_BYTES = 256 * 1024 * 1024;
 
 class SinkError extends Error {

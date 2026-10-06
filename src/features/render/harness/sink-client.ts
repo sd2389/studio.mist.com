@@ -11,6 +11,8 @@ export type SinkClient = {
    */
   postFrame(index: number, pixels: Uint8ClampedArray<ArrayBuffer>): Promise<void>;
   postProgress(progress: number, stage: RenderStage): Promise<void>;
+  /** One of a convert job's files, as the worker fetched it (`/inputs/source`, `/inputs/companions/<n>`). */
+  fetchInput(path: string): Promise<Blob>;
 };
 
 type SinkRequest = { method?: "GET" | "POST"; body?: BodyInit; headers?: Record<string, string> };
@@ -41,6 +43,7 @@ export function createSinkClient({ url, token }: SinkAddress): SinkClient {
   };
   return {
     fetchModel: async () => (await send("/inputs/model.glb")).blob(),
+    fetchInput: async (path) => (await send(path)).blob(),
     async postFile(name, file) {
       await send(`/files/${encodeURIComponent(name)}`, {
         method: "POST",

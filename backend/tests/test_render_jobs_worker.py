@@ -757,7 +757,7 @@ def test_a_local_upload_is_only_a_file_the_spec_names(db, files, owner, scene, m
 
 def test_a_local_upload_streams_to_staging_and_leaves_nothing_behind(db, files, owner, scene, monkeypatch):
     """The body is written as it arrives; a refused one leaves no staging file."""
-    monkeypatch.setattr("app.features.render_jobs.specs.MAX_IMAGE_BYTES", 32)
+    monkeypatch.setattr("app.features.render_jobs.job_files.MAX_IMAGE_BYTES", 32)
     _queue(db, owner, scene)
     job = _claim(db)
 

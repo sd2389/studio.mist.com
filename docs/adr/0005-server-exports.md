@@ -46,7 +46,7 @@ Assumed, not verified: WebGPU in a container on a Linux NVIDIA host with the fla
 - `renders.bytes` is a 32-bit `Integer`; a pack ZIP can pass 2 GB.
 - Deleting a scene deletes rows only: its files stay in storage and `release_storage_bytes` is never called. Saved renders never count toward storage.
 - `src/lib/__tests__/export-parity.test.ts` requires `downloadPng` in `ExportSharePanel` to call `renderAtResolution`; Phase C replaces that test.
-- The pack's metal re-skin turns the whole piece into one metal (two-tone designs are lost), its auto-framing ignores `InstancedMesh`, and its environment probe waits for the live frame loop (`engine/environment-probe.ts`). The harness must keep frames ticking or re-skinned metals render without reflections.
+- The pack's metal re-skin turns the whole piece into one metal (two-tone designs are lost), its auto-framing ignores `InstancedMesh`, and its environment probe waits for the live frame loop (`engine/environment-probe.ts`). The harness must keep frames ticking or re-skinned metals render without reflections. As built in D2: the harness's stage draws on the fixed clock (`tickFixedClock`, from the frame after the warm-up) while the probe waits, as the studio's live loop draws for it, and stops a pack the probe found no environment for rather than re-skin its metals without one.
 
 ## Decision
 
@@ -185,7 +185,7 @@ A camera is one of three shapes:
 }
 ```
 
-The API checks metals against the preset list (plus `current`), angles against the built-ins and `pose:<id>` of the look, `stillSize` against `PACK_STILL_SIZES`, and the totals against the caps below.
+The API checks metals against the preset list (plus `current`), angles against the built-ins and `pose:<id>` of the look, `stillSize` against `PACK_STILL_SIZES`, and the totals against the caps below. As built in D2: a pack that isn't auto-framed shoots from the studio camera, as the browser's pack did from the live view, so the dialog sends it as `view` (`{ "position", "target" }`, the viewer's lens), taken only with `autoFrame: false`; without it, the viewer's opening view. The dialog sends `cutScope: false` for a piece without ray-traced gems, so no ASET image is paid for that can't be made, and names the job after the pack's root folder, so the ZIP is named as the browser's.
 
 Specs are Pydantic models in `backend/app/features/render_jobs/specs.py`, one per kind, behind a union on `kind`. Unknown fields are refused. The API stores the normalised spec, with the computed frame count and output names, and returns it on the job.
 
@@ -293,7 +293,7 @@ A job, as every endpoint returns it:
 | Method and path | Body → answer |
 |---|---|
 | `POST /render-jobs/claim` | `{ "worker_id": "gpu-a-1", "kinds": ["still", "angle_set", "turntable", "spin", "campaign_pack"] }` → `{ "job_id", "job_token", "kind", "lease_seconds": 120, "heartbeat_seconds": 20 }`, or 204 |
-| `GET /render-jobs/{id}/payload` | → `{ "kind", "spec", "look", "look_items": SceneLook, "model": { "url" \| "path" }, "watermark", "limits": { "max_edge", "max_runtime_seconds" }, "scene": { "id", "name", "sku" } }`. `model.url` is a signed GET (15 min); on local storage `model.path` points at the next route |
+| `GET /render-jobs/{id}/payload` | → `{ "kind", "spec", "look", "look_items": SceneLook, "model": { "url" \| "path" }, "watermark", "limits": { "max_edge", "max_runtime_seconds" }, "scene": { "id", "name", "sku", "viewer_id" }, "app_url" }`. `model.url` is a signed GET (15 min); on local storage `model.path` points at the next route. `viewer_id` (the scene's `/viewer/<id>`) and `app_url` (the studio's `APP_PUBLIC_URL`) are what a Campaign Pack names its folder after and links its embed to (D2) |
 | `GET /render-jobs/{id}/inputs/model` | Streams the model (local storage only) |
 | `POST /render-jobs/{id}/heartbeat` | `{ "progress": 0.42, "stage": "rendering" }` → `{ "lease_expires_at", "cancel": false }` |
 | `POST /render-jobs/{id}/uploads` | `{ "files": [{ "name": "front.jpg", "content_type": "image/jpeg", "bytes": 1834212 }] }` → `{ "files": [{ "name", "key", "url", "headers" }] }`: signed PUTs (15 min) with `Content-Type`, `Content-Length` and `Content-Disposition` signed in, so a plain signed GET later downloads under the right name. On local storage `url` is the next route |
@@ -544,6 +544,7 @@ The code suggests one change to the A→D order: stills don't need Phase B, so C
 **D1. Pack spec, gate and price** (backend; after A2): the config check, Grow and Studio only, the sum of parts, the caps. Tests: a Free pack is 402; the default pack costs 49.
 
 **D2. The pack in the harness and the dialog** (frontend and worker; after B3, in parallel with D1): `runner.ts` with a sink-backed `PackRenderBackend` (images, the ASET image, turntables through ffmpeg, spin frames), documents and manifest from `documents.ts`, the worker's ZIP; `CampaignPackDialog` creates a job; `start-pack.ts` and the in-browser download go. Acceptance: the default pack's ZIP has the same 251 to 252 entries and names as the browser's; re-skinned metals carry reflections; the dialog can close while the pack renders.
+- As built: the run writes each file to a `PackFileWriter` as it is made and encodes each turntable with an encoder it is given, so the browser's pack (its in-memory ZIP and WebCodecs MP4) and the harness's share one `renderPackOnStage` (`engine/stage-pack.ts`): plan, backdrop, environment probe, backend, run and documents. The harness's writer is the sink: each file under its path in the ZIP, each turntable as a video of raw frames (`POST /videos/<path>`, its frames, `…/end`, which answers the MP4's size for the manifest). The worker checks each video against the spec, encodes it with ffmpeg as B3 does, and streams everything into one ZIP in the page's order, the browser's, reported as D1 plans it; files past the ZIP's cap stop the job as `over_limit` as they come in. The dialog's server path is behind `server_exports`: quote, then the job's progress and its ZIP, and the dialog closes while it renders (the Exports panel's list reads itself again when the page creates jobs). With the flag off the browser's pack is unchanged, so `start-pack.ts` and the in-browser download go with the flag in C4. A sink failure stops the whole pack (the worker retries the job); a part the page can't render is left out and listed in the README, as in the browser.
 
 ## Open questions
 

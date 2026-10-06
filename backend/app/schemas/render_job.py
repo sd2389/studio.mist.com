@@ -193,6 +193,9 @@ class PayloadScene(BaseModel):
     id: int
     name: str | None
     sku: str | None
+    # The studio's id for the scene's model, its page being /viewer/<viewer_id>; a Campaign Pack
+    # names its files after it when the scene has neither a SKU nor a name, as the studio's does.
+    viewer_id: str
 
 
 class RenderJobPayload(BaseModel):
@@ -208,6 +211,8 @@ class RenderJobPayload(BaseModel):
     watermark: bool
     limits: PayloadLimits
     scene: PayloadScene
+    # The studio's public address (APP_PUBLIC_URL): a Campaign Pack's embed page links to it.
+    app_url: str
 
 
 class ConvertJobPayload(BaseModel):

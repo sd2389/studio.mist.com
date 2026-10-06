@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { listRenderJobs, type RenderJob, type RenderJobFilter } from "../lib/render-jobs-api";
+import { listRenderJobs, onRenderJobsCreated, type RenderJob, type RenderJobFilter } from "../lib/render-jobs-api";
 
 const PAGE_SIZE = 20;
 
@@ -20,14 +20,17 @@ function listError(error: unknown): string {
 
 /**
  * The caller's jobs that match `filter`, newest first, a page at a time; each job keeps
- * itself up to date (`useRenderJob`). The list is read again when the filter changes and on
- * `refresh`, which keeps the jobs on show until the new read is in.
+ * itself up to date (`useRenderJob`). The list is read again when the filter changes, when
+ * this page creates jobs (a dialog's, which go on rendering once it closes) and on `refresh`,
+ * which keep the jobs on show until the new read is in.
  */
 export function useRenderJobList(filter: RenderJobFilter) {
   const filterKey = JSON.stringify(filter);
   const [read, setRead] = useState(0);
   const [list, setList] = useState<JobListRead | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
+
+  useEffect(() => onRenderJobsCreated(() => setRead((count) => count + 1)), []);
 
   useEffect(() => {
     const controller = new AbortController();

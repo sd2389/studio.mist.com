@@ -150,11 +150,11 @@ def test_the_payload_comes_as_the_harness_reads_it(client, job):
 
     payload = client.get(f"/render-jobs/{job.id}/payload", headers=_as_job(claimed)).json()
 
-    assert set(payload) == {"kind", "spec", "look", "look_items", "model", "watermark", "limits", "scene"}
+    assert set(payload) == {"kind", "spec", "look", "look_items", "model", "watermark", "limits", "scene", "app_url"}
     assert payload["spec"]["output_names"] == ["RING-7.png"]
     assert payload["model"] == {"path": f"/render-jobs/{job.id}/inputs/model"}
     assert payload["limits"] == {"max_edge": 512, "max_runtime_seconds": 300}
-    assert payload["scene"] == {"id": job.scene_id, "name": "Ring", "sku": "RING-7"}
+    assert payload["scene"] == {"id": job.scene_id, "name": "Ring", "sku": "RING-7", "viewer_id": "ring.glb"}
 
 
 @pytest.mark.parametrize(("tier", "watermark"), [("free", True), ("grow", False), ("studio", False)])

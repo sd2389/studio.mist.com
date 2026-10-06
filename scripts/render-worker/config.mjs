@@ -3,8 +3,13 @@ import path from "node:path";
 import { PROFILES } from "./browser.mjs";
 import { assetPrefix, DEFAULT_ASSET_PREFIXES } from "./network.mjs";
 
-/** What the harness's export mode renders and this worker can hand in: turntables through ffmpeg, spins as a ZIP. */
-export const RENDERABLE_KINDS = ["still", "angle_set", "turntable", "spin"];
+/**
+ * What the harness's export mode renders and this worker can hand in: turntables through ffmpeg,
+ * spins as a ZIP, and Campaign Packs as one ZIP with their turntables through ffmpeg.
+ */
+export const RENDERABLE_KINDS = ["still", "angle_set", "turntable", "spin", "campaign_pack"];
+/** The kinds whose videos this worker's ffmpeg encodes. */
+export const VIDEO_KINDS = ["turntable", "campaign_pack"];
 /** WORKER_ID in backend/app/schemas/render_job.py, less the slot suffix this adds. */
 const WORKER_ID = /^[A-Za-z0-9._:-]{1,60}$/;
 /** Hosts a plain-HTTP page is a secure context on, as WebGPU and WebCodecs need. */

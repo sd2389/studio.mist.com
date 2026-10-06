@@ -10,7 +10,6 @@ import type {
   StillJob,
   TurntableJob,
 } from "../domain/types";
-import { PackZipWriter } from "../domain/zip-writer";
 import type { PackRenderBackend } from "./pack-backend";
 
 export type PackProgress = {
@@ -23,9 +22,18 @@ export type PackProgress = {
   etaMs: number | null;
 };
 
-export type PackRunResult = {
-  zip: Blob;
-  zipName: string;
+/**
+ * Where a pack's files go, one after another in the order of its ZIP: the ZIP itself, in memory
+ * (`PackZipWriter`, the browser's pack), or the render worker's sink, which puts them in one ZIP
+ * on the server (the harness's).
+ */
+export type PackFileWriter = {
+  /** Stores one file and resolves with its size. `compress` deflates it: text, where media is compressed already. */
+  add(path: string, data: Blob | string, options?: { compress?: boolean }): Promise<number>;
+};
+
+/** What a run made: every file, in the order it was written, and what was left out. */
+export type PackRun = {
   files: PackFileRecord[];
   failures: PackFailure[];
   notices: string[];
@@ -35,25 +43,26 @@ export type PackRunResult = {
 export type RunCampaignPackInput = {
   plan: PackPlan;
   backend: PackRenderBackend;
+  writer: PackFileWriter;
   buildDocuments: (files: PackFileRecord[], failures: PackFailure[]) => PackDocument[];
   signal?: AbortSignal;
   onProgress?: (progress: PackProgress) => void;
   now?: () => number;
-  modifiedAt?: Date;
 };
 
 const ETA_MIN_FRACTION = 0.02;
 const ETA_MIN_ELAPSED_MS = 1500;
 
+/** Stops with what aborted the run: an AbortError when it was cancelled. */
 function throwIfAborted(signal?: AbortSignal): void {
-  if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+  signal?.throwIfAborted();
 }
 
 function isAbort(error: unknown): boolean {
   return (error as { name?: string } | null)?.name === "AbortError";
 }
 
-function createTracker(input: RunCampaignPackInput, writer: PackZipWriter, failures: PackFailure[]) {
+function createTracker(input: RunCampaignPackInput, files: PackFileRecord[], failures: PackFailure[]) {
   const now = input.now ?? (() => performance.now());
   const total = Math.max(input.plan.totals.units, 1e-9);
   const startedAt = now();
@@ -66,7 +75,7 @@ function createTracker(input: RunCampaignPackInput, writer: PackZipWriter, failu
     return {
       fraction,
       label,
-      filesWritten: writer.files.length,
+      filesWritten: files.length,
       failures: failures.length,
       elapsedMs,
       etaMs: canEstimate ? (elapsedMs / fraction) * (1 - fraction) : null,
@@ -95,7 +104,7 @@ type Tracker = ReturnType<typeof createTracker>;
 
 type JobContext = {
   backend: PackRenderBackend;
-  writer: PackZipWriter;
+  writer: PackFileWriter;
   files: PackFileRecord[];
   metalSlug: (metal: PackMetalId) => string;
   tracker: Tracker;
@@ -132,13 +141,15 @@ async function runSpin(job: SpinJob, ctx: JobContext): Promise<void> {
 }
 
 async function runTurntable(job: TurntableJob, ctx: JobContext): Promise<void> {
-  const blob = await ctx.backend.renderTurntable(
+  const video = await ctx.backend.renderTurntable(
     job,
     (index) => ctx.tracker.advance(job.units / job.frameCount, `${job.label} · frame ${index + 1}/${job.frameCount}`),
     ctx.signal,
   );
   const record = { path: job.path, kind: "video" as const, metal: ctx.metalSlug(job.metal), width: job.width, height: job.height };
-  await writeFile(ctx, record, blob);
+  // The server's MP4 is written where its frames went, by the worker's ffmpeg; the browser's comes back to store.
+  if (typeof video === "number") ctx.files.push({ ...record, bytes: video });
+  else await writeFile(ctx, record, video);
 }
 
 async function runScope(job: ScopeJob, ctx: JobContext): Promise<void> {
@@ -159,16 +170,15 @@ function errorMessage(error: unknown): string {
 }
 
 /**
- * Renders every planned job, keeps going past failures (each is reported), streams
- * outputs into one ZIP, then appends the generated documents. Aborting rejects with an
- * AbortError and produces nothing.
+ * Renders every planned job, keeps going past failures (each is reported), writes each output
+ * as it is made, then appends the generated documents. Aborting stops the run with the signal's
+ * reason (an AbortError when it was cancelled) and writes nothing more.
  */
-export async function runCampaignPack(input: RunCampaignPackInput): Promise<PackRunResult> {
-  const { plan, backend, signal } = input;
-  const writer = new PackZipWriter(input.modifiedAt);
+export async function runCampaignPack(input: RunCampaignPackInput): Promise<PackRun> {
+  const { plan, backend, writer, signal } = input;
   const files: PackFileRecord[] = [];
   const failures: PackFailure[] = [];
-  const tracker = createTracker(input, writer, failures);
+  const tracker = createTracker(input, files, failures);
   const slugs = new Map(plan.metals.map((metal) => [metal.id, metal.slug]));
   const ctx: JobContext = {
     backend,
@@ -193,6 +203,8 @@ export async function runCampaignPack(input: RunCampaignPackInput): Promise<Pack
       await runJob(job, ctx);
     } catch (error) {
       if (isAbort(error)) throw error;
+      // Whatever failed once the run was stopped, the run stops for what stopped it.
+      throwIfAborted(signal);
       failures.push({ jobId: job.id, label: job.label, message: errorMessage(error) });
       tracker.advance(Math.max(0, job.units - (tracker.doneUnits() - unitsBefore)));
     }
@@ -204,14 +216,6 @@ export async function runCampaignPack(input: RunCampaignPackInput): Promise<Pack
     const bytes = await writer.add(doc.path, doc.content, { compress: true });
     files.push({ path: doc.path, bytes, kind: "document" });
   }
-  const zip = writer.finish();
   tracker.complete();
-  return {
-    zip,
-    zipName: plan.zipName,
-    files,
-    failures,
-    notices: [...backend.notices],
-    elapsedMs: tracker.elapsed(),
-  };
+  return { files, failures, notices: [...backend.notices], elapsedMs: tracker.elapsed() };
 }

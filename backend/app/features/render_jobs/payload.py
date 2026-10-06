@@ -2,7 +2,8 @@
 
 The payload is what the harness's export mode reads (src/features/render/harness/job-payload.ts):
 the spec, the look frozen at creation with the items it names, where to get the model, the
-watermark and the limits. On cloud storage the model and a background image come as URLs signed
+watermark and the limits, the scene, and the studio's address for a Campaign Pack's embed. On
+cloud storage the model and a background image come as URLs signed
 for 15 minutes; local storage signs none, so the payload names this API's routes for them, which
 take the job's token like every other worker call. A convert job's payload is its spec and its
 design's CAD files, fetched the same ways (ADR 0006).
@@ -18,7 +19,9 @@ from fastapi import HTTPException
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.core import storage
+from app.core.model_keys import viewer_id_from_model_key
 from app.features.render_jobs.job_files import longest_edge
 from app.features.render_jobs.worker import discard_outputs, end_attempt, max_runtime_seconds, running_job
 from app.features.scene.look import background_image_key, scene_look
@@ -122,7 +125,10 @@ def job_payload(db: Session, job_id: int, token: str) -> RenderJobPayload | Conv
         limits=PayloadLimits(
             max_edge=longest_edge(job.kind, job.spec), max_runtime_seconds=max_runtime_seconds(job.kind)
         ),
-        scene=PayloadScene(id=scene.id, name=scene.name, sku=scene.sku),
+        scene=PayloadScene(
+            id=scene.id, name=scene.name, sku=scene.sku, viewer_id=viewer_id_from_model_key(scene.model_key)
+        ),
+        app_url=get_settings().app_public_url.rstrip("/"),
     )
     db.commit()  # ends the read and its row lock
     return payload

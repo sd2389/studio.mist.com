@@ -135,6 +135,33 @@ def test_a_bad_pack_is_refused_naming_the_field(config, field):
     assert _refused(config).startswith(f"{field}:")
 
 
+def _framed_from(view: dict, auto_frame: bool = False) -> dict:
+    return {**pack(autoFrame=auto_frame), "view": view}
+
+
+def test_a_pack_that_isnt_auto_framed_keeps_the_studio_camera_it_shoots_from():
+    view = {"position": [1.2, 0.6, 1.8], "target": [0, 0.1, 0]}
+    spec = _parse(_framed_from(view))
+
+    assert normalised_spec(spec, ["RING-1_campaign-pack.zip"])["view"] == view
+    # Without one, the viewer's opening view; and none in the spec of an auto-framed pack.
+    assert "view" not in normalised_spec(_parse(pack(autoFrame=False)), ["RING-1_campaign-pack.zip"])
+    assert "view" not in normalised_spec(_parse(DEFAULT_PACK), ["RING-1_campaign-pack.zip"])
+    assert spec.parts() == _parse(pack(autoFrame=False)).parts()
+
+
+@pytest.mark.parametrize(
+    ("config", "field"),
+    [
+        (_framed_from({"position": [1, 1, 1], "target": [0, 0, 0]}, auto_frame=True), "spec"),
+        (_framed_from({"position": [1, 1], "target": [0, 0, 0]}), "spec.view.position"),
+        (_framed_from({"position": [1, 1, 1], "target": [0, 0, 0], "fov": 30}), "spec.view.fov"),
+    ],
+)
+def test_a_packs_view_is_a_camera_for_a_pack_that_isnt_auto_framed(config, field):
+    assert _refused(config).startswith(f"{field}:")
+
+
 def test_a_pack_with_nothing_to_render_says_what_to_pick():
     config = pack(angleIds=[], turntable={"enabled": False}, spin={"enabled": False}, cutScope=False)
 

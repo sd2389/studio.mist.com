@@ -13,6 +13,16 @@ class QuotaBalances(BaseModel):
     storage_bytes_limit: int
 
 
+class BulkUploadLimits(BaseModel):
+    """What one bulk upload may hold on the plan (BATCH_LIMITS, docs/adr/0006-bulk-pipeline.md),
+    so the upload page can say so before anything uploads."""
+
+    max_designs: int  # 0: the plan has no bulk upload
+    max_bytes: int  # every file of a batch, companions included
+    max_file_bytes: int
+    max_open_batches: int
+
+
 class PlanFeatures(BaseModel):
     max_variants_per_model: int
     max_image_resolution: int
@@ -22,6 +32,7 @@ class PlanFeatures(BaseModel):
     batch_export_enabled: bool
     video_8k_enabled: bool
     campaign_pack_enabled: bool
+    bulk_upload: BulkUploadLimits
 
 
 class UserBillingSnapshot(BaseModel):

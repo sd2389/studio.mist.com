@@ -28,9 +28,22 @@ const JOB_STAGE_LABELS: Record<string, string> = {
 
 type LabelledJob = Pick<RenderJob, "id" | "kind" | "status" | "stage" | "cancel_requested_at" | "spec" | "watermark">;
 
+/** What the files of a kind's jobs are, one and several. */
+const OUTPUT_NOUNS: Record<string, readonly [one: string, several: string]> = {
+  still: ["image", "images"],
+  angle_set: ["image", "images"],
+  turntable: ["video", "videos"],
+};
+
 /** "1 credit", "4 credits". */
 export function creditsLabel(credits: number): string {
   return `${credits} ${credits === 1 ? "credit" : "credits"}`;
+}
+
+/** "1 image", "3 videos": `count` files of a `kind` job; "files" for kinds that make other things. */
+export function outputsLabel(kind: string, count: number): string {
+  const [one, several] = OUTPUT_NOUNS[kind] ?? ["file", "files"];
+  return `${count} ${count === 1 ? one : several}`;
 }
 
 /** What the job is doing now: "Queued", "Encoding", "Canceling", "Ready". */

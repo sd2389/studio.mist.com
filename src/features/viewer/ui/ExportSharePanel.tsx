@@ -206,7 +206,7 @@ export function ExportSharePanel({
         <ExportActionButton
           icon={<Video className="size-4" aria-hidden />}
           title="360° turntable"
-          hint="MP4 via Mediabunny + WebCodecs"
+          hint={serverExports ? "MP4 rendered on our servers" : "MP4 via Mediabunny + WebCodecs"}
           onClick={onOpenVideo360}
         />
         <ExportActionButton

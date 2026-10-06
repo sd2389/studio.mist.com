@@ -1,7 +1,15 @@
 import type { LookSnapshot } from "@/features/viewer";
 import { computeImageSize } from "@/lib/export-presets";
 import type { StillExportOptions } from "../ui/StillExportSettings";
-import type { RenderJob, RenderJobCamera, RenderJobRequest, StillJobSpec } from "./render-jobs-api";
+import type {
+  RenderJob,
+  RenderJobCamera,
+  RenderJobRequest,
+  StillJobSpec,
+  TurntableJobSpec,
+  TurntablePath,
+  VideoQuality,
+} from "./render-jobs-api";
 
 /*
  * The create requests the studio sends (ADR 0005). Pure: the camera and the look come in, so
@@ -44,7 +52,8 @@ export function quickStillSpec(viewport: { width: number; height: number }, came
   return { camera, width, height, format: "png", transparent: false };
 }
 
-type StillJobTarget = {
+/** What a job renders: a saved scene, in a look, and the stem of the file it makes. */
+export type RenderJobTarget = {
   sceneId: number;
   /** The studio's current look; without it, the saved variant's, else the scene's saved look. */
   look?: LookSnapshot | null;
@@ -56,9 +65,50 @@ type StillJobTarget = {
 /** A `still` job of a saved scene. */
 export function stillJobRequest(
   spec: StillJobSpec,
-  { sceneId, look = null, variantId = null, name }: StillJobTarget,
+  { sceneId, look = null, variantId = null, name }: RenderJobTarget,
 ): RenderJobRequest {
   return { kind: "still", scene_id: sceneId, variant_id: variantId, look, name, spec };
+}
+
+/** What the video pickers set: the frame size, the frame rate and count, and how it is encoded. */
+export type VideoJobSettings = {
+  width: number;
+  height: number;
+  fps: number;
+  frames: number;
+  quality: VideoQuality;
+};
+
+/** The largest even size up to `edge`: H.264's 4:2:0 chroma takes even frame sizes only. */
+function evenEdge(edge: number): number {
+  return 2 * Math.floor(edge / 2);
+}
+
+/** A turntable's spec from the video settings, its camera moving along `path`. */
+export function turntableJobSpec(settings: VideoJobSettings, path: TurntablePath): TurntableJobSpec {
+  const { width, height, fps, frames, quality } = settings;
+  return { width: evenEdge(width), height: evenEdge(height), fps, frames, quality, path };
+}
+
+/**
+ * Once round the target from `start`, frame 0 being `start` itself: the studio's turntable of
+ * the live view, as `recordTurntable` recorded it.
+ */
+export function orbitPath(start: RenderJobCamera): TurntablePath {
+  return { orbit: { start } };
+}
+
+/** A cut through `poses` in order, each held for an equal share of the frames, as `recordMultiAngle` recorded it. */
+export function posesPath(poses: readonly { id: string }[]): TurntablePath {
+  return { poses: poses.map((pose) => pose.id) };
+}
+
+/** A `turntable` job of a saved scene: one MP4. */
+export function turntableJobRequest(
+  spec: TurntableJobSpec,
+  { sceneId, look = null, variantId = null, name }: RenderJobTarget,
+): RenderJobRequest {
+  return { kind: "turntable", scene_id: sceneId, variant_id: variantId, look, name, spec };
 }
 
 /** What the API adds to a spec when it takes a job: the file names (`outputs` before A2), an image job's count. */

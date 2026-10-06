@@ -64,6 +64,9 @@ def _features_for_tier(tier: PlanTier) -> PlanFeatures:
         batch_export_enabled=quotas.batch_export,
         video_8k_enabled=quotas.max_8k_video_seconds > 0,
         campaign_pack_enabled=quotas.campaign_pack,
+        max_video_fps=quotas.max_video_fps,
+        max_video_seconds=quotas.max_video_seconds,
+        max_8k_video_seconds=quotas.max_8k_video_seconds,
     )
 
 

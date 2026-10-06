@@ -213,6 +213,17 @@ def test_a_turntable_orbits_from_any_camera_or_cuts_through_poses(path, kept):
     assert normalised_spec(spec, [])["path"] == kept
 
 
+def test_a_cut_holds_every_saved_pose_after_the_four_built_in_ones():
+    """The studio's Multi-angle sends the four built-ins, then up to 32 saved poses."""
+    built_in = ["pose-top", "pose-right", "pose-default", "pose-left"]
+    saved = [f"pose-{n}" for n in range(32)]
+
+    spec = parse_spec("turntable", _turntable(path={"poses": built_in + saved}))
+    assert normalised_spec(spec, [])["path"]["poses"] == built_in + saved
+
+    assert _refused("turntable", _turntable(path={"poses": built_in + saved + ["pose-extra"]})).startswith("spec.path")
+
+
 @pytest.mark.parametrize(
     ("spec", "field"),
     [
@@ -236,7 +247,7 @@ def test_a_turntable_orbits_from_any_camera_or_cuts_through_poses(path, kept):
         (_turntable(path={"spiral": {}}), "spec.path.spiral"),
         (_turntable(path={"poses": []}), "spec.path.poses"),
         (_turntable(path={"poses": ["../etc"]}), "spec.path.poses[0]"),
-        (_turntable(path={"poses": ["pose-top"] * 33}), "spec.path.poses"),
+        (_turntable(path={"poses": ["pose-top"] * 37}), "spec.path.poses"),  # 32 saved + 4 built-in, + 1
         (_turntable(frames=2, path={"poses": ["pose-top", "pose-left", "pose-right"]}), "spec"),
         (_turntable(transparent=False), "spec.transparent"),
         (_turntable(format="png"), "spec.format"),

@@ -32,6 +32,31 @@ export type StillJobSpec = ImageJobSpec & { camera: RenderJobCamera };
 export type AngleSetJobSpec = ImageJobSpec & { cameras: RenderJobCamera[] };
 
 /**
+ * Where a turntable's camera goes: once round the target from a start camera, frame 0 being
+ * that camera (the studio's turntable of the live view), or a cut through poses by id, each
+ * held for an equal share of the frames (its "Multi-angle"). The poses are the look's saved
+ * ones or the studio's four built-in ones.
+ */
+export type TurntablePath = { orbit: { start: RenderJobCamera } } | { poses: string[] };
+
+/** How the worker encodes a video: x264 at CRF 23, 20 or 17. */
+export type VideoQuality = "standard" | "high" | "max";
+
+/** A video, rendered frame by frame and encoded on the server as one H.264 MP4. */
+export type TurntableJobSpec = {
+  /** Even both, for H.264's 4:2:0 chroma; within the plan's cap, and 8K only on plans with 8K video. */
+  width: number;
+  height: number;
+  /** 1 to 60, within the plan's (Free: 30). */
+  fps: number;
+  /** At most 3,600, and the plan's length at `fps` (Free: 20 s); a cut through poses needs one a pose. */
+  frames: number;
+  /** "high" when left out. */
+  quality?: VideoQuality;
+  path: TurntablePath;
+};
+
+/**
  * The look a job keeps: the snapshot it was sent, validated, with a background image kept as
  * `{ type: "image", asset_id }` rather than an address.
  */
@@ -49,7 +74,11 @@ export type RenderJobRequest = {
   look?: LookSnapshot | RenderJobLook | null;
   /** The outputs' file stem; the scene's SKU or name without it. */
   name?: string | null;
-} & ({ kind: "still"; spec: StillJobSpec } | { kind: "angle_set"; spec: AngleSetJobSpec });
+} & (
+  | { kind: "still"; spec: StillJobSpec }
+  | { kind: "angle_set"; spec: AngleSetJobSpec }
+  | { kind: "turntable"; spec: TurntableJobSpec }
+);
 
 export type RenderJobStatus = "queued" | "running" | "completed" | "failed" | "canceled";
 

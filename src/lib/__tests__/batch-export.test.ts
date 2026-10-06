@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { batchJobTarget, estimateBatchJobCount, type BatchExportJob } from "@/lib/variants/batch-export";
+import type { LookSnapshot } from "@/features/viewer";
+import {
+  batchJobTarget,
+  batchRenderTargets,
+  estimateBatchJobCount,
+  type BatchExportJob,
+} from "@/lib/variants/batch-export";
 import { buildModelConfigFromSlots } from "@/lib/slot-materials/model-config";
 import type { ModelVariant } from "@/lib/variants/types";
 
@@ -39,6 +45,23 @@ describe("batchJobTarget", () => {
 
   it("renders another scene without variants as it was saved", () => {
     expect(batchJobTarget(batchJob(913, "Halo band", null), 812)).toMatchObject({ sceneId: 913, variantId: null, live: false });
+  });
+});
+
+describe("batchRenderTargets", () => {
+  it("sends the studio's look for the current scene's live job only, and ends each file stem the same", () => {
+    const look = { material: "platinum", lighting: "studio" } as LookSnapshot;
+    const targets = [
+      batchJobTarget(batchJob(812, "Solitaire", null), 812),
+      batchJobTarget(batchJob(812, "Solitaire", { id: "variant-rose", name: "Rose gold" }), 812),
+      batchJobTarget(batchJob(913, "Halo band", null), 812),
+    ];
+
+    expect(batchRenderTargets(targets, look, "360")).toEqual([
+      { sceneId: 812, variantId: null, look, name: "solitaire-live-360" },
+      { sceneId: 812, variantId: "variant-rose", look: null, name: "solitaire-rose_gold-360" },
+      { sceneId: 913, variantId: null, look: null, name: "halo_band-live-360" },
+    ]);
   });
 });
 

@@ -44,3 +44,14 @@ def test_pricing_catalog_lists_ai_image_credits_per_plan():
 
     credits = {plan.tier: plan.quotas.ai_image_credits for plan in get_pricing_catalog().plans}
     assert credits == {"free": 25, "grow": 150, "studio": 500}
+
+
+def test_plan_features_carry_the_video_caps_render_jobs_check():
+    """The studio's video pickers lock what a plan's turntable jobs would be refused, from these."""
+    from app.features.billing.service import get_pricing_catalog
+
+    caps = {
+        plan.tier: (plan.features.max_video_fps, plan.features.max_video_seconds, plan.features.max_8k_video_seconds)
+        for plan in get_pricing_catalog().plans
+    }
+    assert caps == {"free": (30, 20, 0), "grow": (60, 60, 20), "studio": (60, 60, 20)}

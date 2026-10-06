@@ -61,6 +61,24 @@ describe("RenderJobCost for a bulk request", () => {
     expect(html).toContain("1 of 3 can&#x27;t be rendered: Variant not found");
   });
 
+  it("counts a bulk request of turntables in videos, one a job, not in frames", () => {
+    const turntable: RenderJobQuote = { ...still, credits: 3, width: 1920, height: 1080, frames: 120, outputs: ["ring-live-360.mp4"] };
+    const bulk: RenderJobBulkQuote = {
+      credits: 6,
+      items: [
+        { quote: turntable, refused: null },
+        { quote: { ...turntable, outputs: ["ring-rose_gold-360.mp4"] }, refused: null },
+      ],
+      refused: null,
+      warnings: [],
+    };
+    const html = renderToStaticMarkup(<RenderJobCost quote={bulk} error={null} pending={false} kind="turntable" />);
+
+    expect(html).toContain("6 credits");
+    expect(html).toContain("for 2 videos");
+    expect(html).not.toContain("240");
+  });
+
   it("offers an upgrade when the plan has no bulk requests, though its jobs are priced", () => {
     const bulk: RenderJobBulkQuote = {
       credits: 2,

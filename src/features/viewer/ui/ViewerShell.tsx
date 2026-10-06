@@ -1,7 +1,8 @@
 "use client";
 
 import { useGLTF } from "@react-three/drei";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { ExportSceneProvider, type ExportScene } from "@/features/render";
 import { modelExtFromUrl, viewerIdFromModelKey } from "@/lib/model-key";
 import { EmbedChrome } from "./EmbedChrome";
 import { StudioPrimaryBar } from "./StudioPrimaryBar";
@@ -16,6 +17,7 @@ import { StudioTopBar } from "./StudioTopBar";
 import { ZoomControls } from "./ZoomControls";
 import { useStudioPrimaryPanel } from "./useStudioPrimaryPanel";
 import type { LookStage } from "../domain/look-stage";
+import { lookSnapshot } from "../domain/look-snapshot";
 import { cn } from "@/lib/utils";
 import type { EmbedSettings } from "@/lib/embed-settings";
 import { resolveModelUrl } from "@/lib/model-url";
@@ -57,13 +59,19 @@ export function ViewerShell({
     }
   }, [modelUrl]);
 
-  const { modelConfig, setModelConfig, sceneSku, sceneLook } = useSavedScene({
+  const { modelConfig, setModelConfig, sceneId, sceneSku, sceneLook } = useSavedScene({
     modelId,
     variant,
     initialScene,
   });
   // The saved look's catalogue items come with the scene; the Edit tab adds the pages it browses.
   const stage = useLookStage({ modelUrl, modelConfig, catalogs, lookItems: sceneLook });
+  // Server exports render the saved scene with the look the studio shows (ADR 0005).
+  const exportScene = useMemo<ExportScene | null>(
+    () =>
+      sceneId ? { sceneId, look: () => lookSnapshot(useMaterialPresetStore.getState(), modelConfig) } : null,
+    [modelConfig, sceneId],
+  );
 
   const { openers, modals } = useStudioModals(modelId, sceneSku);
   const editPanel =
@@ -104,7 +112,7 @@ export function ViewerShell({
   }
 
   return (
-    <>
+    <ExportSceneProvider value={exportScene}>
       <div className="studio-stage flex h-[100dvh] flex-col overflow-hidden bg-background text-foreground md:flex-row">
         <aside
           className={cn(
@@ -140,7 +148,7 @@ export function ViewerShell({
       </div>
 
       {modals}
-    </>
+    </ExportSceneProvider>
   );
 }
 

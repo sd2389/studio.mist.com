@@ -2,6 +2,7 @@
 
 import { Download, ImageIcon, Loader2 } from "lucide-react";
 import { useState } from "react";
+import { setThumbnailFromView, useServerExports } from "@/features/render";
 import { updateScene } from "@/features/scene";
 import { VariantManager, type VariantPlan } from "@/features/variants";
 import type { ModelVariant } from "@/lib/variants/types";
@@ -52,6 +53,8 @@ export function EditorSettingsTab({
   const [skuError, setSkuError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState<"update" | "thumbnail" | "download" | null>(null);
+  // While server exports are on, the thumbnail is set from the view, as "Set as thumbnail" (ADR 0005).
+  const serverExports = useServerExports();
 
   const [previousInitial, setPreviousInitial] = useState(initialMetadata);
   if (previousInitial !== initialMetadata) {
@@ -79,6 +82,19 @@ export function EditorSettingsTab({
       } else {
         setStatus(message);
       }
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /** "Set as thumbnail": the view, at most 1024 px on its longest side, free and unmarked. */
+  async function handleSetThumbnail() {
+    setBusy("thumbnail");
+    setStatus(null);
+    try {
+      setStatus((await setThumbnailFromView(sceneId)) ? "Thumbnail updated" : "Canvas not ready");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Thumbnail update failed");
     } finally {
       setBusy(null);
     }
@@ -179,15 +195,15 @@ export function EditorSettingsTab({
         <Button
           type="button"
           variant="outline"
-          onClick={() => void handleUpdateThumbnail()}
-          disabled={busy !== null}
+          onClick={() => void (serverExports ? handleSetThumbnail() : handleUpdateThumbnail())}
+          disabled={busy !== null || serverExports === null}
         >
           {busy === "thumbnail" ? (
             <Loader2 className="size-4 animate-spin" aria-hidden />
           ) : (
             <ImageIcon className="size-4" aria-hidden />
           )}
-          Update Thumbnail
+          {serverExports ? "Set as thumbnail" : "Update Thumbnail"}
         </Button>
         <Button
           type="button"

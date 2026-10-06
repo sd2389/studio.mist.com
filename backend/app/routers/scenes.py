@@ -2,16 +2,23 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user
+from app.core.request_body import read_at_most
 from app.database import get_db
 from app.features.scene import service as scene_service
+from app.features.scene import thumbnail as thumbnail_service
 from app.models.user import User
 from app.schemas.scene import SceneDetail, SceneListItem, SceneListPage, SceneListQuery, ScenePatch
 
 router = APIRouter()
+
+
+async def _thumbnail_image(request: Request) -> bytes:
+    """The request body: a capture of the studio's view, 413 as soon as it passes the cap."""
+    return await read_at_most(request.stream(), thumbnail_service.MAX_THUMBNAIL_BYTES)
 
 
 @router.get("", response_model=SceneListPage)
@@ -50,6 +57,17 @@ def patch_scene(
     user: User = Depends(get_current_user),
 ) -> SceneListItem:
     return scene_service.patch_scene_by_id(db, scene_id, user.id, body)
+
+
+@router.put("/{scene_id}/thumbnail", response_model=SceneListItem)
+def put_scene_thumbnail(
+    scene_id: int,
+    user: User = Depends(get_current_user),
+    image: bytes = Depends(_thumbnail_image),
+    db: Session = Depends(get_db),
+) -> SceneListItem:
+    """The thumbnail, from a capture of the studio's live view (ADR 0005): the owner's, free, unmarked."""
+    return thumbnail_service.set_scene_thumbnail(db, scene_id, user, image)
 
 
 @router.patch("/by-model/{viewer_id:path}", response_model=SceneListItem)

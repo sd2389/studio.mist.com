@@ -31,13 +31,22 @@ export type StillJobSpec = ImageJobSpec & { camera: RenderJobCamera };
 /** One look from 1 to 12 cameras. */
 export type AngleSetJobSpec = ImageJobSpec & { cameras: RenderJobCamera[] };
 
+/**
+ * The look a job keeps: the snapshot it was sent, validated, with a background image kept as
+ * `{ type: "image", asset_id }` rather than an address.
+ */
+export type RenderJobLook = Record<string, unknown>;
+
 /** A create body (`RenderJobCreate`), for the kinds the API renders so far. */
 export type RenderJobRequest = {
   scene_id: number;
   /** A saved variant's look, when `look` is left out. */
   variant_id?: string | null;
-  /** The studio's current look (`lookSnapshot`); without it, the variant's or the scene's saved look. */
-  look?: LookSnapshot | null;
+  /**
+   * The studio's current look (`lookSnapshot`), or the look a job kept when it is asked for
+   * again; without it, the variant's or the scene's saved look.
+   */
+  look?: LookSnapshot | RenderJobLook | null;
   /** The outputs' file stem; the scene's SKU or name without it. */
   name?: string | null;
 } & ({ kind: "still"; spec: StillJobSpec } | { kind: "angle_set"; spec: AngleSetJobSpec });
@@ -65,8 +74,16 @@ export type RenderJob = {
   status: RenderJobStatus;
   scene_id: number | null;
   batch_id: number | null;
-  /** The normalised spec, with `frames` (its image count) and `outputs` (its file names). */
+  /**
+   * The normalised spec, which carries `frames` and `output_names`; turntables and spins have
+   * their own `frames`. A turntable makes one `.mp4`, a spin one `-spin.zip`, and a Campaign Pack
+   * one `_campaign-pack.zip`.
+   */
   spec: Record<string, unknown>;
+  /** What else its request named, so the same job can be asked for again (null on older jobs). */
+  look: RenderJobLook | null;
+  variant_id: string | null;
+  name: string | null;
   watermark: boolean;
   /** Held while it renders, charged when it completes, refunded when it fails or is canceled. */
   credits: number;
@@ -80,7 +97,7 @@ export type RenderJob = {
   error_code: string | null;
   cancel_requested_at: string | null;
   outputs: RenderJobOutput[];
-  /** UTC, without a zone designator. */
+  /** UTC, ending in Z (`parseApiTime` reads it). */
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
@@ -97,6 +114,23 @@ export type RenderJobQuote = {
   frames: number;
   outputs: string[];
   watermark: boolean;
+  warnings: string[];
+};
+
+/** Why a job or a request can't be made: the status creating it would answer (402, 404, 400), and why. */
+export type RenderJobRefusal = { status: number; detail: string };
+
+/** One job of a bulk quote: what it would cost and make, or why it can't be made. */
+export type RenderJobBulkQuoteItem = { quote: RenderJobQuote | null; refused: RenderJobRefusal | null };
+
+/** What a bulk request would cost, job by job, before anything is spent. */
+export type RenderJobBulkQuote = {
+  /** The jobs that can be made, together. */
+  credits: number;
+  /** In the request's order. */
+  items: RenderJobBulkQuoteItem[];
+  /** Why the plan refuses the request as a whole (Free has no bulk requests); its jobs are still priced. */
+  refused: RenderJobRefusal | null;
   warnings: string[];
 };
 
@@ -127,15 +161,30 @@ export function createRenderJob(
   });
 }
 
-/** Queues up to 100 jobs at once (Grow and Studio), all or none. */
-export async function createRenderJobs(requests: RenderJobRequest[], { signal }: CallOptions = {}): Promise<RenderJob[]> {
-  const { jobs } = await apiPost<{ jobs: RenderJob[] }>("/api/render-jobs/bulk", { jobs: requests }, { signal });
+/**
+ * Queues up to 100 jobs at once (Grow and Studio), all or none. Like a single job, a repeated
+ * `idempotencyKey` with the same requests answers the jobs the first call made.
+ */
+export async function createRenderJobs(
+  requests: RenderJobRequest[],
+  { idempotencyKey = crypto.randomUUID(), signal }: CallOptions & { idempotencyKey?: string } = {},
+): Promise<RenderJob[]> {
+  const { jobs } = await apiPost<{ jobs: RenderJob[] }>(
+    "/api/render-jobs/bulk",
+    { jobs: requests },
+    { headers: { "Idempotency-Key": idempotencyKey }, signal },
+  );
   return jobs;
 }
 
 /** What `request` would cost; nothing is held or queued. */
 export function quoteRenderJob(request: RenderJobRequest, { signal }: CallOptions = {}): Promise<RenderJobQuote> {
   return apiPost<RenderJobQuote>("/api/render-jobs/quote", request, { signal });
+}
+
+/** What a bulk request would cost: each job's quote or why it can't be made, and the total. Nothing is held or queued. */
+export function quoteRenderJobs(requests: RenderJobRequest[], { signal }: CallOptions = {}): Promise<RenderJobBulkQuote> {
+  return apiPost<RenderJobBulkQuote>("/api/render-jobs/bulk/quote", { jobs: requests }, { signal });
 }
 
 export function getRenderJob(jobId: number, { signal }: CallOptions = {}): Promise<RenderJob> {

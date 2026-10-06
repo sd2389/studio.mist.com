@@ -184,6 +184,14 @@ def first_scene_for_sku(db: Session, sku: str) -> Scene | None:
     return db.execute(select(Scene).where(Scene.sku == sku)).scalars().first()
 
 
+def scene_list_item(db: Session, scene: Scene) -> SceneListItem:
+    """The scene as a list shows it, with its render count."""
+    render_count = int(
+        db.execute(select(func.count(Render.id)).where(Render.scene_id == scene.id)).scalar_one()
+    )
+    return to_list_item(scene, render_count)
+
+
 def commit_patch(db: Session, scene: Scene, body: ScenePatch) -> SceneListItem:
     assert_variants_fit_plan(db, scene, body)
     takes_new_sku = bool(body.sku) and body.sku != scene.sku
@@ -198,10 +206,7 @@ def commit_patch(db: Session, scene: Scene, body: ScenePatch) -> SceneListItem:
     db.refresh(scene)
     # The studio saves about 350 ms after every change; most saves change nothing published.
     publish_service.republish_if_changed(db, scene, published_before)
-    render_count = int(
-        db.execute(select(func.count(Render.id)).where(Render.scene_id == scene.id)).scalar_one()
-    )
-    return to_list_item(scene, render_count)
+    return scene_list_item(db, scene)
 
 
 def scene_list_conditions(user_id: int, query: SceneListQuery) -> list[ColumnElement[bool]]:

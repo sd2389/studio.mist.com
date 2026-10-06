@@ -51,6 +51,15 @@ export function apiPatch<T>(path: string, body: unknown): Promise<T> {
   return request<T>(path, { method: "PATCH", body: JSON.stringify(body) });
 }
 
+/** A file, such as an image, as the body itself, under its own content type. */
+export function apiPutFile<T>(path: string, file: Blob): Promise<T> {
+  return request<T>(path, {
+    method: "PUT",
+    body: file,
+    headers: { "Content-Type": file.type || "application/octet-stream" },
+  });
+}
+
 export function apiDelete<T>(path: string): Promise<T> {
   return request<T>(path, { method: "DELETE" });
 }

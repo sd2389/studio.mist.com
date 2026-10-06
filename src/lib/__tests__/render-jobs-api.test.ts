@@ -11,11 +11,11 @@ vi.mock("@/lib/auth/upstream", async (importOriginal) => ({
     path === "/features" ? Promise.resolve(Response.json({ flags: apiFlags })) : upstreamFetch(path, init),
 }));
 
-const { cancelRenderJob, createRenderJob, listRenderJobs, outputDownloadUrl } = await import(
-  "@/features/render/lib/render-jobs-api"
-);
+const { cancelRenderJob, createRenderJob, createRenderJobs, listRenderJobs, outputDownloadUrl, quoteRenderJobs } =
+  await import("@/features/render/lib/render-jobs-api");
 const jobsRoute = await import("@/app/api/render-jobs/route");
 const bulkRoute = await import("@/app/api/render-jobs/bulk/route");
+const bulkQuoteRoute = await import("@/app/api/render-jobs/bulk/quote/route");
 const jobRoute = await import("@/app/api/render-jobs/[id]/route");
 const cancelRoute = await import("@/app/api/render-jobs/[id]/cancel/route");
 const downloadRoute = await import("@/app/api/render-jobs/[id]/outputs/[renderId]/download/route");
@@ -57,6 +57,39 @@ describe("render jobs client", () => {
     expect(fetch).toHaveBeenCalledWith("/api/render-jobs", expect.objectContaining({ method: "POST", body: JSON.stringify(STILL) }));
     expect(keys[0]).toBe("click-1");
     expect(keys[1]).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it("starts a bulk request with an Idempotency-Key too, a fresh one for each call", async () => {
+    const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async () => answer({ jobs: [JOB] }, 201));
+
+    await createRenderJobs([STILL], { idempotencyKey: "batch-1" });
+    await createRenderJobs([STILL]);
+    await createRenderJobs([STILL]);
+
+    const keys = fetch.mock.calls.map(([, init]) => new Headers(init?.headers).get("Idempotency-Key"));
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/render-jobs/bulk",
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ jobs: [STILL] }) }),
+    );
+    expect(keys[0]).toBe("batch-1");
+    expect(keys[1]).toMatch(/^[0-9a-f-]{36}$/);
+    expect(keys[2]).not.toBe(keys[1]);
+  });
+
+  it("prices a bulk request job by job through the bulk quote proxy", async () => {
+    const quote = {
+      credits: 2,
+      items: [{ quote: { credits: 2, width: 3840, height: 2160, frames: 1, outputs: ["a.png"], watermark: false, warnings: [] }, refused: null }],
+      refused: null,
+      warnings: [],
+    };
+    const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async () => answer(quote));
+
+    expect(await quoteRenderJobs([STILL])).toEqual(quote);
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/render-jobs/bulk/quote",
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ jobs: [STILL] }) }),
+    );
   });
 
   it("lists with only the filters that are set, and cancels and downloads through the proxies", async () => {
@@ -115,18 +148,69 @@ describe("POST /api/render-jobs", () => {
 });
 
 describe("POST /api/render-jobs/bulk", () => {
-  it("sends no Idempotency-Key, which the API refuses there", async () => {
+  it("passes the Idempotency-Key on, and answers 201 for new jobs and 200 for a repeated key", async () => {
+    apiFlags = { server_exports: true };
+    upstreamFetch.mockResolvedValueOnce(answer({ jobs: [JOB] }, 201)).mockResolvedValueOnce(answer({ jobs: [JOB] }, 200));
+
+    const request = () => post("http://localhost/api/render-jobs/bulk", { jobs: [STILL] }, { "Idempotency-Key": "batch-1" });
+    const created = await bulkRoute.POST(request());
+    const repeated = await bulkRoute.POST(request());
+
+    expect([created.status, repeated.status]).toEqual([201, 200]);
+    const [path, init] = upstreamFetch.mock.calls[0];
+    expect(path).toBe("/render-jobs/bulk");
+    expect(JSON.parse(String(init?.body))).toEqual({ jobs: [STILL] });
+    expect(new Headers(init?.headers).get("Idempotency-Key")).toBe("batch-1");
+  });
+
+  it("sends no key when the caller gave none", async () => {
     apiFlags = { server_exports: true };
     upstreamFetch.mockResolvedValue(answer({ jobs: [JOB] }, 201));
 
-    const res = await bulkRoute.POST(
-      post("http://localhost/api/render-jobs/bulk", { jobs: [STILL] }, { "Idempotency-Key": "click-1" }),
+    await bulkRoute.POST(post("http://localhost/api/render-jobs/bulk", { jobs: [STILL] }));
+
+    expect(new Headers(upstreamFetch.mock.calls[0][1]?.headers).has("Idempotency-Key")).toBe(false);
+  });
+});
+
+describe("POST /api/render-jobs/bulk/quote", () => {
+  it("relays each job's quote or refusal, the total and the plan's refusal", async () => {
+    const quote = {
+      credits: 2,
+      items: [
+        { quote: { credits: 2, width: 3840, height: 2160, frames: 1, outputs: ["a.png"], watermark: true, warnings: [] }, refused: null },
+        { quote: null, refused: { status: 404, detail: "Variant not found" } },
+      ],
+      refused: { status: 402, detail: "Rendering several scenes or variants at once is part of Grow and Studio, not Free." },
+      warnings: [],
+    };
+    upstreamFetch.mockResolvedValue(answer(quote));
+
+    const res = await bulkQuoteRoute.POST(post("http://localhost/api/render-jobs/bulk/quote", { jobs: [STILL, STILL] }));
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(quote);
+    const [path, init] = upstreamFetch.mock.calls[0];
+    expect(path).toBe("/render-jobs/bulk/quote");
+    expect(JSON.parse(String(init?.body))).toEqual({ jobs: [STILL, STILL] });
+  });
+
+  it("answers the API's refusal as { error } with its status", async () => {
+    upstreamFetch.mockResolvedValue(answer({ detail: "Not Found" }, 404));
+
+    const res = await bulkQuoteRoute.POST(post("http://localhost/api/render-jobs/bulk/quote", { jobs: [STILL] }));
+
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "Not Found" });
+  });
+
+  it("refuses a body that isn't JSON before asking the API", async () => {
+    const res = await bulkQuoteRoute.POST(
+      new Request("http://localhost/api/render-jobs/bulk/quote", { method: "POST", body: "{not json" }),
     );
 
-    expect(res.status).toBe(201);
-    const [path, init] = upstreamFetch.mock.calls[0];
-    expect(path).toBe("/render-jobs/bulk");
-    expect(new Headers(init?.headers).has("Idempotency-Key")).toBe(false);
+    expect(res.status).toBe(400);
+    expect(upstreamFetch).not.toHaveBeenCalled();
   });
 });
 

@@ -1,8 +1,8 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { AuthRequestError } from "@/lib/auth/is-auth-required-error";
-import type { RenderJobQuote } from "../lib/render-jobs-api";
-import { RenderJobCost } from "./RenderJobCost";
+import type { RenderJobBulkQuote, RenderJobQuote } from "../lib/render-jobs-api";
+import { RenderJobCost, RenderJobError } from "./RenderJobCost";
 
 const QUOTE: RenderJobQuote = {
   credits: 2,
@@ -35,5 +35,53 @@ describe("RenderJobCost", () => {
   it("says it is pricing until the quote is in, and nothing when there is nothing to price", () => {
     expect(renderToStaticMarkup(<RenderJobCost quote={null} error={null} pending />)).toContain("Pricing…");
     expect(renderToStaticMarkup(<RenderJobCost quote={null} error={null} pending={false} />)).toBe("");
+  });
+});
+
+describe("RenderJobCost for a bulk request", () => {
+  const still: RenderJobQuote = { ...QUOTE, warnings: [] };
+
+  it("shows the total for the images that can be made, and why the others can't", () => {
+    const bulk: RenderJobBulkQuote = {
+      credits: 4,
+      items: [
+        { quote: still, refused: null },
+        { quote: still, refused: null },
+        { quote: null, refused: { status: 404, detail: "Variant not found" } },
+      ],
+      refused: null,
+      warnings: ["This needs 4 render credits and 3 are left."],
+    };
+    const html = renderToStaticMarkup(<RenderJobCost quote={bulk} error={null} pending={false} />);
+
+    expect(html).toContain("4 credits");
+    expect(html).toContain("for 2 images");
+    expect(html).toContain("watermarked");
+    expect(html).toContain("This needs 4 render credits and 3 are left.");
+    expect(html).toContain("1 of 3 can&#x27;t be rendered: Variant not found");
+  });
+
+  it("offers an upgrade when the plan has no bulk requests, though its jobs are priced", () => {
+    const bulk: RenderJobBulkQuote = {
+      credits: 2,
+      items: [{ quote: still, refused: null }],
+      refused: { status: 402, detail: "Rendering several scenes or variants at once is part of Grow and Studio, not Free." },
+      warnings: [],
+    };
+    const html = renderToStaticMarkup(<RenderJobCost quote={bulk} error={null} pending={false} />);
+
+    expect(html).toContain("part of Grow and Studio, not Free.");
+    expect(html).toContain('href="/pricing"');
+    expect(html).not.toContain("Costs");
+  });
+});
+
+describe("RenderJobError", () => {
+  it("offers an upgrade for a job the credits or plan can't cover, and the reason otherwise", () => {
+    const short = new AuthRequestError("Not enough render credits (2 needed). Upgrade your plan or buy a top-up.", 402);
+
+    expect(renderToStaticMarkup(<RenderJobError error={short} />)).toContain('href="/pricing"');
+    expect(renderToStaticMarkup(<RenderJobError error={new Error("Render queue full")} />)).toContain("Render queue full");
+    expect(renderToStaticMarkup(<RenderJobError error={null} />)).toBe("");
   });
 });

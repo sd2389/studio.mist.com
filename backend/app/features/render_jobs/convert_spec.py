@@ -24,7 +24,8 @@ from pydantic import Field
 
 from app.config import get_settings
 from app.features.billing.plans import MB
-from app.features.render_jobs.specs import PlannedOutput, SpecModel
+from app.features.render_jobs.job_files import PlannedOutput
+from app.features.render_jobs.specs import SpecModel
 from app.features.upload.thumbnails import MAX_THUMBNAIL_BYTES
 
 MODEL_OUTPUT = "model.glb"

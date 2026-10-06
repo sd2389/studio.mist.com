@@ -15,7 +15,7 @@ export type DroppedManifest = { name: string; text: string };
  * drop's shared folder left off), the CSV manifest, the designs they make and every problem
  * with them, checked as the API will check them.
  */
-export function useBulkDrop(maxFileBytes: number | null) {
+export function useBulkDrop(maxFileBytes: number | null, maxBatchBytes: number | null = null) {
   const [files, setFiles] = useState<DroppedFile[]>([]);
   const [manifest, setManifest] = useState<DroppedManifest | null>(null);
   const [notes, setNotes] = useState<string[]>([]);
@@ -37,7 +37,7 @@ export function useBulkDrop(maxFileBytes: number | null) {
   async function addFiles(dropped: DroppedFile[]) {
     setReading(true);
     try {
-      const expanded = await expandZips(dropped);
+      const expanded = await expandZips(dropped, { maxFileBytes, maxTotalBytes: maxBatchBytes });
       const csvs = expanded.files.filter(({ path }) => extensionOf(path) === "csv");
       const others = expanded.files.filter(({ path }) => extensionOf(path) !== "csv");
       const dropNotes = expanded.failures.map(({ message }) => message);

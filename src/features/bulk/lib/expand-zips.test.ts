@@ -38,7 +38,7 @@ describe("filesInZip", () => {
       "rings/": new Uint8Array(0),
     });
 
-    const files = await filesInZip(asDropped("drop/catalog.zip", zip as Uint8Array<ArrayBuffer>));
+    const { files } = await filesInZip(asDropped("drop/catalog.zip", zip as Uint8Array<ArrayBuffer>));
 
     expect(await contents(files)).toEqual([
       ["drop/rings/R-1.3dm", "rhino"],
@@ -56,7 +56,7 @@ describe("filesInZip", () => {
       "catalog/manifest.csv": "file,sku\nP-220.stp,P-220\n",
     });
 
-    const files = await filesInZip(asDropped("catalog.zip", zip));
+    const { files } = await filesInZip(asDropped("catalog.zip", zip));
 
     expect(await contents(files)).toEqual([
       ["catalog/P-220.stp", "ISO-10303-21;"],
@@ -91,5 +91,35 @@ describe("expandZips", () => {
     expect(expanded.files.map(({ path }) => path)).toEqual(["R-9.stl"]);
     expect(expanded.failures.map(({ path }) => path)).toEqual(["cut.zip", "empty.zip"]);
     expect(expanded.failures[1].message).toBe("empty.zip couldn't be opened: it holds no files");
+  });
+
+  it("leaves out a file over the plan's limit as it unzips, whatever size the ZIP declares, and keeps the rest", async () => {
+    // Streamed entries declare no size; stored ones do. Either way the bytes are counted.
+    const streamed = await streamedZip({ "big.stp": "x".repeat(5000), "R-1.stl": "solid" });
+    const declared = zipSync({ "huge.obj": [strToU8("v".repeat(5000)), { level: 9 }], "R-2.stl": strToU8("solid") }) as Uint8Array<ArrayBuffer>;
+
+    const expanded = await expandZips([asDropped("a.zip", streamed), asDropped("b.zip", declared)], { maxFileBytes: 1000 });
+
+    expect(expanded.files.map(({ path }) => path)).toEqual(["R-1.stl", "R-2.stl"]);
+    expect(expanded.failures).toEqual([
+      { path: "big.stp", message: "big.stp is over 1000 B unzipped, and a file may be at most 1000 B, so it was left out." },
+      { path: "huge.obj", message: "huge.obj is over 1000 B unzipped, and a file may be at most 1000 B, so it was left out." },
+    ]);
+  });
+
+  it("stops a drop whose ZIPs unzip to more than a batch may hold, and opens no ZIP after it", async () => {
+    const bomb = await streamedZip({ "R-1.stl": "a".repeat(800), "R-2.stl": "b".repeat(800), "R-3.stl": "c".repeat(800) });
+    const next = zipSync({ "R-4.stl": strToU8("solid") }) as Uint8Array<ArrayBuffer>;
+    const loose = asDropped("R-5.stl", strToU8("solid") as Uint8Array<ArrayBuffer>);
+
+    const expanded = await expandZips([asDropped("bomb.zip", bomb), asDropped("next.zip", next), loose], {
+      maxFileBytes: 1000,
+      maxTotalBytes: 2000,
+    });
+
+    expect(expanded.files).toEqual([loose]);
+    expect(expanded.failures.map(({ path }) => path)).toEqual(["bomb.zip", "next.zip"]);
+    expect(expanded.failures[0].message).toBe("bomb.zip couldn't be opened: unzipped, it holds more than a batch may (2.0 KB)");
+    expect(expanded.failures[1].message).toBe("next.zip wasn't opened: the ZIPs before it already hold more than a batch may.");
   });
 });

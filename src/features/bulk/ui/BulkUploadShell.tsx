@@ -61,7 +61,7 @@ function uploadsByDesign(flow: BulkUploadFlow): Map<number, DesignUploadState> |
  * checked as the API will check them, priced, uploaded straight to storage and submitted.
  */
 export function BulkUploadShell({ billing, recentBatches, userEmail, isAdmin }: BulkUploadShellProps) {
-  const drop = useBulkDrop(billing?.features.bulk_upload?.max_file_bytes ?? null);
+  const drop = useBulkDrop(billing?.features.bulk_upload?.max_file_bytes ?? null, billing?.features.bulk_upload?.max_bytes ?? null);
   const { plan } = drop;
   const skuCheck = useSkuCheck(skusToCheck(withoutProblems(plan.designs, plan.problems)));
   const flow = useBulkUploadFlow(drop, skuCheck.held);

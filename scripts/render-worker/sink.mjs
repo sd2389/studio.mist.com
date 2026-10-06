@@ -242,6 +242,7 @@ export async function startSink({
 
   /** Where frames go: the open video's encoder, or the turntable's. */
   const frameTarget = () => {
+    if (clip?.finishing) throw new SinkError(409, `"${clip.name}" is being finished`);
     if (clip) return { width: clip.width, height: clip.height, write: (bytes) => clip.writer.write(bytes) };
     if (frameSize && onFrameBytes) return { ...frameSize, write: (bytes) => onFrameBytes(frames, bytes) };
     throw new SinkError(404, videos ? "no video is open" : "this job has no frames");
@@ -286,15 +287,21 @@ export async function startSink({
     frameBytesIn = 0;
   };
 
-  /** Closes the open video once all its frames are in, and stores the MP4 its encoder made. */
+  /**
+   * Closes the open video once all its frames are in, and stores the MP4 its encoder made. The
+   * video stays open, taking nothing more, until its encoder has finished.
+   */
   const endVideo = async (name) => {
-    if (clip?.name !== name) throw new SinkError(409, `"${name}" is not open`);
+    if (clip?.name !== name || clip.finishing) throw new SinkError(409, `"${name}" is not open`);
     if (takingFrame || frames !== clip.frames) throw new SinkError(409, `"${name}" has ${frames} of its ${clip.frames} frames`);
-    const { writer } = clip;
-    clip = null;
-    const file = { ...(await writer.finish()), contentType: "video/mp4" };
-    store(name, file);
-    return file.bytes;
+    clip.finishing = true;
+    try {
+      const file = { ...(await clip.writer.finish()), contentType: "video/mp4" };
+      store(name, file);
+      return file.bytes;
+    } finally {
+      clip = null;
+    }
   };
 
   const takeVideo = async (request, response, rest) => {

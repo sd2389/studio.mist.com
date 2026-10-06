@@ -287,6 +287,36 @@ describe("the sink's Campaign Pack", () => {
     expect((await send(`/videos/${path_(VIDEO)}`, { body: json(clip) })).status).toBe(404);
   });
 
+  it("takes nothing more for a video while its encoder finishes it", async () => {
+    let finishing;
+    const finished = new Promise((resolve) => (finishing = resolve));
+    await open({
+      names: null,
+      paths: true,
+      videos: {
+        open: async () => ({
+          write: async () => {},
+          finish: async () => {
+            await finished;
+            return { path: path.join(dir, "video-0.mp4"), bytes: 9, sha256: "0".repeat(64) };
+          },
+        }),
+      },
+    });
+    await send(`/videos/${path_(VIDEO)}`, { body: json(clip) });
+    await send("/frames/0", { body: frame(1) });
+    await send("/frames/1", { body: frame(2) });
+    const ending = send(`/videos/${path_(VIDEO)}/end`);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect((await send("/frames/2", { body: frame(3) })).status).toBe(409);
+    expect((await send(`/videos/${path_(VIDEO)}/end`)).status).toBe(409);
+    expect((await send(`/videos/${path_("RING-1/video/next.mp4")}`, { body: json(clip) })).status).toBe(409);
+    finishing();
+    expect((await ending).status).toBe(200);
+    expect((await send(`/videos/${path_("RING-1/video/next.mp4")}`, { body: json(clip) })).status).toBe(204);
+  });
+
   it("tells its outputs of each file it stores, and takes no more than the job makes", async () => {
     const stored = [];
     await openPack({ maxFiles: 2, onStored: (name, file) => stored.push([name, file.bytes]) });

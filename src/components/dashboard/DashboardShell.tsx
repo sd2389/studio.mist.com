@@ -16,7 +16,12 @@ type DashboardShellProps = {
   isAdmin?: boolean;
   /** Link the Exports page (the `server_exports` flag). */
   showExports?: boolean;
+  /** Link the bulk upload page (the `bulk_pipeline` flag). */
+  showBulkUpload?: boolean;
 };
+
+const secondaryHeaderLink =
+  "rounded-full border border-foreground/20 px-6 py-4 font-mono text-[10px] uppercase tracking-[0.24em] text-foreground transition-colors hover:border-foreground/45";
 
 export function DashboardShell({
   initialScenes,
@@ -28,6 +33,7 @@ export function DashboardShell({
   userEmail,
   isAdmin,
   showExports = false,
+  showBulkUpload = false,
 }: DashboardShellProps) {
   const modelCredits = initialBilling?.balances.model_credits ?? 0;
   const modelTotal = initialBilling?.allotments.model_credits ?? 0;
@@ -97,14 +103,18 @@ export function DashboardShell({
                 / Objects
               </h1>
             </div>
-            {showExports ? (
+            {showExports || showBulkUpload ? (
               <div className="flex flex-wrap gap-2 self-start sm:self-auto">
-                <Link
-                  href="/exports"
-                  className="rounded-full border border-foreground/20 px-6 py-4 font-mono text-[10px] uppercase tracking-[0.24em] text-foreground transition-colors hover:border-foreground/45"
-                >
-                  Exports
-                </Link>
+                {showExports ? (
+                  <Link href="/exports" className={secondaryHeaderLink}>
+                    Exports
+                  </Link>
+                ) : null}
+                {showBulkUpload ? (
+                  <Link href="/bulk/new" className={secondaryHeaderLink}>
+                    Bulk upload
+                  </Link>
+                ) : null}
                 {addObjectLink}
               </div>
             ) : (

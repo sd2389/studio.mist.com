@@ -12,7 +12,8 @@ export type FeatureKey =
   | "library"
   | "billing"
   | "pricing_page"
-  | "server_exports";
+  | "server_exports"
+  | "bulk_pipeline";
 
 /** The API's flags; a key it doesn't send takes its default (`isFeatureEnabled`). */
 export type FeatureFlagsSnapshot = {

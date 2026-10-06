@@ -58,6 +58,10 @@ Reuse these instead of rebuilding them per page:
 | The look an export renders | `lookSnapshot` (`@/features/viewer`), the same look the studio autosaves |
 | A scene's thumbnail from the live view ("Set as thumbnail") | `setThumbnailFromView` (`@/features/render`): a capture of at most 1024 px, free and unmarked, to `PUT /scenes/{id}/thumbnail` |
 | An upgrade prompt for a locked option or feature | `UpgradePrompt`, `UpgradeButton` (`src/components/billing/UpgradePrompt.tsx`) |
+| A drop area for files, and folders with their paths | `FileDropZone` (`src/components/ui/file-drop-zone.tsx`; the upload page's and the bulk upload's), on `DroppedFile` and the folder walking in `src/lib/upload/dropped-files.ts` |
+| Polling something until it settles (1 s, then half as long again, up to 5 s) | `pollUntil`, `pollDelay` (`src/lib/polling.ts`): `pollRenderJob` and the bulk batch page both poll with it |
+| Bulk upload batches: the client and its proxies | `src/lib/api/ingest.ts` (types from `backend/app/schemas/ingest.py`; `batchProblems` reads a 422's problems), `relayIngest` (`src/lib/api/ingest-relay.ts`) for the routes under `src/app/api/ingest/`; `relayUpstreamJson` passes an API's `problems` on |
+| Many CAD files at once: grouping, ZIPs, the CSV manifest, checks, uploads straight to storage | `src/features/bulk/` (`/bulk/new`, `/bulk/<id>`), behind the `bulk_pipeline` flag ([ADR 0006](adr/0006-bulk-pipeline.md)) |
 | An option pill, or a labelled row of them; an option the plan locks | `Chip`, `ChipField` (`locked`) (`src/components/ui/chip.tsx`); `PlanLock`, the lock a locked option shows (`src/components/ui/plan-lock.tsx`) |
 | A price for a design | `quoteDesign` (`src/lib/pricing/quote.ts`) |
 | An embed link, iframe snippet or copy button | `useEmbedCode`, `useCopyFeedback`, `EmbedKeyNotice` (`src/components/embed/embed-code.tsx`) |

@@ -9,7 +9,7 @@ import type { SinkClient } from "./sink-client";
 import { SPIN_VIEWER_NAME, spinFrameNames, spinViewerPage } from "./spin-files";
 
 /** Raw RGBA of a frame, read through one 2D surface: a WebGPU canvas has no context to read. */
-function createPixelReader(width: number, height: number): (frame: ExportCanvas) => Uint8ClampedArray<ArrayBuffer> {
+export function createPixelReader(width: number, height: number): (frame: ExportCanvas) => Uint8ClampedArray<ArrayBuffer> {
   const surface = makeCanvas(width, height);
   const context = surface.getContext("2d", { willReadFrequently: true }) as Canvas2D | null;
   if (!context) throw new Error("2D canvas unavailable to read video frames");

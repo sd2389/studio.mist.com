@@ -9,11 +9,11 @@ import {
   readHarnessJob,
   type HarnessJob,
   type HarnessResult,
-  type RenderedFile,
   type RenderJobPayload,
 } from "./job-payload";
 import { renderSpinFiles, renderTurntableFrames } from "./render-frames";
 import { renderJobImages } from "./render-images";
+import { renderCampaignPack } from "./render-pack";
 import { describeRenderer } from "./renderer-info";
 import { createSinkClient, type SinkClient } from "./sink-client";
 
@@ -31,14 +31,21 @@ function previewSize({ width, height }: { width: number; height: number }) {
   return { width: Math.round(width * scale), height: Math.round(height * scale) };
 }
 
-/** The job's files: the images of a still, an angle set or a spin. A turntable's frames go raw. */
-async function renderOutputs(payload: RenderJobPayload, sink: SinkClient): Promise<RenderedFile[]> {
+/**
+ * The job's files: the images of a still, an angle set or a spin. A turntable's frames go raw; a
+ * Campaign Pack's files and turntables go as its ZIP's entries.
+ */
+async function renderOutputs(payload: RenderJobPayload, sink: SinkClient): Promise<Omit<HarnessResult, "renderer">> {
   if (payload.kind === "turntable") {
     await renderTurntableFrames(payload, sink);
-    return [];
+    return { outputs: [] };
   }
-  if (payload.kind === "spin") return renderSpinFiles(payload, sink);
-  return renderJobImages(payload, sink);
+  if (payload.kind === "spin") return { outputs: await renderSpinFiles(payload, sink) };
+  if (payload.kind === "campaign_pack") {
+    // The stage goes on drawing from the frame after the warm-up while the pack needs it to.
+    return { outputs: [], entries: await renderCampaignPack(payload, sink, { firstFrame: EXPORT_WARMUP_FRAMES + 1 }) };
+  }
+  return { outputs: await renderJobImages(payload, sink) };
 }
 
 /** Renders the job's images or frames, hands them to the sink, then reports what drew them. */
@@ -48,8 +55,8 @@ async function renderJob(job: HarnessJob): Promise<void> {
   assertLiveCanvasSized(refs.gl);
   const sink = createSinkClient(job.sink);
   await sink.postProgress(0, "rendering");
-  const outputs = await renderOutputs(job.payload, sink);
-  const result: HarnessResult = { renderer: await describeRenderer(refs.gl), outputs };
+  const rendered = await renderOutputs(job.payload, sink);
+  const result: HarnessResult = { renderer: await describeRenderer(refs.gl), ...rendered };
   window.__RENDER_RESULT__ = result;
   window.__HARNESS_STATE__ = "done";
 }

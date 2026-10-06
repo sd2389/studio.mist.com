@@ -14,7 +14,7 @@ export { prettyName } from "./ui/studio-material-groups";
 export { EmbedChrome } from "./ui/EmbedChrome";
 export { ViewerStage } from "./ui/ViewerStage";
 export { useLookStage } from "./ui/useLookStage";
-export { useFixedClockWarmup } from "./ui/useFixedClockWarmup";
+export { tickFixedClock, useFixedClockWarmup } from "./ui/useFixedClockWarmup";
 export { applySavedLook, resolveModelConfig, type LookSnapshot } from "./domain/saved-look";
 export { pinFullQuality } from "./domain/full-quality";
 export { lookSnapshot, type LookState } from "./domain/look-snapshot";

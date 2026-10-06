@@ -40,5 +40,10 @@ export function useStartedRenderJobs() {
     startJobs: (requests: RenderJobRequest[]) => start(() => createRenderJobs(requests)),
     /** A job started elsewhere for this list, such as a Retry. */
     add: (job: RenderJob) => setJobs((shown) => [job, ...shown]),
+    /** Forgets the jobs and the last error; the jobs render on, and stay in the Exports panel. */
+    clear: () => {
+      setJobs([]);
+      setError(null);
+    },
   };
 }

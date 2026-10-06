@@ -8,7 +8,7 @@ describe("readConfig", () => {
     expect(readConfig(BASE, "linux")).toMatchObject({
       profileName: "nvidia",
       slots: 1,
-      kinds: ["still", "angle_set", "turntable", "spin"],
+      kinds: ["still", "angle_set", "turntable", "spin", "campaign_pack"],
       sandbox: true,
       harnessUrl: "http://127.0.0.1:3000",
       ffmpegPath: "ffmpeg",
@@ -19,7 +19,8 @@ describe("readConfig", () => {
 
   it("claims the kinds it is given, each once, and at least one", () => {
     expect(readConfig({ ...BASE, WORKER_KINDS: "turntable, spin,turntable" }).kinds).toEqual(["turntable", "spin"]);
-    expect(readConfig({ ...BASE, WORKER_KINDS: "" }).kinds).toEqual(["still", "angle_set", "turntable", "spin"]);
+    expect(readConfig({ ...BASE, WORKER_KINDS: "" }).kinds).toEqual(["still", "angle_set", "turntable", "spin", "campaign_pack"]);
+    expect(readConfig({ ...BASE, WORKER_KINDS: "campaign_pack" }).kinds).toEqual(["campaign_pack"]);
     expect(() => readConfig({ ...BASE, WORKER_KINDS: " , " })).toThrow(/WORKER_KINDS names no kind/);
   });
 
@@ -30,7 +31,7 @@ describe("readConfig", () => {
 
   it("lists every problem at once", () => {
     expect(() => readConfig({ WORKER_GPU: "amd", WORKER_KINDS: "still,batch_archive", WORKER_SLOTS: "0" }, "linux")).toThrow(
-      /RENDER_API_URL is not set; RENDER_WORKER_TOKEN is not set; WORKER_GPU must be one of nvidia, metal, swiftshader; WORKER_KINDS: this worker does still, angle_set, turntable, spin, convert, not batch_archive; set HARNESS_BASE_URL .* or WORKER_APP_DIR .*; WORKER_SLOTS must be/,
+      /RENDER_API_URL is not set; RENDER_WORKER_TOKEN is not set; WORKER_GPU must be one of nvidia, metal, swiftshader; WORKER_KINDS: this worker does still, angle_set, turntable, spin, campaign_pack, convert, not batch_archive; set HARNESS_BASE_URL .* or WORKER_APP_DIR .*; WORKER_SLOTS must be/,
     );
   });
 

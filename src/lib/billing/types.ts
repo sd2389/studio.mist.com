@@ -9,6 +9,17 @@ export type QuotaBalances = {
   storage_bytes_limit: number;
 };
 
+/** What one bulk upload may hold on a plan (BATCH_LIMITS in backend/app/features/billing/plans.py). */
+export type BulkUploadLimits = {
+  /** 0: the plan has no bulk upload. */
+  max_designs: number;
+  /** Every file of a batch, companions included. */
+  max_bytes: number;
+  max_file_bytes: number;
+  /** Batches not yet finished: drafts and those processing. */
+  max_open_batches: number;
+};
+
 export type PlanFeatures = {
   max_variants_per_model: number;
   max_image_resolution: number;
@@ -17,6 +28,8 @@ export type PlanFeatures = {
   embed_enabled: boolean;
   batch_export_enabled: boolean;
   video_8k_enabled: boolean;
+  /** Sent by APIs from ADR 0006 E3 on. */
+  bulk_upload?: BulkUploadLimits;
   /** What a video rendered on the server may be: its frame rate, its length, and its length at 8K (0: none). */
   max_video_fps: number;
   max_video_seconds: number;

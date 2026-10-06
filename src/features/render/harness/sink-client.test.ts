@@ -67,4 +67,38 @@ describe("createSinkClient, against the render worker's sink (scripts/render-wor
       await rm(outDir, { recursive: true, force: true });
     }
   });
+
+  it("hands over a Campaign Pack's files under their paths, and its turntables frame by frame", async () => {
+    const outDir = await mkdtemp(path.join(os.tmpdir(), "sink-client-"));
+    const written: number[] = [];
+    const sink = await startSink({
+      origin: "http://127.0.0.1:3000",
+      model: Buffer.from("glTF"),
+      outDir,
+      paths: true,
+      videos: {
+        open: async () => ({
+          write: async (bytes: Buffer) => void written.push(bytes[0]!),
+          finish: async () => ({ path: path.join(outDir, "video-0.mp4"), bytes: 1234, sha256: "0".repeat(64) }),
+        }),
+      },
+    });
+    try {
+      const client = createSinkClient({ url: sink.url, token: sink.token });
+      await client.postFile("RING-1/stills/18k-yellow-gold_front.jpg", new Blob(["jpg"], { type: "image/jpeg" }));
+      const video = "RING-1/video/18k-yellow-gold_turntable_1080x1080.mp4";
+      await client.startVideo(video, { width: 2, height: 1, fps: 30, frames: 2 });
+      await client.postFrame(0, frame(1));
+      await client.postFrame(1, frame(2));
+      expect(await client.endVideo(video)).toBe(1234);
+
+      expect(written).toEqual([1, 2]);
+      expect([...sink.files.keys()]).toEqual(["RING-1/stills/18k-yellow-gold_front.jpg", video]);
+      expect(sink.files.get("RING-1/stills/18k-yellow-gold_front.jpg")).toMatchObject({ bytes: 3, contentType: "image/jpeg" });
+      await expect(client.endVideo(video)).rejects.toThrow(/409/);
+    } finally {
+      await sink.close();
+      await rm(outDir, { recursive: true, force: true });
+    }
+  });
 });

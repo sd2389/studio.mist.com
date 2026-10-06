@@ -13,10 +13,22 @@ type IdentityInput = {
   enabled: boolean;
 };
 
+type LookedUp = { key: string; sku: string | null; name: string | null };
+
+export type PackIdentityRead = {
+  identity: PackIdentity;
+  /**
+   * The scene lookup hasn't answered yet. A pack started now would be named from the viewer id
+   * and leave out the embed, though the scene has a SKU.
+   */
+  pending: boolean;
+};
+
 /** SKU/name for pack file names — props first, then a best-effort scene lookup. */
-export function usePackIdentity({ modelId, sku, name, sceneId, enabled }: IdentityInput): PackIdentity {
-  const [fetched, setFetched] = useState<{ sku: string | null; name: string | null } | null>(null);
+export function usePackIdentity({ modelId, sku, name, sceneId, enabled }: IdentityInput): PackIdentityRead {
+  const [fetched, setFetched] = useState<LookedUp | null>(null);
   const needsLookup = enabled && !(name?.trim() && sku?.trim());
+  const key = sceneId ? `scene:${sceneId}` : `viewer:${modelId}`;
 
   useEffect(() => {
     if (!needsLookup) return;
@@ -24,20 +36,26 @@ export function usePackIdentity({ modelId, sku, name, sceneId, enabled }: Identi
     const request = sceneId ? getScene(sceneId) : getSceneByViewerId(modelId);
     request
       .then((scene) => {
-        if (!cancelled) setFetched({ sku: scene.sku ?? null, name: scene.name ?? null });
+        if (!cancelled) setFetched({ key, sku: scene.sku ?? null, name: scene.name ?? null });
       })
-      .catch(() => undefined);
+      // A failed lookup still answers: the pack is named from the props and the viewer id.
+      .catch(() => {
+        if (!cancelled) setFetched({ key, sku: null, name: null });
+      });
     return () => {
       cancelled = true;
     };
-  }, [needsLookup, sceneId, modelId]);
+  }, [needsLookup, key, sceneId, modelId]);
 
-  return useMemo(
+  // Only this piece's answer counts; another scene's would name the pack wrongly.
+  const answer = fetched?.key === key ? fetched : null;
+  const identity = useMemo(
     () => ({
       modelId,
-      sku: sku?.trim() || fetched?.sku?.trim() || null,
-      name: name?.trim() || fetched?.name?.trim() || null,
+      sku: sku?.trim() || answer?.sku?.trim() || null,
+      name: name?.trim() || answer?.name?.trim() || null,
     }),
-    [modelId, sku, name, fetched],
+    [modelId, sku, name, answer],
   );
+  return { identity, pending: needsLookup && answer === null };
 }

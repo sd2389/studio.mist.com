@@ -8,11 +8,18 @@ from fastapi import HTTPException
 from sqlalchemy import case, select, update
 from sqlalchemy.orm import Session
 
-from app.features.billing.plans import PLAN_LABELS, PLAN_QUOTAS, PlanTier, get_quotas, normalize_tier
+from app.features.billing.plans import (
+    PLAN_LABELS,
+    PLAN_QUOTAS,
+    PlanTier,
+    get_batch_limits,
+    get_quotas,
+    normalize_tier,
+)
 from app.models.billing import UserBilling
 from app.models.render_job import RenderJob
 from app.models.user import User
-from app.schemas.billing import PlanFeatures, QuotaBalances, UserBillingSnapshot
+from app.schemas.billing import BulkUploadLimits, PlanFeatures, QuotaBalances, UserBillingSnapshot
 
 
 def _apply_allotment(billing: UserBilling, tier: PlanTier) -> None:
@@ -55,6 +62,7 @@ def get_or_create_billing(db: Session, user: User) -> UserBilling:
 
 def _features_for_tier(tier: PlanTier) -> PlanFeatures:
     quotas = get_quotas(tier)
+    batches = get_batch_limits(tier)
     return PlanFeatures(
         max_variants_per_model=quotas.max_variants_per_model,
         max_image_resolution=quotas.max_image_resolution,
@@ -64,6 +72,12 @@ def _features_for_tier(tier: PlanTier) -> PlanFeatures:
         batch_export_enabled=quotas.batch_export,
         video_8k_enabled=quotas.max_8k_video_seconds > 0,
         campaign_pack_enabled=quotas.campaign_pack,
+        bulk_upload=BulkUploadLimits(
+            max_designs=batches.max_designs,
+            max_bytes=batches.max_bytes,
+            max_file_bytes=batches.max_file_bytes,
+            max_open_batches=batches.max_open_batches,
+        ),
         max_video_fps=quotas.max_video_fps,
         max_video_seconds=quotas.max_video_seconds,
         max_8k_video_seconds=quotas.max_8k_video_seconds,
@@ -121,6 +135,24 @@ def set_subscription_period(
     billing.period_end = period_end
     billing.stripe_subscription_id = stripe_subscription_id
     _apply_allotment(billing, tier)
+    db.commit()
+
+
+def change_plan(
+    db: Session,
+    billing: UserBilling,
+    *,
+    tier: PlanTier,
+    period_start: datetime | None,
+    period_end: datetime | None,
+    stripe_subscription_id: str | None,
+) -> None:
+    """Move the account to a plan and billing period. Credit balances stay as they are."""
+    billing.plan_tier = tier
+    billing.period_start = period_start
+    billing.period_end = period_end
+    billing.stripe_subscription_id = stripe_subscription_id
+    billing.updated_at = datetime.utcnow()
     db.commit()
 
 

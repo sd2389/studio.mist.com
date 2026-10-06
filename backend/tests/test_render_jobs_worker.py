@@ -527,14 +527,17 @@ def test_every_kind_has_a_run_time_limit():
 # ---------------------------------------------------------------------------
 
 
-def test_the_payload_is_what_the_harness_reads(db, owner, scene):
-    """src/features/render/harness/job-payload.ts on feat/harness-export-a3, field for field."""
+def test_the_payload_is_what_the_harness_reads(db, owner, scene, monkeypatch):
+    """src/features/render/harness/job-payload.ts, field for field."""
+    from app.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "app_public_url", "https://studio.mist.com/")
     _queue(db, owner, scene)
     job = _claim(db)
 
     payload = payloads.job_payload(db, job.id, job.worker_token).model_dump(mode="json")
 
-    assert set(payload) == {"kind", "spec", "look", "look_items", "model", "watermark", "limits", "scene"}
+    assert set(payload) == {"kind", "spec", "look", "look_items", "model", "watermark", "limits", "scene", "app_url"}
     assert payload["kind"] == "still"
     assert payload["spec"] == {
         "camera": VIEW, "width": 2048, "height": 1024, "format": "png", "jpeg_quality": 0.95,
@@ -546,7 +549,10 @@ def test_the_payload_is_what_the_harness_reads(db, owner, scene):
     assert payload["model"] == {"path": f"/render-jobs/{job.id}/inputs/model"}
     assert payload["watermark"] is True
     assert payload["limits"] == {"max_edge": 2048, "max_runtime_seconds": 300}
-    assert payload["scene"] == {"id": scene.id, "name": "Solitaire ring", "sku": "RING-1"}
+    # The scene as a Campaign Pack names its files: the studio's viewer id is its model's.
+    assert payload["scene"] == {"id": scene.id, "name": "Solitaire ring", "sku": "RING-1", "viewer_id": "ring.glb"}
+    # Where the pack's embed links to: the studio, not the worker's harness.
+    assert payload["app_url"] == "https://studio.mist.com"
 
 
 def test_on_cloud_storage_the_model_is_a_url_signed_for_15_minutes(db, cloud, owner, scene):

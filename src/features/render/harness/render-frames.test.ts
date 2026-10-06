@@ -59,6 +59,12 @@ function recordingSink(): SinkClient & { calls: SinkCall[] } {
     fetchInput: async () => new Blob(),
     postFile: async (name, file) => void calls.push({ posted: "file", name, file }),
     postFrame: async (index, pixels) => void calls.push({ posted: "frame", index, bytes: pixels.length, value: pixels[0]! }),
+    startVideo: async () => {
+      throw new Error("a turntable's one video is open from the start");
+    },
+    endVideo: async () => {
+      throw new Error("the worker ends a turntable's one video itself");
+    },
     postProgress: async (progress) => void calls.push({ posted: "progress", progress }),
   };
 }

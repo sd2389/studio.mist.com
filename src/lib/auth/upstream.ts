@@ -2,7 +2,7 @@ import "server-only";
 
 import { NextResponse } from "next/server";
 import { getServerApiUrl } from "@/lib/api-url";
-import { parseAuthErrorBody } from "@/lib/auth/parse-auth-error";
+import { parseAuthErrorBody, problemsFromErrorBody } from "@/lib/auth/parse-auth-error";
 import { authHeaders } from "@/lib/auth/server-session";
 
 export async function upstreamFetch(
@@ -54,11 +54,18 @@ export function upstreamError(json: unknown, fallback: string): string {
   return parseAuthErrorBody(json, fallback);
 }
 
-/** The API's answer as the proxy's own: its JSON with its status, or `{ error }` with its status. */
+/**
+ * The API's answer as the proxy's own: its JSON with its status, or `{ error }` with its status
+ * and the `problems` it listed, if any (a bulk upload batch's 422: one per design or CSV row).
+ */
 export async function relayUpstreamJson(upstream: Response, fallback: string): Promise<NextResponse> {
   const json = await readUpstreamJson(upstream);
   if (!upstream.ok) {
-    return NextResponse.json({ error: upstreamError(json, fallback) }, { status: upstream.status });
+    const problems = problemsFromErrorBody(json);
+    return NextResponse.json(
+      { error: upstreamError(json, fallback), ...(problems ? { problems } : {}) },
+      { status: upstream.status },
+    );
   }
   return NextResponse.json(json, { status: upstream.status });
 }

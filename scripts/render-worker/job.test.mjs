@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -433,6 +433,123 @@ describe("runJob, spins", () => {
     await run({ api: fakeApi({ payload: SPIN }), browser, kind: "spin" });
     expect(called("fail")[0][0]).toMatchObject({ code: "unknown", retryable: true });
     expect(called("fail")[0][0].error).toMatch(/^The page made frame_001.jpg, frame_003.jpg, spin.html; the job makes frame_001.jpg, frame_002.jpg/);
+  });
+});
+
+/** A small pack: one metal, a front JPG and a two-frame square turntable, as the API keeps its spec. */
+const PACK = {
+  ...PAYLOAD,
+  kind: "campaign_pack",
+  spec: {
+    metals: ["gold-18k-yellow"], angleIds: ["front"], stillSize: 1000, formats: { jpg: true, png: false },
+    background: { kind: "white" }, jpegQuality: 0.95, autoFrame: true, marginPct: 8, contactShadow: true,
+    turntable: { enabled: true, formats: ["square"], durationSec: 1, fps: 2 },
+    spin: { enabled: false, frames: 72, size: 1080 }, embed: false, cutScope: false,
+    frames: 3, output_names: ["RING-1_campaign-pack.zip"],
+  },
+  limits: { max_edge: 1080, max_runtime_seconds: 3600 },
+  scene: { id: 3, name: "Ring", sku: "RING-1", viewer_id: "ring.glb" },
+  app_url: "https://studio.mist.com",
+};
+const PACK_STILL = "RING-1/stills/18k-yellow-gold_front.jpg";
+const PACK_VIDEO = "RING-1/video/18k-yellow-gold_turntable_1080x1080.mp4";
+const README = "# Ring — Campaign Pack\n";
+const MANIFEST = JSON.stringify({ generator: "MIST Studio Campaign Pack", files: [] });
+
+/** What a harness page does with a pack: posts its files and streams its turntable, in the ZIP's order. */
+async function renderPack({ sink }, { clip = { width: 1080, height: 1080, fps: 2, frames: 2 }, report = (entries) => entries } = {}) {
+  const post = (route, init = {}) => fetch(`${sink.url}${route}`, { method: "POST", ...init, headers: { [SINK_TOKEN_HEADER]: sink.token, ...init.headers } });
+  const entries = [];
+  const failed = (route, response) => ({ state: `error:sink POST ${route}: ${response.status}` });
+  for (const [entry, type, body] of [[PACK_STILL, "image/jpeg", JPEG], [PACK_VIDEO], ["RING-1/README.md", "text/markdown", README], ["RING-1/manifest.json", "application/json", MANIFEST]]) {
+    if (entry !== PACK_VIDEO) {
+      const response = await post(`/files/${encodeURIComponent(entry)}`, { headers: { "Content-Type": type }, body });
+      if (!response.ok) return failed(`/files/${entry}`, response);
+      entries.push({ path: entry, content_type: type });
+      continue;
+    }
+    const video = `/videos/${encodeURIComponent(PACK_VIDEO)}`;
+    const opened = await post(video, { headers: { "Content-Type": "application/json" }, body: JSON.stringify(clip) });
+    if (!opened.ok) return failed(video, opened);
+    for (let index = 0; index < clip.frames; index += 1) {
+      const response = await post(`/frames/${index}`, { body: Buffer.alloc(clip.width * clip.height * 4, index) });
+      if (!response.ok) return failed(`/frames/${index}`, response);
+      await postProgress(sink, (index + 1) / 4);
+    }
+    const ended = await post(`${video}/end`);
+    if (!ended.ok) return failed(`${video}/end`, ended);
+    entries.push({ path: PACK_VIDEO, content_type: "video/mp4" });
+  }
+  await postProgress(sink, 1);
+  return { state: "done", result: { renderer: SWIFTSHADER, outputs: [], entries: report(entries) } };
+}
+
+/** Each entry of a ZIP and how it is stored: 0 stored, 8 deflated. */
+function zipMethods(archive) {
+  const methods = {};
+  unzipSync(archive, { filter: (file) => ((methods[file.name] = file.compression), true) });
+  return methods;
+}
+
+describe("runJob, Campaign Packs", () => {
+  it("zips the pack's files and the MP4 of each turntable in the page's order, and completes with the ZIP the API plans", async () => {
+    const ffmpegPath = await writeFakeFfmpeg(binDir);
+    const { outcome } = await run({ api: fakeApi({ payload: PACK }), browser: fakeBrowser(renderPack), kind: "campaign_pack", ffmpegPath });
+
+    expect(outcome).toBe("completed");
+    const [[name, archive]] = called("put");
+    expect(name).toBe("RING-1_campaign-pack.zip");
+    const files = unzipSync(archive);
+    expect(Object.keys(files)).toEqual([PACK_STILL, PACK_VIDEO, "RING-1/README.md", "RING-1/manifest.json"]);
+    expect(Buffer.from(files[PACK_STILL])).toEqual(JPEG);
+    expect(new TextDecoder().decode(files[PACK_VIDEO])).toBe("fake mp4: 2 frames of 1080x1080");
+    expect(new TextDecoder().decode(files["RING-1/README.md"])).toBe(README);
+    expect(zipMethods(archive)).toEqual({ [PACK_STILL]: 0, [PACK_VIDEO]: 0, "RING-1/README.md": 8, "RING-1/manifest.json": 8 });
+    // The pack's turntable encodes as a turntable job of high quality does.
+    const { args } = JSON.parse(readFileSync(`${ffmpegPath}.json`, "utf8"));
+    expect([args[args.indexOf("-s") + 1], args[args.indexOf("-r") + 1], args[args.indexOf("-crf") + 1]]).toEqual(["1080x1080", "2", "20"]);
+    // As D1 plans the pack: one ZIP, no frame size and no label.
+    const [[body]] = called("complete");
+    expect(body.outputs).toEqual([
+      { name, key: `customers/1/renders/7/${name}`, content_type: "application/zip", bytes: archive.length, width: null, height: null, label: null, meta: { sha256: createHash("sha256").update(archive).digest("hex") } },
+    ]);
+    expect(stages()).toEqual(["loading", "rendering", "encoding", "uploading"]);
+    expect(rises(called("heartbeat").map(([beat]) => beat.progress))).toBe(true);
+    expect(await readdir(tmpDir)).toEqual([]);
+  });
+
+  it("fails as encode_failed, to be tried again, when ffmpeg dies in one of its turntables", async () => {
+    const ffmpegPath = await writeFakeFfmpeg(binDir, { failAfterFrames: 1 });
+    const { outcome } = await run({ api: fakeApi({ payload: PACK }), browser: fakeBrowser(renderPack), kind: "campaign_pack", ffmpegPath });
+
+    expect(outcome).toBe("failed");
+    expect(called("fail")).toEqual([[{
+      error: `${PACK_VIDEO}: ffmpeg exited with code 1: [libx264 @ 0x1] fake: out of memory | Error while encoding the stream`,
+      code: "encode_failed",
+      retryable: true,
+    }]]);
+    expect(called("complete")).toEqual([]);
+  });
+
+  it("encodes no turntable the pack doesn't make", async () => {
+    const ffmpegPath = await writeFakeFfmpeg(binDir);
+    const browser = fakeBrowser((handOff) => renderPack(handOff, { clip: { width: 1920, height: 1080, fps: 2, frames: 2 } }));
+    await run({ api: fakeApi({ payload: PACK }), browser, kind: "campaign_pack", ffmpegPath });
+
+    expect(called("fail")).toEqual([[{ error: `sink POST /videos/${encodeURIComponent(PACK_VIDEO)}: 400`, code: "unknown", retryable: true }]]);
+    expect(existsSync(`${ffmpegPath}.json`)).toBe(false);
+  });
+
+  it("fails a pack whose page lists other entries than the sink holds", async () => {
+    const ffmpegPath = await writeFakeFfmpeg(binDir);
+    const browser = fakeBrowser((handOff) => renderPack(handOff, { report: (entries) => entries.filter((entry) => entry.path !== "RING-1/README.md") }));
+    await run({ api: fakeApi({ payload: PACK }), browser, kind: "campaign_pack", ffmpegPath });
+
+    expect(called("fail")).toEqual([[{
+      error: "The pack's entry 3: the page made RING-1/manifest.json (application/json), the sink holds RING-1/README.md (text/markdown).",
+      code: "unknown",
+      retryable: true,
+    }]]);
   });
 });
 

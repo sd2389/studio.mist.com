@@ -1,10 +1,65 @@
 "use client";
 
-import { AlertTriangle, CheckCircle2, Download, RotateCcw, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Download, RotateCcw, Sparkles, X } from "lucide-react";
+import { UpgradeButton } from "@/components/billing/UpgradePrompt";
 import { Button } from "@/components/ui/button";
-import type { PackProgress, PackRunResult } from "../engine/runner";
+import type { PackProgress } from "../engine/runner";
+import type { PackRunResult } from "../engine/start-pack";
 import { formatBytes, formatDuration } from "./pack-ui";
-import { triggerDownload } from "./useCampaignPackRun";
+import { triggerDownload, type PackRunState } from "./useCampaignPackRun";
+
+/** The settings' footer for a pack rendered on this device: what it makes, and Render. */
+export function PackRunFooter({
+  summary,
+  locked,
+  disabled,
+  onStart,
+}: {
+  summary: string;
+  /** The plan has no packs: an upgrade in place of Render. */
+  locked: boolean;
+  disabled: boolean;
+  onStart: () => void;
+}) {
+  return (
+    // Sticky offsets are inset by the dialog's p-4; -bottom-4 pins it to the edge.
+    <div className="sticky -bottom-4 -mx-4 -mb-4 flex flex-col gap-2 border-t border-border bg-card/95 px-4 py-3 backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+      <p className="text-xs text-muted-foreground" role="status">
+        {summary}
+      </p>
+      {locked ? (
+        <UpgradeButton className="gap-2">
+          <Sparkles className="size-4" aria-hidden />
+          Upgrade to render
+        </UpgradeButton>
+      ) : (
+        <Button type="button" onClick={onStart} disabled={disabled} className="gap-2">
+          <Sparkles className="size-4" aria-hidden />
+          Render campaign pack
+        </Button>
+      )}
+    </div>
+  );
+}
+
+/** A pack on this device once started: its progress, then its ZIP, or why there is none. */
+export function PackRunStateView({
+  state,
+  onCancel,
+  onAgain,
+  onClose,
+}: {
+  state: PackRunState;
+  onCancel: () => void;
+  onAgain: () => void;
+  onClose: () => void;
+}) {
+  if (state.status === "running") return <PackProgressView progress={state.progress} onCancel={onCancel} />;
+  if (state.status === "done") return <PackSummaryView result={state.result} url={state.url} onAgain={onAgain} onClose={onClose} />;
+  if (state.status === "error") return <PackMessageView tone="error" message={state.message} onBack={onAgain} />;
+  if (state.status === "cancelled") return <PackMessageView tone="cancelled" message="Cancelled — nothing was downloaded." onBack={onAgain} />;
+  return null;
+}
 
 export function PackProgressView({ progress, onCancel }: { progress: PackProgress; onCancel: () => void }) {
   const percent = Math.floor(progress.fraction * 100);

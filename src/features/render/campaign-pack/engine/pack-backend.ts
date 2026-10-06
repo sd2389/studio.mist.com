@@ -3,9 +3,8 @@ import { turntableAngle } from "@/lib/camera-orbit";
 import { loadBackdropImage, type ExportBackdrop } from "@/lib/export-backdrop";
 import type { ExportLimits } from "@/lib/export-limits";
 import type { ViewerRenderer } from "@/lib/gpu/viewer-renderer";
-import { createOffscreenRenderSession, encodeCanvas } from "@/lib/offscreen-render";
+import { createOffscreenRenderSession, encodeCanvas, type ExportCanvas } from "@/lib/offscreen-render";
 import type { PersistedSlotTokens } from "@/lib/slot-materials/detect-slots";
-import { createMp4FrameEncoder } from "@/lib/video-capture";
 import type { ViewerPostFXConfig } from "@/lib/viewer-postfx-config";
 import type { FinishId } from "@/stores/material-preset-store";
 import { isOverheadAngle } from "../domain/angles";
@@ -30,10 +29,24 @@ export type PackRenderBackend = {
   setMetal(metal: PackMetalId): Promise<void>;
   renderStill(job: StillJob): Promise<{ jpg: Blob | null; png: Blob | null }>;
   renderSpinFrame(job: SpinJob, index: number): Promise<Blob>;
-  renderTurntable(job: TurntableJob, onFrame: (index: number) => void, signal?: AbortSignal): Promise<Blob>;
+  /** The MP4, or its size when its encoder wrote it itself (the render worker's ffmpeg). */
+  renderTurntable(job: TurntableJob, onFrame: (index: number) => void, signal?: AbortSignal): Promise<Blob | number>;
   /** ASET false-colour image of the stones, top-down on white (PNG). */
   renderScope(job: ScopeJob): Promise<Blob>;
   dispose(): void;
+};
+
+/**
+ * One turntable's encoder: the browser's WebCodecs MP4, or the render worker's ffmpeg, which
+ * takes the frames raw through its sink and writes the MP4 itself.
+ */
+export type PackVideoEncoder = {
+  /** Takes the frame, read from the canvas before it resolves; resolves once there is room for the next. */
+  addFrame(frame: ExportCanvas, index: number): Promise<void>;
+  /** The finished MP4, or its size in bytes when the encoder stored it itself. */
+  finish(): Promise<Blob | number>;
+  /** Drops the clip, which stopped for `reason`. */
+  cancel(reason?: unknown): Promise<void>;
 };
 
 export type PackBackendInput = {
@@ -53,6 +66,8 @@ export type PackBackendInput = {
   slotTokens?: PersistedSlotTokens;
   /** The plan's cap and watermark, applied to every still, frame and video in the pack. */
   limits: ExportLimits;
+  /** An encoder for each turntable, at its size and frame rate. */
+  openVideo: (job: TurntableJob) => Promise<PackVideoEncoder>;
 };
 
 function nextTick(): Promise<void> {
@@ -148,19 +163,18 @@ export async function createPackRenderBackend(input: PackBackendInput): Promise<
       session.setSize(job.width, job.height);
       spin = null;
       const shot = orbitShot(framing, job.width / job.height);
-      const setup = await createMp4FrameEncoder({ width: job.width, height: job.height, fps: job.fps });
-      if (!setup.ok) throw new Error(setup.reason);
+      const encoder = await input.openVideo(job);
       try {
         for (let i = 0; i < job.frameCount; i++) {
           if (signal?.aborted) throw abortError();
           applyShotCamera(session.camera, orbitShotCamera(shot, turntableAngle(i, job.frameCount)));
-          await setup.encoder.addFrame(frames.flat(i / job.fps), i);
+          await encoder.addFrame(frames.flat(i / job.fps), i);
           onFrame(i);
           if (i % 3 === 2) await nextTick();
         }
-        return await setup.encoder.finish();
+        return await encoder.finish();
       } catch (error) {
-        await setup.encoder.cancel();
+        await encoder.cancel(error);
         throw error;
       }
     },

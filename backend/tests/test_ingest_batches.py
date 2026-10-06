@@ -403,6 +403,26 @@ def test_at_most_three_batches_are_open_at_once(client, db, owner):
     assert after_cancel.status_code == 201
 
 
+@pytest.mark.parametrize(
+    ("tier", "limits"),
+    [
+        ("free", {"max_designs": 0, "max_bytes": 0, "max_file_bytes": 100 * 1024**2, "max_open_batches": 3}),
+        ("grow", {"max_designs": 100, "max_bytes": 5 * 1024**3, "max_file_bytes": 100 * 1024**2, "max_open_batches": 3}),
+        ("studio", {"max_designs": 500, "max_bytes": 20 * 1024**3, "max_file_bytes": 100 * 1024**2, "max_open_batches": 3}),
+    ],
+)
+def test_the_plans_batch_limits_are_in_its_billing_snapshot_and_the_pricing_catalog(client, db, tier, limits):
+    """The upload page shows them before anything uploads, from the same BATCH_LIMITS the batch is held to."""
+    _, headers = sign_in(db, f"{tier}@example.com", tier=tier)
+
+    account = client.get("/billing/account", headers=headers)
+    catalog = {plan["tier"]: plan for plan in client.get("/billing/pricing").json()["plans"]}
+
+    assert account.status_code == 200
+    assert account.json()["features"]["bulk_upload"] == limits
+    assert catalog[tier]["features"]["bulk_upload"] == limits
+
+
 # ---------------------------------------------------------------------------
 # The render plan
 # ---------------------------------------------------------------------------

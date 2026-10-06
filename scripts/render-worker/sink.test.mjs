@@ -226,6 +226,128 @@ describe("the sink's frames", () => {
   });
 });
 
+describe("the sink's Campaign Pack", () => {
+  const STILL = "RING-1/stills/18k-yellow-gold_front.jpg";
+  const VIDEO = "RING-1/video/18k-yellow-gold_turntable_1080x1080.mp4";
+  const clip = { width: 2, height: 2, fps: 30, frames: 2 };
+  const frame = (fill) => Buffer.alloc(2 * 2 * 4, fill);
+  const path_ = (name) => encodeURIComponent(name);
+
+  /** A sink for a pack whose videos are written by hand: what each was opened with, and its bytes. */
+  async function openPack(options = {}) {
+    const opened = [];
+    const videos = {
+      open: async (name, params) => {
+        if (params.width !== 2) throw new Error(`the pack makes no ${params.width}x${params.height} turntable`);
+        const video = { name, params, bytes: [] };
+        opened.push(video);
+        return {
+          write: async (bytes) => video.bytes.push(...bytes),
+          finish: async () => {
+            const file = path.join(dir, `video-${opened.length}.mp4`);
+            writeFileSync(file, `mp4 of ${video.bytes.length} bytes`);
+            return { path: file, bytes: readFileSync(file).length, sha256: "f".repeat(64) };
+          },
+        };
+      },
+    };
+    await open({ names: null, paths: true, videos, ...options });
+    return opened;
+  }
+
+  it("takes files under their paths in the ZIP, each stored on disk as an entry of its own", async () => {
+    await openPack();
+    expect((await send(`/files/${path_(STILL)}`, { body: "front", headers: { "Content-Type": "image/jpeg" } })).status).toBe(204);
+    expect((await send(`/files/${path_("RING-1/README.md")}`, { body: "# Ring", headers: { "Content-Type": "text/markdown" } })).status).toBe(204);
+    expect((await send(`/files/${path_(STILL)}`, { body: "again" })).status).toBe(409);
+
+    expect([...sink.files.keys()]).toEqual([STILL, "RING-1/README.md"]);
+    expect(sink.files.get(STILL)).toMatchObject({ path: path.join(dir, "entry-0"), bytes: 5, contentType: "image/jpeg" });
+    expect(readFileSync(path.join(dir, "entry-1"), "utf8")).toBe("# Ring");
+  });
+
+  it("refuses a path that could leave the folder, or isn't one", async () => {
+    await openPack();
+    for (const name of ["../ring.jpg", "RING-1/../../ring.jpg", "RING-1/./x.jpg", "/RING-1/x.jpg", "RING-1//x.jpg", "RING-1/x y.jpg", `RING-1/${"x".repeat(1100)}`]) {
+      expect((await send(`/files/${path_(name)}`, { body: "x" })).status).toBe(400);
+    }
+    expect(sink.files.size).toBe(0);
+  });
+
+  it("takes each video's frames at its size, one video at a time, and stores its MP4 under its path", async () => {
+    const opened = await openPack();
+    expect((await send("/frames/0", { body: frame(1) })).status).toBe(404);
+    expect((await send(`/videos/${path_(VIDEO)}`, { body: json(clip) })).status).toBe(204);
+    expect((await send(`/videos/${path_("RING-1/video/other.mp4")}`, { body: json(clip) })).status).toBe(409);
+    expect((await send("/frames/0", { body: frame(1) })).status).toBe(204);
+    // Not before its last frame.
+    expect((await send(`/videos/${path_(VIDEO)}/end`)).status).toBe(409);
+    expect((await send("/frames/1", { body: frame(2) })).status).toBe(204);
+    expect((await send("/frames/2", { body: frame(3) })).status).toBe(409);
+
+    const end = await send(`/videos/${path_(VIDEO)}/end`);
+    expect([end.status, JSON.parse(end.body.toString())]).toEqual([200, { bytes: 15 }]);
+    expect(opened.map(({ name, params, bytes }) => [name, params, bytes.length])).toEqual([[VIDEO, clip, 32]]);
+    expect([...sink.files]).toEqual([[VIDEO, { path: path.join(dir, "video-1.mp4"), bytes: 15, sha256: "f".repeat(64), contentType: "video/mp4" }]]);
+    expect([sink.openVideo, (await send("/frames/0", { body: frame(1) })).status]).toEqual([null, 404]);
+    expect((await send(`/videos/${path_(VIDEO)}`, { body: json(clip) })).status).toBe(409);
+  });
+
+  it("refuses a video its outputs don't make, one that isn't one, and the end of one that isn't open", async () => {
+    await openPack();
+    expect((await send(`/videos/${path_(VIDEO)}`, { body: json({ ...clip, width: 4 }) })).status).toBe(400);
+    expect((await send(`/videos/${path_(VIDEO)}`, { body: json({ ...clip, frames: 0 }) })).status).toBe(400);
+    expect((await send(`/videos/${path_("../x.mp4")}`, { body: json(clip) })).status).toBe(400);
+    expect((await send(`/videos/${path_(VIDEO)}/end`)).status).toBe(409);
+    expect(sink.openVideo).toBe(null);
+    await sink.close();
+    await open();
+    expect((await send(`/videos/${path_(VIDEO)}`, { body: json(clip) })).status).toBe(404);
+  });
+
+  it("takes nothing more for a video while its encoder finishes it", async () => {
+    let finishing;
+    const finished = new Promise((resolve) => (finishing = resolve));
+    await open({
+      names: null,
+      paths: true,
+      videos: {
+        open: async () => ({
+          write: async () => {},
+          finish: async () => {
+            await finished;
+            return { path: path.join(dir, "video-0.mp4"), bytes: 9, sha256: "0".repeat(64) };
+          },
+        }),
+      },
+    });
+    await send(`/videos/${path_(VIDEO)}`, { body: json(clip) });
+    await send("/frames/0", { body: frame(1) });
+    await send("/frames/1", { body: frame(2) });
+    const ending = send(`/videos/${path_(VIDEO)}/end`);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect((await send("/frames/2", { body: frame(3) })).status).toBe(409);
+    expect((await send(`/videos/${path_(VIDEO)}/end`)).status).toBe(409);
+    expect((await send(`/videos/${path_("RING-1/video/next.mp4")}`, { body: json(clip) })).status).toBe(409);
+    finishing();
+    expect((await ending).status).toBe(200);
+    expect((await send(`/videos/${path_("RING-1/video/next.mp4")}`, { body: json(clip) })).status).toBe(204);
+  });
+
+  it("tells its outputs of each file it stores, and takes no more than the job makes", async () => {
+    const stored = [];
+    await openPack({ maxFiles: 2, onStored: (name, file) => stored.push([name, file.bytes]) });
+    await send(`/files/${path_(STILL)}`, { body: "front" });
+    await send(`/videos/${path_(VIDEO)}`, { body: json(clip) });
+    await send("/frames/0", { body: frame(1) });
+    await send("/frames/1", { body: frame(2) });
+    await send(`/videos/${path_(VIDEO)}/end`);
+    expect((await send(`/files/${path_("RING-1/README.md")}`, { body: "# Ring" })).status).toBe(413);
+    expect(stored).toEqual([[STILL, 5], [VIDEO, 15]]);
+  });
+});
+
 describe("the sink's progress", () => {
   it("keeps every report in order, with when it came, and passes each on", async () => {
     const heard = [];

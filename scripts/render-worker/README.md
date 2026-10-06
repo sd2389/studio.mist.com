@@ -10,7 +10,7 @@ The worker renders server exports ([ADR 0005](../../docs/adr/0005-server-exports
 | `browser.mjs` | Launch profiles and the self-check |
 | `job.mjs` | One job, from payload to complete or fail |
 | `failure.mjs` | The codes a job fails with, and which another attempt may fix |
-| `sink.mjs` | The loopback server the page writes files, frames and progress to |
+| `sink.mjs` | The loopback server the page writes files, frames, videos and progress to |
 | `outputs.mjs` | What each kind's page hands the sink, and the outputs the worker makes of it |
 | `encode.mjs` | ffmpeg: a turntable's raw frames into an MP4 |
 | `zip.mjs` | Files from disk into one ZIP, streamed through fflate |
@@ -21,7 +21,7 @@ The worker renders server exports ([ADR 0005](../../docs/adr/0005-server-exports
 | `smoke.mjs`, `smoke-outputs.mjs` | `npm run worker:smoke` |
 | `fake-ffmpeg.mjs` | A stand-in ffmpeg for the tests |
 
-It renders every kind the export mode does: stills and angle sets, whose images the page encodes; turntables, whose raw frames go through ffmpeg into an MP4; and spins, whose frames and viewer page go into one ZIP (see [Encoders](#encoders)).
+It renders every kind the export mode does: stills and angle sets, whose images the page encodes; turntables, whose raw frames go through ffmpeg into an MP4; spins, whose frames and viewer page go into one ZIP; and Campaign Packs, whose files and turntables (through ffmpeg) go into one ZIP (see [Encoders](#encoders)).
 
 ## Run a worker
 
@@ -53,14 +53,15 @@ The harness must be on loopback: WebGPU and WebCodecs exist only in a secure con
 
 ### Smoke test
 
-`npm run worker:smoke` runs a still, a turntable and a spin end to end on this machine and stops everything it starts. It needs a worker build (`BUILD_TARGET=worker npm run build`, in `.next` or `NEXT_BUILD_DIR`), Playwright's Chromium, ffmpeg with libx264 and ffprobe, and the backend's virtualenv (`backend/.venv`, or `WORKER_SMOKE_PYTHON`).
+`npm run worker:smoke` runs a still, a turntable, a spin and a small Campaign Pack end to end on this machine and stops everything it starts. It needs a worker build (`BUILD_TARGET=worker npm run build`, in `.next` or `NEXT_BUILD_DIR`), Playwright's Chromium, ffmpeg with libx264 and ffprobe, and the backend's virtualenv (`backend/.venv`, or `WORKER_SMOKE_PYTHON`).
 
-1. An API on a free port from 8790, with a throwaway SQLite database and local storage, seeded by `backend/scripts/seed_worker_smoke.py`: a Free user with credits and a scene of the demo ring. The worker build of the app on a free port from 3900, unless `HARNESS_BASE_URL` names one.
-2. The user creates a 640×480 still, a one-second turntable at that size starting from the still's camera, and a 12-frame spin over HTTP; a worker on the `swiftshader` profile (`WORKER_GPU=metal` for a Mac's GPU) claims, renders, encodes, uploads and completes each; the user downloads them.
+1. An API on a free port from 8790, with a throwaway SQLite database and local storage, seeded by `backend/scripts/seed_worker_smoke.py`: a Free user with credits and a scene of the demo ring, and a Grow user with another. The worker build of the app on a free port from 3900, unless `HARNESS_BASE_URL` names one.
+2. The Free user creates a 640×480 still, a one-second turntable at that size starting from the still's camera, and a 12-frame spin over HTTP, and the Grow user a Campaign Pack of the ring as configured and in 18K yellow gold (front JPG and cutout, a 12-frame spin and a one-second square turntable each); a worker on the `swiftshader` profile (`WORKER_GPU=metal` for a Mac's GPU) claims, renders, encodes, uploads and completes each; the users download them.
 3. The still must be what the browser pipeline renders from the same job, Free mark included: the harness's export mode is run directly, with and without the mark, and compared.
 4. The MP4 must be H.264 High, yuv420p, BT.709 and limited range with every frame (ffprobe), its index ahead of the media, and play to its end in Chrome, whose frame 0 must match the still (SSIM ≥ 0.97).
 5. The spin's ZIP must open and hold its frames and `spin.html`, which in Chrome loads every frame and turns, by itself and with the arrow keys.
-6. A page under the worker's network policy must reach its harness and not an outside host, the API on loopback or the cloud metadata address.
+6. The pack's ZIP must hold the entries the studio's planner names, in its order; its MP4s must be what the turntable's is (4); its manifest must list every other entry at its size; its `spin.html` must turn; and its re-skinned gold must be the studio's own: its front cutout against the harness's still of the ring with its metal slot in 18K yellow gold, from the same camera, at most 3 apart (of 255) on the piece. They are 0.65 apart on a Mac's GPU; with the stage left still while the metal environment probe waits, 22.
+7. A page under the worker's network policy must reach its harness and not an outside host, the API on loopback or the cloud metadata address.
 
 `npm run worker:smoke -- --kill` runs the still alone, kills the worker and its browser mid-job, and checks a second worker completes the job as its second attempt once the lease (60 s there) has lapsed. `WORKER_SMOKE_KEEP=1` keeps the scratch folder with every process's log and the outputs (under `uploads/`).
 
@@ -76,8 +77,8 @@ The harness must be on loopback: WebGPU and WebCodecs exist only in a secure con
 | `WORKER_APP_DIR` | `/app` in the image | A standalone worker build to start on `127.0.0.1:WORKER_HARNESS_PORT` when `HARNESS_BASE_URL` is unset |
 | `WORKER_HARNESS_PORT` | `3000` | |
 | `WORKER_SLOTS` | `1` | Jobs at once, a browser each: one per GPU, two on 24 GB cards; give each 8 GB of RAM |
-| `WORKER_KINDS` | `still,angle_set,turntable,spin` | The kinds it claims, any of those |
-| `WORKER_FFMPEG` | `ffmpeg` | The ffmpeg turntables encode with; it needs libx264. A worker that claims turntables checks it before it claims anything |
+| `WORKER_KINDS` | `still,angle_set,turntable,spin,campaign_pack` | The kinds it claims, any of those |
+| `WORKER_FFMPEG` | `ffmpeg` | The ffmpeg turntables encode with, a Campaign Pack's too; it needs libx264. A worker that claims turntables or packs checks it before it claims anything |
 | `WORKER_ID` | the host name | Each slot claims as `<id>-<slot>` |
 | `WORKER_POLL_SECONDS` | `5` | How often an idle slot asks for a job |
 | `WORKER_RECYCLE_JOBS` | `50` | Jobs a browser renders before it is replaced |
@@ -123,9 +124,11 @@ H.264 High in yuv420p, converted with the BT.709 matrix to limited range and tag
 
 **Spins.** The page posts each frame (`frame_001.jpg`, …, numbered as the Campaign Pack numbers them) and then `spin.html` as files, which the sink takes under those names only. Once the page is done, the worker streams them from disk into one ZIP with fflate's `Zip`: frames stored, `spin.html` deflated, a chunk at a time, each file deleted once it is in. fflate writes no ZIP64, so the ZIP stops at the API's cap, 4 GB less a byte.
 
-**Progress.** A heartbeat carries `stage` and `progress`: `loading` (0), then `rendering` as the page reports its frames, `encoding` once the page is done and ffmpeg finishes or the ZIP is written, and `uploading` (0.95). A turntable's frames rendered and frames encoded (from ffmpeg's `-progress`) fill the bar together, 0.475 each; a spin's frames fill 0.9 and its ZIP 0.05; stills and angle sets fill 0.95 with their images.
+**Campaign Packs.** The page renders the pack with the studio's own pack (its planner, names, metal re-skins, cameras and documents) and hands each file over as it is made, under its path in the pack's ZIP (`Smoke-ring/stills/18k-yellow-gold_front.jpg`): the sink takes paths for a pack, every part a file name the API would give and none `.` or `..`, stores each as `entry-<n>` and takes no more files than the spec can make. Each turntable is a video of its own: `POST /videos/<path>` with `{width, height, fps, frames}` opens it, its frames come by `POST /frames/<n>` as a turntable job's do, and `POST /videos/<path>/end`, once all are in, has ffmpeg finish the MP4 and answers its size, which the page's manifest lists. A video must be one the spec makes (a format's size, the spec's rate and length, no more than its metals × formats), gets an ffmpeg of its own at the `high` quality's CRF and preset, and goes one at a time. Once the page is done, the files and MP4s go into one ZIP in the order the page made them, which must be the order the sink stored them in (the page reports its entries): media stored, text deflated, each deleted once it is in. That order is the studio's pack's, so the ZIP holds what the studio's would, by the same names (the default pack: 251 entries with a SKU, 252 with the ASET image). The ZIP is reported as the API plans it, `application/zip` with no width, height or label.
 
-**Failures.** ffmpeg failing (it won't start, dies or encodes fewer frames than it got) fails the job as `encode_failed`, which the API tries again; an MP4 or ZIP over its cap is `over_limit`, which it doesn't. Past the kind's run time (turntable 30 min, spin 15) the job fails as `timeout` and ffmpeg is killed.
+**Progress.** A heartbeat carries `stage` and `progress`: `loading` (0), then `rendering` as the page reports its frames, `encoding` once the page is done and ffmpeg finishes or the ZIP is written, and `uploading` (0.95). A turntable's frames rendered and frames encoded (from ffmpeg's `-progress`) fill the bar together, 0.475 each; a spin's frames fill 0.9 and its ZIP 0.05; stills and angle sets fill 0.95 with their images. A Campaign Pack's page reports its own measure of the whole pack (stills, spins and turntables, each MP4 finished before the next part), at most once a second, which fills 0.9, and its ZIP 0.05.
+
+**Failures.** ffmpeg failing (it won't start, dies or encodes fewer frames than it got) fails the job as `encode_failed`, which the API tries again; an MP4 or ZIP over its cap is `over_limit`, which it doesn't. A pack's files are counted against the ZIP's cap as they come in (what fflate adds to each entry included, to the byte), so a pack that passes it stops as `over_limit` before it renders more. Past the kind's run time (turntable 30 min, spin 15, Campaign Pack 60) the job fails as `timeout` and ffmpeg is killed.
 
 ## What a page may reach
 

@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { DEFAULT_CAMPAIGN_PACK_CONFIG } from "../campaign-pack/domain/defaults";
 import { jobCameras, jobImageSize, readHarnessJob, type PayloadOfKind, type RenderJobPayload } from "./job-payload";
 
 /** The export goldens' jobs: payloads as `GET /render-jobs/{id}/payload` returns them. */
@@ -62,7 +63,7 @@ describe("readHarnessJob", () => {
   });
 
   it("refuses kinds the export mode does not render", () => {
-    expect(() => readHarnessJob({ payload: { ...STILL, kind: "campaign_pack" }, sink: SINK })).toThrow(/kind "campaign_pack"/);
+    expect(() => readHarnessJob({ payload: { ...STILL, kind: "convert" }, sink: SINK })).toThrow(/kind "convert"/);
   });
 
   it("needs a file name for every image", () => {
@@ -123,6 +124,57 @@ describe("readHarnessJob: turntables", () => {
     expect(read({ path: { poses: [] } })).toThrow(/spec\.path\.poses/);
     expect(read({ path: { poses: ["pose-top", ""] } })).toThrow(/spec\.path\.poses/);
     expect(read({ path: { orbit: { start: { angle: "diagonal" } } } })).toThrow(/spec\.path\.orbit\.start\.angle/);
+  });
+});
+
+describe("readHarnessJob: Campaign Packs", () => {
+  // As the API keeps the default pack's spec: the dialog's config, its frame count and the ZIP's name.
+  const PACK_SPEC = {
+    ...DEFAULT_CAMPAIGN_PACK_CONFIG,
+    frames: 24 + 1 + 3 * 72 + 6 * 300,
+    output_names: ["RING-1_campaign-pack.zip"],
+  };
+  const pack = (spec: Record<string, unknown> = {}, payload: Record<string, unknown> = {}) => ({
+    ...STILL,
+    kind: "campaign_pack",
+    spec: { ...PACK_SPEC, ...spec },
+    scene: { id: 812, name: "Solitaire ring", sku: "RING-1", viewer_id: "ring.glb" },
+    app_url: "https://studio.mist.com",
+    ...payload,
+  });
+
+  it("reads the pack's config whole, without the count the API added", () => {
+    const job = readHarnessJob({ payload: pack(), sink: SINK });
+    expect(job.payload.kind).toBe("campaign_pack");
+    expect(job.payload.spec).toEqual({ ...DEFAULT_CAMPAIGN_PACK_CONFIG, view: undefined, output_names: ["RING-1_campaign-pack.zip"] });
+    expect(jobImageSize(job.payload)).toEqual({ width: 2000, height: 2000 });
+  });
+
+  it("reads the studio camera of a pack that isn't auto-framed, and a custom background", () => {
+    const view = { position: [1.2, 0.6, 1.8], target: [0, 0.1, 0] };
+    const spec = readHarnessJob({ payload: pack({ autoFrame: false, view, background: { kind: "custom", color: "#F4F2EE" } }), sink: SINK }).payload.spec;
+    expect(spec).toMatchObject({ autoFrame: false, view, background: { kind: "custom", color: "#F4F2EE" } });
+  });
+
+  it("refuses a pack it could not plan", () => {
+    const read = (spec: Record<string, unknown>) => () => readHarnessJob({ payload: pack(spec), sink: SINK });
+    expect(read({ metals: [] })).toThrow(/spec\.metals/);
+    expect(read({ angleIds: "front" })).toThrow(/spec\.angleIds/);
+    expect(read({ stillSize: 0 })).toThrow(/spec\.stillSize/);
+    expect(read({ formats: { jpg: true } })).toThrow(/spec\.formats/);
+    expect(read({ background: { kind: "gradient" } })).toThrow(/spec\.background/);
+    expect(read({ background: { kind: "custom" } })).toThrow(/spec\.background\.color/);
+    expect(read({ cutScope: "yes" })).toThrow(/spec\.cutScope/);
+    expect(read({ turntable: { enabled: true, formats: ["portrait"], durationSec: 10, fps: 30 } })).toThrow(/spec\.turntable\.formats/);
+    expect(read({ spin: { enabled: true, frames: 0, size: 1080 } })).toThrow(/spec\.spin/);
+    expect(read({ view: { position: [0, 1], target: [0, 0, 0] } })).toThrow(/spec\.view/);
+    expect(read({ output_names: [] })).toThrow(/spec\.output_names/);
+  });
+
+  it("needs the studio's address for the embed, and the scene's viewer id", () => {
+    expect(() => readHarnessJob({ payload: pack({}, { app_url: undefined }), sink: SINK })).toThrow(/app_url/);
+    expect(() => readHarnessJob({ payload: pack({}, { app_url: "javascript:alert(1)" }), sink: SINK })).toThrow(/app_url/);
+    expect(() => readHarnessJob({ payload: pack({}, { scene: { id: 812, name: null, sku: null } }), sink: SINK })).toThrow(/scene\.viewer_id/);
   });
 });
 

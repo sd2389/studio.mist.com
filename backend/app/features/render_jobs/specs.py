@@ -246,7 +246,9 @@ class PackSpin(SpecModel):
 class CampaignPackSpec(SpecModel):
     """The pack's CampaignPackConfig (src/features/render/campaign-pack/domain/types.ts), whole,
     as the dialog resolves it. `angleIds` are built-in angles or "pose:<id>" of a pose the look
-    saves; `metals` are the studio's metal presets or "current", the model as configured."""
+    saves; `metals` are the studio's metal presets or "current", the model as configured. A pack
+    that isn't auto-framed shoots from the studio camera, which the dialog sends as `view` (the
+    viewer's opening view without it)."""
 
     metals: Annotated[list[PackMetal], AfterValidator(_each_once)] = Field(min_length=1, max_length=MAX_PACK_METALS)
     angleIds: Annotated[list[PackAngleId], AfterValidator(_each_once)] = Field(max_length=MAX_PACK_ANGLES)
@@ -264,11 +266,20 @@ class CampaignPackSpec(SpecModel):
     embed: bool
     # The ASET image of the stones, when the piece has ray-traced gems.
     cutScope: bool
+    # The studio camera, for a pack that isn't auto-framed: its built-in angles at its distance
+    # from the target, its turntables and spins orbiting from it, through the viewer's lens.
+    view: View | None = None
 
     @model_validator(mode="after")
     def _renders_something(self) -> CampaignPackSpec:
         if not self.parts():
             raise ValueError("pick at least one angle, turntable format, the 360° spin or the ASET image")
+        return self
+
+    @model_validator(mode="after")
+    def _has_a_view_only_when_not_auto_framed(self) -> CampaignPackSpec:
+        if self.autoFrame and self.view is not None:
+            raise ValueError("a view places the shots of a pack that isn't auto-framed")
         return self
 
     def parts(self) -> list[PackPart]:

@@ -1,8 +1,8 @@
 import type { LookSnapshot } from "@/features/viewer";
 import type { SceneLook } from "@/lib/api/scenes";
 import { LIGHTING_PRESETS } from "@/lib/viewer-lighting";
-import { BUILT_IN_ANGLES } from "../campaign-pack/domain/defaults";
-import type { BuiltInAngleId, Vec3 } from "../campaign-pack/domain/types";
+import { BUILT_IN_ANGLES, TURNTABLE_FORMATS } from "../campaign-pack/domain/defaults";
+import type { BuiltInAngleId, CampaignPackConfig, PackBackground, TurntableFormatId, Vec3 } from "../campaign-pack/domain/types";
 
 /*
  * The render job as the worker hands it to the harness's export mode, and what the page hands
@@ -69,6 +69,18 @@ export type SpinSpec = ImageEncoding & {
   size: number;
 };
 
+/**
+ * A Campaign Pack: the pack's config as the studio's dialog resolved it, with the studio camera
+ * when it isn't auto-framed. The page renders every file of the pack's ZIP, its turntables as raw
+ * frames; the worker encodes those and puts everything in the one ZIP.
+ */
+export type CampaignPackSpec = CampaignPackConfig & {
+  /** The studio camera a pack that isn't auto-framed shoots from; without it, the viewer's opening view. */
+  view?: ViewCamera["view"];
+  /** The ZIP's name, as the API named it. */
+  output_names: string[];
+};
+
 type PayloadBase = {
   /** The look, frozen when the job was created: what the studio autosaves. */
   look: LookSnapshot;
@@ -79,14 +91,18 @@ type PayloadBase = {
   /** The owner's plan marks every image and every frame (Free). */
   watermark: boolean;
   limits: { max_edge: number; max_runtime_seconds: number };
-  scene: { id: number; name: string | null; sku: string | null };
+  /** `viewer_id` is the studio's id for the scene's model: its page is /viewer/<viewer_id>. */
+  scene: { id: number; name: string | null; sku: string | null; viewer_id: string };
+  /** The studio's public address (the API's APP_PUBLIC_URL): a Campaign Pack's embed links to it. */
+  app_url: string;
 };
 
 export type RenderJobPayload =
   | (PayloadBase & { kind: "still"; spec: StillSpec })
   | (PayloadBase & { kind: "angle_set"; spec: AngleSetSpec })
   | (PayloadBase & { kind: "turntable"; spec: TurntableSpec })
-  | (PayloadBase & { kind: "spin"; spec: SpinSpec });
+  | (PayloadBase & { kind: "spin"; spec: SpinSpec })
+  | (PayloadBase & { kind: "campaign_pack"; spec: CampaignPackSpec });
 
 /** The kinds the export mode renders; the rest come with their own modes. */
 export type ExportKind = RenderJobPayload["kind"];
@@ -128,15 +144,23 @@ export type RendererInfo = {
 };
 
 /**
- * `window.__RENDER_RESULT__`, once the page reports "done" (export) or "ready" (probe). A
- * turntable lists no files: its frames went to the sink raw, for the worker to encode.
+ * One entry of a Campaign Pack's ZIP, in the ZIP's order: a file the page posted to the sink, or
+ * a turntable it streamed there as frames, which the worker encoded and stored under that path.
  */
-export type HarnessResult = { renderer: RendererInfo; outputs: RenderedFile[] };
+export type PackEntry = { path: string; content_type: string };
+
+/**
+ * `window.__RENDER_RESULT__`, once the page reports "done" (export) or "ready" (probe). A
+ * turntable lists no files: its frames went to the sink raw, for the worker to encode. A Campaign
+ * Pack lists none either, but every entry of its ZIP in `entries`.
+ */
+export type HarnessResult = { renderer: RendererInfo; outputs: RenderedFile[]; entries?: PackEntry[] };
 
 type Json = Record<string, unknown>;
 
-const EXPORT_KINDS: readonly ExportKind[] = ["still", "angle_set", "turntable", "spin"];
+const EXPORT_KINDS: readonly ExportKind[] = ["still", "angle_set", "turntable", "spin", "campaign_pack"];
 const TURNTABLE_QUALITIES: readonly TurntableSpec["quality"][] = ["standard", "high", "max"];
+const PACK_BACKGROUNDS: readonly PackBackground["kind"][] = ["white", "scene", "custom"];
 
 function isObject(value: unknown): value is Json {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -231,12 +255,83 @@ function readSpinSpec(spec: Json): SpinSpec {
   return { frames, size, ...readEncoding(spec) };
 }
 
+const isBoolean = (value: unknown): value is boolean => typeof value === "boolean";
+const isFiniteNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
+const isStringList = (value: unknown): value is string[] => Array.isArray(value) && value.every((item) => typeof item === "string");
+
+function readPackBackground(raw: unknown): PackBackground {
+  const kind = PACK_BACKGROUNDS.find((known) => isObject(raw) && raw.kind === known);
+  if (!kind || !isObject(raw)) invalid("spec.background");
+  if (kind !== "custom") return { kind };
+  if (typeof raw.color !== "string") invalid("spec.background.color");
+  return { kind, color: raw.color };
+}
+
+function readPackTurntable(raw: unknown): CampaignPackConfig["turntable"] {
+  if (!isObject(raw) || !isBoolean(raw.enabled)) invalid("spec.turntable");
+  const { formats, durationSec, fps } = raw;
+  if (!isStringList(formats) || !formats.every((format) => Object.hasOwn(TURNTABLE_FORMATS, format))) invalid("spec.turntable.formats");
+  if (!isPositiveInteger(durationSec) || !isPositiveInteger(fps)) invalid("spec.turntable.durationSec/fps");
+  return { enabled: raw.enabled, formats: formats as TurntableFormatId[], durationSec, fps };
+}
+
+function readPackSpin(raw: unknown): CampaignPackConfig["spin"] {
+  if (!isObject(raw) || !isBoolean(raw.enabled) || !isPositiveInteger(raw.frames) || !isPositiveInteger(raw.size)) invalid("spec.spin");
+  return { enabled: raw.enabled, frames: raw.frames, size: raw.size };
+}
+
+function readPackView(raw: unknown): CampaignPackSpec["view"] {
+  if (raw === undefined) return undefined;
+  if (!isObject(raw) || !isVec3(raw.position) || !isVec3(raw.target)) invalid("spec.view");
+  return { position: raw.position, target: raw.target };
+}
+
+const PACK_FLAGS = ["autoFrame", "contactShadow", "embed", "cutScope"] as const;
+
+function readPackFlags(spec: Json): Pick<CampaignPackConfig, (typeof PACK_FLAGS)[number]> {
+  const flags = Object.fromEntries(PACK_FLAGS.map((flag) => [flag, spec[flag]]));
+  for (const flag of PACK_FLAGS) if (!isBoolean(flags[flag])) invalid(`spec.${flag}`);
+  return flags as Pick<CampaignPackConfig, (typeof PACK_FLAGS)[number]>;
+}
+
+function readPackSpec(spec: Json): CampaignPackSpec {
+  const { metals, angleIds, stillSize, formats, jpegQuality, marginPct, output_names } = spec;
+  if (!isStringList(metals) || metals.length === 0) invalid("spec.metals");
+  if (!isStringList(angleIds)) invalid("spec.angleIds");
+  if (!isPositiveInteger(stillSize)) invalid("spec.stillSize");
+  if (!isObject(formats) || !isBoolean(formats.jpg) || !isBoolean(formats.png)) invalid("spec.formats");
+  if (!isFiniteNumber(jpegQuality) || !isFiniteNumber(marginPct)) invalid("spec.jpegQuality/marginPct");
+  if (!isStringList(output_names) || output_names.length !== 1 || !output_names[0]) invalid("spec.output_names");
+  return {
+    // The API took only the studio's metal presets and "current".
+    metals: metals as CampaignPackConfig["metals"],
+    angleIds,
+    stillSize,
+    formats: { jpg: formats.jpg, png: formats.png },
+    background: readPackBackground(spec.background),
+    jpegQuality,
+    marginPct,
+    ...readPackFlags(spec),
+    turntable: readPackTurntable(spec.turntable),
+    spin: readPackSpin(spec.spin),
+    view: readPackView(spec.view),
+    output_names,
+  };
+}
+
 function readSpec(kind: unknown, spec: Json): RenderJobPayload["spec"] {
   if (kind === "still" || kind === "angle_set") return readImagesSpec(kind, spec);
   if (kind === "turntable") return readTurntableSpec(spec);
   if (kind === "spin") return readSpinSpec(spec);
-  // Other kinds come with their own modes (campaign_pack, convert).
+  if (kind === "campaign_pack") return readPackSpec(spec);
+  // Other kinds come with their own modes (convert).
   return invalid(`kind "${String(kind)}" (the export mode renders ${EXPORT_KINDS.join(", ")})`);
+}
+
+/** What only a Campaign Pack reads of the payload: where the studio is, for its embed, and the scene's viewer id. */
+function checkPackHandOff(payload: Json): void {
+  if (typeof payload.app_url !== "string" || !/^https?:\/\//.test(payload.app_url)) invalid("app_url");
+  if (!isObject(payload.scene) || !isNonEmptyString(payload.scene.viewer_id)) invalid("scene.viewer_id");
 }
 
 function readLook(raw: unknown): LookSnapshot {
@@ -270,6 +365,7 @@ export function readHarnessJob(raw: unknown): HarnessJob {
   const payload = raw.payload;
   if (!isObject(payload.spec)) invalid("spec");
   const spec = readSpec(payload.kind, payload.spec);
+  if (payload.kind === "campaign_pack") checkPackHandOff(payload);
   const limits = payload.limits;
   if (!isObject(limits) || typeof limits.max_edge !== "number" || !(limits.max_edge > 0)) invalid("limits.max_edge");
   if (typeof payload.watermark !== "boolean") invalid("watermark");
@@ -289,8 +385,9 @@ export function jobCameras(payload: PayloadOfKind<"still" | "angle_set">): Camer
   return payload.kind === "still" ? [payload.spec.camera] : payload.spec.cameras;
 }
 
-/** The size of every image or frame the job renders. */
+/** The size of every image or frame the job renders; a Campaign Pack's stills'. */
 export function jobImageSize(payload: RenderJobPayload): { width: number; height: number } {
   if (payload.kind === "spin") return { width: payload.spec.size, height: payload.spec.size };
+  if (payload.kind === "campaign_pack") return { width: payload.spec.stillSize, height: payload.spec.stillSize };
   return { width: payload.spec.width, height: payload.spec.height };
 }

@@ -32,7 +32,7 @@ async function request<T>(path: string, init: RequestInit): Promise<T> {
       (data as { detail?: string; error?: string })?.error ??
       res.statusText ??
       "Request failed";
-    throw new AuthRequestError(typeof detail === "string" ? detail : JSON.stringify(detail), res.status);
+    throw new AuthRequestError(typeof detail === "string" ? detail : JSON.stringify(detail), res.status, data);
   }
 
   return data as T;

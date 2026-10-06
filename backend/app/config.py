@@ -61,6 +61,8 @@ class Settings(BaseSettings):
     rate_limit_upload_direct_per_hour: int = 20
     rate_limit_ai_background_per_hour: int = 60
     rate_limit_render_jobs_per_hour: int = 300
+    # Calls on bulk upload batches: one each, however many designs or files a call names.
+    rate_limit_ingest_per_hour: int = 300
     max_upload_bytes: int = 100 * 1024 * 1024
     stripe_secret_key: str | None = Field(default=None, validation_alias="STRIPE_SECRET_KEY")
     stripe_webhook_secret: str | None = Field(default=None, validation_alias="STRIPE_WEBHOOK_SECRET")

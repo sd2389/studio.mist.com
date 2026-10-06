@@ -284,18 +284,66 @@ def refund_render_job(db: Session, job: RenderJob) -> None:
         .execution_options(synchronize_session=False)
     ).rowcount
     if released:
-        db.execute(
-            update(UserBilling)
-            .where(
-                UserBilling.user_id == job.user_id,
-                UserBilling.period_start.is_not_distinct_from(job.billing_period_start),
-            )
-            .values(
-                render_credits_balance=UserBilling.render_credits_balance + job.credits,
-                updated_at=datetime.utcnow(),
-            )
-            .execution_options(synchronize_session=False)
+        return_held_credits(db, job.user_id, job.billing_period_start, render_credits=job.credits)
+
+
+def hold_batch_credits(db: Session, user_id: int, model_credits: int, render_credits: int) -> datetime | None:
+    """Take a batch's model and render credits out of the balances together, or 402 naming the
+    shortfall.
+
+    One conditional UPDATE, so two requests at once can't both spend the same credits; it also
+    locks the billing row until the caller commits. Returns the billing period the credits were
+    held in, which a refund checks. Not committed: the caller commits the hold with the designs
+    it pays for, or rolls both back.
+    """
+    held = db.execute(
+        update(UserBilling)
+        .where(
+            UserBilling.user_id == user_id,
+            UserBilling.model_credits_balance >= model_credits,
+            UserBilling.render_credits_balance >= render_credits,
         )
+        .values(
+            model_credits_balance=UserBilling.model_credits_balance - model_credits,
+            render_credits_balance=UserBilling.render_credits_balance - render_credits,
+            updated_at=datetime.utcnow(),
+        )
+        .returning(UserBilling.period_start)
+        .execution_options(synchronize_session=False)
+    ).first()
+    if held is not None:
+        return held.period_start
+    billing = db.execute(select(UserBilling).where(UserBilling.user_id == user_id)).scalars().first()
+    model_left = billing.model_credits_balance if billing else 0
+    render_left = billing.render_credits_balance if billing else 0
+    raise HTTPException(
+        status_code=402,
+        detail=(
+            f"This needs {model_credits} model credits and {render_credits} render credits; "
+            f"{model_left} model credits and {render_left} render credits are left. "
+            "Upgrade your plan or buy a top-up."
+        ),
+    )
+
+
+def return_held_credits(
+    db: Session, user_id: int, period_start: datetime | None, *, model_credits: int = 0, render_credits: int = 0
+) -> None:
+    """Add held credits back to the balances, unless the billing period has rolled over since
+    they were held: the new period's allotment has replaced the balances they came out of, and
+    adding them would give it extra. The caller makes sure it returns them once. Not committed."""
+    if not model_credits and not render_credits:
+        return
+    db.execute(
+        update(UserBilling)
+        .where(UserBilling.user_id == user_id, UserBilling.period_start.is_not_distinct_from(period_start))
+        .values(
+            model_credits_balance=UserBilling.model_credits_balance + model_credits,
+            render_credits_balance=UserBilling.render_credits_balance + render_credits,
+            updated_at=datetime.utcnow(),
+        )
+        .execution_options(synchronize_session=False)
+    )
 
 
 def assert_custom_material_credit(db: Session, user: User) -> UserBilling:

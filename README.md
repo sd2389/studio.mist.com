@@ -161,7 +161,7 @@ Exports render on GPU workers ([ADR 0005](docs/adr/0005-server-exports.md)). Cre
 - Every other call takes only the job token, in the `X-Job-Token` header, never in a URL: `GET /{id}/payload` (the spec, the look and its catalogue items, the model, the watermark, the limits), `POST /{id}/heartbeat` every 20 s, `POST /{id}/uploads` (signed PUTs with each file's size and name signed in), `POST /{id}/complete` and `POST /{id}/fail` (`{error, code, retryable}`).
 - A heartbeat extends the lease until the job's kind has run out of run time, and answers `cancel` when the owner canceled the job or the time is up. A job whose lease runs out is taken back by the next claim as a failed attempt, and its old token stops working.
 - A retryable failure is queued again after 30 s, then 60 s; after 3 attempts, or on a final code, the job fails and is refunded.
-- The job's spec names its files in `output_names`: a still's or an angle set's images, one per camera; a turntable's one H.264 MP4 (`video/mp4`, at most 4 GB), which the worker encodes from the `frames` the harness renders; a spin's one ZIP (`application/zip`, under 4 GB, no ZIP64) of its frames and `spin.html`. An MP4 or a ZIP is reported with its frames' width and height.
+- The job's spec names its files in `output_names`: a still's or an angle set's images, one per camera; a turntable's one H.264 MP4 (`video/mp4`, at most 4 GB), which the worker encodes from the `frames` the harness renders; a spin's one ZIP (`application/zip`, under 4 GB, no ZIP64) of its frames and `spin.html`; a Campaign Pack's one ZIP, `<stem>_campaign-pack.zip`, as the browser names it. A turntable's MP4 or a spin's ZIP is reported with its frames' width and height; a pack's ZIP, whose files differ in size, with none.
 - Outputs live under `customers/<user>/renders/<job>/`. `complete` checks each file's key, type and stored size against the job, then creates the scene's renders, charges the credits and counts the bytes toward the owner's storage, which deleting the scene gives back.
 - Local storage signs nothing, so there the payload names `GET /{id}/inputs/model` and `/inputs/background`, and uploads go to `PUT /{id}/uploads/{name}`, all with the job token.
 
@@ -172,6 +172,15 @@ The worker (`npm run worker:render`, [scripts/render-worker/README.md](scripts/r
 To try the API locally, `cp docker-compose.override.example.yml docker-compose.override.yml` gives the backend and the workers a `RENDER_WORKER_TOKEN`, and `docker compose exec backend python -m scripts.seed_smoke_job` queues a still for a smoke-test user (`--bogus`: one whose model file is missing).
 
 Only a claim takes back a job whose lease ran out, so with no worker polling it stays `running`.
+
+## Bulk uploads (optional)
+
+Grow and Studio customers can upload a batch of CAD files, which workers convert into published scenes ([ADR 0006](docs/adr/0006-bulk-pipeline.md)). The API is under `/ingest`, behind the `bulk_pipeline` flag (off by default): while it is off, nothing can start or add to a batch, but batches can still be read and canceled.
+
+- `POST /batches` takes the files (relative paths and sizes, with an OBJ's MTL or a glTF's `.bin`) and an optional CSV manifest (`file,sku,name,category,note,units`). Every design, row and SKU is checked at once, and a batch with any problem is 422 with each one by item and row; SKUs must be free of scenes and of other open batches. Limits: 100 MB a file; Studio 500 designs and 20 GB a batch, Grow 100 and 5 GB, Free none (402); 3 open batches at once (429). An optional `render_plan` (stills from the Campaign Pack's angles, a turntable, a spin) is checked, capped by the plan and priced as the render jobs it becomes: the ADR's default, four 2000 px stills and 6 s at 1080², is 7 render credits a design.
+- `POST /batches/{id}/uploads` signs a PUT for each file of up to 100 designs, its size and type signed in; `POST /batches/{id}/uploaded` checks the stored sizes. Raw CAD goes straight to cloud storage, never through the API, so local storage takes no bulk uploads.
+- `POST /batches/{id}/submit` holds a model credit and the render plan's credits for every design in one conditional UPDATE, and queues a `convert` render job for each uploaded design. `retry-failed` (and `items/{item_id}/retry`) hold again; `cancel` refunds what hasn't finished. `GET /batches`, `/batches/{id}` and `/batches/{id}/items?status=&page=&limit=` read them.
+- A `convert` job's payload is its spec and signed GETs for the design's files (on local storage, `GET /render-jobs/{id}/inputs/source` and `/inputs/companions/{index}`). The worker uploads `model.glb`, `conversion.json` and optionally `thumbnail.webp`; completing the job runs the direct upload's GLB checks, makes and publishes the scene, and spends the design's held credit, once.
 
 ## Project layout
 

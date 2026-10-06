@@ -102,6 +102,15 @@ FEATURE_REGISTRY: tuple[FeatureDefinition, ...] = (
         # Off until the studio's export screens create jobs; while off, creating or quoting one is 404.
         default_enabled=False,
     ),
+    FeatureDefinition(
+        key="bulk_pipeline",
+        label="Bulk pipeline",
+        description="Upload batches of CAD files that workers convert into published scenes (ADR 0006).",
+        category="Core",
+        # Off until the bulk upload page ships; while off, starting or adding to a batch is 404.
+        # Reading batches and canceling one stay open, so a batch in flight can be refunded.
+        default_enabled=False,
+    ),
 )
 
 _REGISTRY_BY_KEY = {feature.key: feature for feature in FEATURE_REGISTRY}

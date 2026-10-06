@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from pathlib import PurePosixPath
 from uuid import uuid4
 
 CUSTOMER_PREFIX = "customers"
@@ -60,6 +61,28 @@ def render_job_prefix(user_id: int, job_id: int) -> str:
 def render_job_output_key(user_id: int, job_id: int, filename: str) -> str:
     """One output of a render job, under the job's prefix, by its file name (already cleaned)."""
     return f"{render_job_prefix(user_id, job_id)}{filename}"
+
+
+def ingest_item_prefix(user_id: int, batch_id: int, item_id: int) -> str:
+    """Where a batch design's raw CAD files live: private, and never counted toward storage."""
+    return f"{customer_prefix(user_id)}/ingest/{batch_id}/{item_id}/"
+
+
+def ingest_source_key(user_id: int, batch_id: int, item_id: int, filename: str) -> str:
+    return f"{ingest_item_prefix(user_id, batch_id, item_id)}{safe_file_name(filename)}"
+
+
+def ingest_companion_key(user_id: int, batch_id: int, item_id: int, index: int, filename: str) -> str:
+    """A design's companion file (an OBJ's MTL, a glTF's .bin), numbered so two never share a key."""
+    return f"{ingest_item_prefix(user_id, batch_id, item_id)}companions/{index}-{safe_file_name(filename)}"
+
+
+def safe_file_name(name: str) -> str:
+    """A file's own name, without its folders, cleaned to [A-Za-z0-9._-]; its suffix kept, lower case."""
+    base = PurePosixPath((name or "").replace("\\", "/")).name
+    suffix = PurePosixPath(base).suffix.lower()
+    stem = re.sub(r"[^a-zA-Z0-9._-]", "_", base[: len(base) - len(suffix)])[:120] or "file"
+    return f"{stem}{re.sub(r'[^a-z0-9.]', '', suffix)}"
 
 
 def ai_render_key(user_id: int, ext: str = "png") -> str:

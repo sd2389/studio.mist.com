@@ -22,6 +22,7 @@ from app.config import Settings, get_settings
 from app.core import storage
 from app.core import storage_keys as keys
 from app.features.billing.quota_service import refund_render_job
+from app.features.ingest.items import end_item_of_job
 from app.models.render_job import RenderJob
 from app.schemas.render_job import RenderJobHeartbeatOut
 
@@ -123,12 +124,14 @@ def discard_outputs(job: RenderJob) -> None:
 
 
 def _end_job(db: Session, job: RenderJob, now: datetime, status: str) -> None:
-    """End a job that won't run again, failed or canceled, and refund it. Not committed."""
+    """End a job that won't run again, failed or canceled, and refund it; a convert job ends
+    its batch design too. Not committed."""
     job.status = status
     job.stage = None
     job.finished_at = now
     job.updated_at = now
     refund_render_job(db, job)
+    end_item_of_job(db, job, status)
 
 
 def _requeue(job: RenderJob, now: datetime) -> None:

@@ -25,8 +25,24 @@ class RenderJob(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True)
     scene_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("scenes.id", ondelete="SET NULL"), nullable=True)
-    # An ingest batch (ADR 0006); its foreign key arrives with the ingest_batches table.
-    batch_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # An ingest batch's job (ADR 0006), and the design it is for.
+    batch_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("ingest_batches.id", ondelete="SET NULL", name="fk_render_jobs_batch_id_ingest_batches"),
+        nullable=True,
+    )
+    ingest_item_id: Mapped[int | None] = mapped_column(
+        Integer,
+        # A design names its convert job too: this key is the one added after both tables exist.
+        ForeignKey(
+            "ingest_items.id",
+            ondelete="SET NULL",
+            name="fk_render_jobs_ingest_item_id_ingest_items",
+            use_alter=True,
+        ),
+        nullable=True,
+        index=True,
+    )
     kind: Mapped[str] = mapped_column(String(24), default="still")
     spec: Mapped[dict] = mapped_column(JSON, default=dict)  # normalised, with its frame count and output names
     look: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # validated and frozen at creation

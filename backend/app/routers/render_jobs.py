@@ -17,6 +17,7 @@ from app.features.render_jobs import service as render_job_service
 from app.features.render_jobs import worker as render_job_worker
 from app.models.user import User
 from app.schemas.render_job import (
+    ConvertJobPayload,
     RenderJobBulkCreate,
     RenderJobBulkOut,
     RenderJobBulkQuote,
@@ -206,13 +207,13 @@ def claim_render_job(
     )
 
 
-@router.get("/{job_id}/payload", response_model=RenderJobPayload)
+@router.get("/{job_id}/payload", response_model=RenderJobPayload | ConvertJobPayload)
 def get_job_payload(
     job_id: int,
     token: str = Depends(_job_token),
     db: Session = Depends(get_db),
-) -> RenderJobPayload:
-    """What the harness renders the job from."""
+) -> RenderJobPayload | ConvertJobPayload:
+    """What the harness renders the job from; for a convert job, the design's CAD files."""
     return render_job_payload.job_payload(db, job_id, token)
 
 
@@ -226,6 +227,18 @@ def get_job_model(job_id: int, token: str = Depends(_job_token), db: Session = D
 def get_job_background(job_id: int, token: str = Depends(_job_token), db: Session = Depends(get_db)):
     """The look's background image, streamed (local storage only)."""
     return render_job_payload.background_file(db, job_id, token)
+
+
+@router.get("/{job_id}/inputs/source", response_class=FileResponse)
+def get_job_source(job_id: int, token: str = Depends(_job_token), db: Session = Depends(get_db)):
+    """A convert job's CAD file, streamed (local storage only)."""
+    return render_job_payload.convert_source_file(db, job_id, token)
+
+
+@router.get("/{job_id}/inputs/companions/{index}", response_class=FileResponse)
+def get_job_companion(job_id: int, index: int, token: str = Depends(_job_token), db: Session = Depends(get_db)):
+    """One of a convert job's companion files, by its place in the spec, streamed (local storage only)."""
+    return render_job_payload.convert_companion_file(db, job_id, token, index)
 
 
 @router.post("/{job_id}/heartbeat", response_model=RenderJobHeartbeatOut)

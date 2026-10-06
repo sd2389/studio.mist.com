@@ -22,18 +22,13 @@ from app.core import storage
 from app.features.billing.plans import MAX_BULK_RENDER_JOBS, PLAN_LABELS, PlanTier, get_quotas, normalize_tier
 from app.features.billing.quota_service import get_or_create_billing, hold_render_credits, refund_render_job
 from app.features.render_jobs import idempotency
+from app.features.render_jobs.job_files import normalised_spec, output_names, output_stem
 from app.features.render_jobs.plan_limits import assert_plan_allows
 from app.features.render_jobs.pricing import render_job_cost
-from app.features.render_jobs.specs import (
-    check_poses,
-    normalised_spec,
-    output_names,
-    output_stem,
-    parse_spec,
-    spec_warnings,
-)
+from app.features.render_jobs.specs import check_poses, parse_spec, spec_warnings
 from app.features.scene.look import saved_look, validate_look, variant_look
 from app.features.scene.service import require_owned_scene
+from app.features.ingest.items import end_item_of_job
 from app.models import Render, RenderJob, Scene
 from app.models.user import User
 from app.schemas.render_job import RenderJobBulkCreate, RenderJobCreate, RenderJobOut, RenderJobOutput
@@ -81,7 +76,7 @@ def plan_job(db: Session, user: User, body: RenderJobCreate) -> PlannedJob:
     assert_plan_allows(db, user, spec)
     scene = require_owned_scene(db.get(Scene, body.scene_id), user.id)
     look = validate_look(db, _look_to_render(scene, body), user.id)
-    check_poses(spec, {pose["id"] for pose in look["scene_settings"].get("poses") or []})
+    check_poses(spec, look["scene_settings"].get("poses") or [])
     names = output_names(spec, output_stem(body.name, scene.sku, scene.name))
     return PlannedJob(
         scene=scene,
@@ -96,12 +91,13 @@ def plan_job(db: Session, user: User, body: RenderJobCreate) -> PlannedJob:
 
 
 def _assert_queue_room(db: Session, user_id: int, adding: int, tier: PlanTier) -> None:
-    """429 when `adding` more jobs would pass the plan's cap on unfinished jobs."""
+    """429 when `adding` more jobs would pass the plan's cap on unfinished jobs from the studio.
+    A bulk upload's jobs don't count: its own limits bound them (ADR 0006)."""
     cap = get_quotas(tier).max_queued_jobs
     unfinished = db.execute(
         select(func.count())
         .select_from(RenderJob)
-        .where(RenderJob.user_id == user_id, RenderJob.status.in_(UNFINISHED))
+        .where(RenderJob.user_id == user_id, RenderJob.status.in_(UNFINISHED), RenderJob.batch_id.is_(None))
     ).scalar_one()
     if unfinished + adding > cap:
         raise HTTPException(
@@ -296,6 +292,7 @@ def cancel_job(db: Session, user: User, job_id: int) -> RenderJob:
     now = datetime.utcnow()
     if _update_job(db, job.id, RenderJob.status == "queued", status="canceled", finished_at=now, updated_at=now):
         refund_render_job(db, job)
+        end_item_of_job(db, job, "canceled")
     elif not _update_job(
         db,
         job.id,

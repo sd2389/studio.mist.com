@@ -15,8 +15,10 @@ import { BulkUploadActions } from "./BulkUploadActions";
 import { DesignList } from "./DesignList";
 import { ProblemList } from "./ProblemList";
 import { RecentBatches } from "./RecentBatches";
+import { RenderPlanPicker } from "./RenderPlanPicker";
 import { useBulkDrop } from "./useBulkDrop";
 import { useBulkUploadFlow, type BulkUploadFlow } from "./useBulkUploadFlow";
+import { useRenderPlanChoice, type RenderPlanChoice } from "./useRenderPlanChoice";
 import { useSkuCheck } from "./useSkuCheck";
 import type { DesignUploadState } from "./useBatchUploads";
 
@@ -36,12 +38,14 @@ function blockedReason(
   problemCount: number,
   skuCheck: ReturnType<typeof useSkuCheck>,
   refusal: string | null,
+  renders: RenderPlanChoice,
 ): string | null {
   if (drop.reading) return "Opening the files…";
   if (drop.plan.designs.length === 0) return "Drop the designs to upload first.";
   if (refusal) return "This batch is more than the plan takes.";
   if (problemCount > 0) return `Fix the ${problemCount === 1 ? "problem" : `${problemCount} problems`} first, or leave those designs out.`;
   if (skuCheck.checking) return "Checking the SKUs…";
+  if (renders.refused) return "Change the render plan first: it can't be rendered as it is.";
   return null;
 }
 
@@ -64,7 +68,8 @@ export function BulkUploadShell({ billing, recentBatches, userEmail, isAdmin }: 
   const drop = useBulkDrop(billing?.features.bulk_upload?.max_file_bytes ?? null, billing?.features.bulk_upload?.max_bytes ?? null);
   const { plan } = drop;
   const skuCheck = useSkuCheck(skusToCheck(withoutProblems(plan.designs, plan.problems)));
-  const flow = useBulkUploadFlow(drop, skuCheck.held);
+  const renders = useRenderPlanChoice();
+  const flow = useBulkUploadFlow(drop, skuCheck.held, renders.body);
   const sorted = sortProblems(flow.problems);
   const bytes = batchBytes(plan.designs);
   const limits = billing?.features.bulk_upload;
@@ -144,11 +149,18 @@ export function BulkUploadShell({ billing, recentBatches, userEmail, isAdmin }: 
                   ))}
                 </select>
               </div>
-              <BatchPlanPanel billing={billing} designCount={plan.designs.length} bytes={bytes} quote={flow.batch?.quote ?? null} />
+              <RenderPlanPicker choice={renders} designCount={plan.designs.length} disabled={made} />
+              <BatchPlanPanel
+                billing={billing}
+                designCount={plan.designs.length}
+                bytes={bytes}
+                quote={flow.batch?.quote ?? null}
+                renderCreditsPerDesign={renders.perDesign}
+              />
               <BulkUploadActions
                 flow={flow}
                 designCount={plan.designs.length}
-                blocked={blockedReason(drop, flow.localProblems.length, skuCheck, refusal)}
+                blocked={blockedReason(drop, flow.localProblems.length, skuCheck, refusal, renders)}
               />
               {!made && plan.designs.length > 0 ? (
                 <Button type="button" variant="ghost" size="sm" onClick={drop.reset}>

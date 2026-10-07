@@ -43,12 +43,53 @@ export type IngestItemIn = IngestFileIn & {
   units?: string | null;
 };
 
+/** A Campaign Pack angle a design's stills are framed from (`PackAngle` in the API's specs). */
+export type RenderPlanAngle = "front" | "three-quarter" | "side" | "top";
+
+/**
+ * What each design of a batch is rendered as once converted (`RenderPlan` in
+ * backend/app/features/ingest/render_plans.py): square stills from the pack's angles, a turntable
+ * once round the piece, a spin. The API checks it against the plan's caps and prices it.
+ */
+export type RenderPlan = {
+  stills: {
+    angles: RenderPlanAngle[];
+    /** Square, 64 to 6000 px. */
+    size: number;
+    format?: "png" | "jpeg";
+    jpeg_quality?: number;
+    transparent?: boolean;
+    margin_pct?: number;
+  } | null;
+  turntable: {
+    /** Even both, within the plan's cap. */
+    width: number;
+    height: number;
+    fps: number;
+    seconds: number;
+    quality?: "standard" | "high" | "max";
+  } | null;
+  /** A spin job's spec: `frames` frames of `size` px square. */
+  spin: { frames: number; size: number; format?: "png" | "jpeg"; jpeg_quality?: number; transparent?: boolean } | null;
+  /** Copy each design's outputs beside its published model; off, they download through the API only. */
+  publish_media: boolean;
+  /** The still that becomes the scene's thumbnail; one of the stills' angles. */
+  thumbnail_from: RenderPlanAngle | null;
+};
+
+/** What a render plan costs each design, priced as a batch with it is held and charged. */
+export type RenderPlanQuote = {
+  render_credits: number;
+  jobs: { kind: string; credits: number; files: number }[];
+};
+
 export type IngestBatchCreate = {
   name: string;
   items: IngestItemIn[];
   /** The CSV manifest, UTF-8, at most 1 MB: file,sku,name,category,note,units; only file is required. */
   manifest?: string | null;
-  render_plan?: Record<string, unknown> | null;
+  /** Renders nothing when left out. */
+  render_plan?: RenderPlan | null;
   options?: { decimate?: "auto" | "fail"; default_category?: string };
 };
 
@@ -62,6 +103,37 @@ export type IngestProblem = {
 };
 
 export type IngestCredits = { model_credits: number; render_credits: number };
+
+/** A file one of a design's jobs made (`RenderJobOutput`); the browser downloads it through the render-jobs proxy. */
+export type IngestJobOutput = {
+  id: number;
+  kind: string;
+  label: string | null;
+  filename: string | null;
+  content_type: string | null;
+  bytes: number;
+  width: number | null;
+  height: number | null;
+  download_url: string;
+};
+
+/** One of a design's render jobs (`IngestItemJob`): the newest of each kind, with what it made. */
+export type IngestItemJob = {
+  id: number;
+  kind: string;
+  status: "queued" | "running" | "completed" | "failed" | "canceled";
+  /** 0 to 1. */
+  progress: number;
+  stage: string | null;
+  attempts: number;
+  max_attempts: number;
+  error: string | null;
+  error_code: string | null;
+  credits: number;
+  credit_state: "held" | "charged" | "refunded" | "none";
+  cancel_requested_at: string | null;
+  outputs: IngestJobOutput[];
+};
 
 export type IngestItem = {
   id: number;
@@ -87,6 +159,12 @@ export type IngestItem = {
   polygon_count: number | null;
   size_mm: number | null;
   warnings: string[];
+  /** The piece's embed link, once its scene holds its SKU. */
+  embed_url?: string | null;
+  /** Its scene's thumbnail: the front still's once its stills are rendered. */
+  thumbnail_url?: string | null;
+  /** Its render jobs, the newest of each kind, once its scene is made. */
+  jobs?: IngestItemJob[];
   created_at: string;
   updated_at: string;
 };
@@ -100,12 +178,16 @@ export type IngestBatch = {
   total_bytes: number;
   /** Designs at each status; a status none is at is left out. */
   counts: Partial<Record<IngestItemStatus, number>>;
-  render_plan: Record<string, unknown> | null;
+  render_plan: RenderPlan | null;
   options: Record<string, unknown>;
   /** What the whole batch costs: a model credit and the render plan's credits for each design. */
   quote: IngestCredits;
-  /** What its designs hold now, not yet spent or given back. */
+  /** What its designs and their render jobs hold now, not yet spent or given back. */
   held: IngestCredits;
+  /** Spent: a model credit a scene made, and what its completed render jobs charged. */
+  charged?: IngestCredits;
+  /** Given back for designs and renders that failed or were canceled. */
+  refunded?: IngestCredits;
   created_at: string;
   updated_at: string;
   submitted_at: string | null;
@@ -217,6 +299,14 @@ export async function listAllBatchItems(
     items.push(...answer.items);
     if (answer.items.length === 0 || items.length >= answer.total) return items;
   }
+}
+
+/**
+ * What a render plan costs each design, priced by the API as making a batch with it would: 400
+ * naming the field of a plan that isn't one, 402 past the plan's caps. Nothing is made or held.
+ */
+export function quoteRenderPlan(plan: RenderPlan, { signal }: CallOptions = {}): Promise<RenderPlanQuote> {
+  return apiPost<RenderPlanQuote>("/api/ingest/render-plan/quote", { render_plan: plan }, { signal });
 }
 
 /** Which SKUs a scene holds or a design in progress reserves (at most 1000 a call). */

@@ -1,4 +1,4 @@
-import type { IngestBatchCreate, IngestItem, IngestProblem } from "@/lib/api/ingest";
+import type { IngestBatchCreate, IngestItem, IngestProblem, RenderPlan } from "@/lib/api/ingest";
 import type { DroppedFile } from "@/lib/upload/dropped-files";
 import { uploadedFilesOf } from "./design-files";
 import type { PlannedDesign } from "./design-checks";
@@ -9,11 +9,17 @@ export const MAX_BATCH_NAME_LENGTH = 255;
 /**
  * The create request for planned designs, in their order: each design's files and sizes only.
  * The API settles SKUs, names and categories itself, from the manifest's rows when there is one
- * and from the file names otherwise, exactly as `planDesigns` previewed them.
+ * and from the file names otherwise, exactly as `planDesigns` previewed them; and it checks and
+ * prices the render plan, which the page only picks (none renders nothing).
  */
 export function batchCreateBody(
   designs: PlannedDesign[],
-  { name, manifest, defaultCategory }: { name: string; manifest: string | null; defaultCategory: string },
+  {
+    name,
+    manifest,
+    defaultCategory,
+    renderPlan = null,
+  }: { name: string; manifest: string | null; defaultCategory: string; renderPlan?: RenderPlan | null },
 ): IngestBatchCreate {
   return {
     name: name.trim(),
@@ -23,6 +29,7 @@ export function batchCreateBody(
       companions: files.companions.map(({ path, file }) => ({ filename: path, bytes: file.size })),
     })),
     manifest,
+    ...(renderPlan === null ? {} : { render_plan: renderPlan }),
     options: { default_category: defaultCategory },
   };
 }

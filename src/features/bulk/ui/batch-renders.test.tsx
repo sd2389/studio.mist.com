@@ -157,6 +157,7 @@ describe("a design's renders on its batch's page", () => {
     const page = text(drawList([FAILED]));
 
     expect(page).toContain("Turntable · try 3 of 3 · 3 credits refunded Failed The GPU was lost.");
+    expect(page.split("The GPU was lost.").length - 1).toBe(1); // said on the render's row, not again on the design's
     expect(page).toContain("Retry");
   });
 });

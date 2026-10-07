@@ -75,7 +75,9 @@ function ItemRow({ item, onRetry, retrying, refusal }: {
   retrying: boolean;
   refusal?: IngestRefusal;
 }) {
-  const error = itemErrorText(item);
+  // A render that stopped says why on its own row; the design doesn't say it again.
+  const said = (item.jobs ?? []).some((job) => job.error !== null && job.error === item.error);
+  const error = said ? null : itemErrorText(item);
   const waiting = stageWaitNote(item.status);
   return (
     <li className="rounded-xl border border-border/60 bg-card/60 px-3 py-2.5">

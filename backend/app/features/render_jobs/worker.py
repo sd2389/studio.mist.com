@@ -22,7 +22,7 @@ from app.config import Settings, get_settings
 from app.core import storage
 from app.core import storage_keys as keys
 from app.features.billing.quota_service import refund_render_job
-from app.features.ingest.items import end_item_of_job
+from app.features.ingest.items import end_item_of_job, lock_design_of
 from app.models.render_job import RenderJob
 from app.schemas.render_job import RenderJobHeartbeatOut
 
@@ -124,12 +124,14 @@ def discard_outputs(job: RenderJob) -> None:
 
 
 def _end_job(db: Session, job: RenderJob, now: datetime, status: str) -> None:
-    """End a job that won't run again, failed or canceled, and refund it; a convert job ends
-    its batch design too. Not committed."""
+    """End a job that won't run again, failed or canceled, and refund it; a batch design's job
+    moves its design on too (its design locked before the refund, ingest/items.py). Not
+    committed."""
     job.status = status
     job.stage = None
     job.finished_at = now
     job.updated_at = now
+    lock_design_of(db, job)
     refund_render_job(db, job)
     end_item_of_job(db, job, status)
 
@@ -187,28 +189,32 @@ def fail_job(db: Session, job_id: int, token: str, *, error: str, code: str, ret
 # ---------------------------------------------------------------------------
 
 
+def _lease_lapsed(now: datetime) -> tuple:
+    """A running job whose lease ran out by `now`."""
+    return RenderJob.status == "running", RenderJob.lease_expires_at < now
+
+
 def take_back_lapsed_leases(db: Session, now: datetime) -> None:
     """Running jobs whose lease ran out: their workers crashed or hung, so each of those
     attempts failed (`lease_expired`), as if the worker had said so. A fresh token, held by
-    nobody, shuts the worker that lost the lease out of the job."""
-    stmt = (
-        select(RenderJob)
-        .where(RenderJob.status == "running", RenderJob.lease_expires_at < now)
-        .order_by(RenderJob.lease_expires_at)
-        .limit(_LAPSED_PER_CLAIM)
-    )
-    if _uses_row_locks(db):
-        stmt = stmt.with_for_update(skip_locked=True)
-    lapsed = list(db.execute(stmt).scalars())
-    ended = []
-    for job in lapsed:
+    nobody, shuts the worker that lost the lease out of the job. Each is taken back in its own
+    transaction: ending one locks its design and its owner's billing row, which must not wait
+    while another job's locks are held (ingest/items.py)."""
+    lapsed = db.execute(
+        select(RenderJob.id).where(*_lease_lapsed(now)).order_by(RenderJob.lease_expires_at).limit(_LAPSED_PER_CLAIM)
+    ).scalars().all()
+    for job_id in lapsed:
+        stmt = select(RenderJob).where(RenderJob.id == job_id, *_lease_lapsed(now)).execution_options(populate_existing=True)
+        if _uses_row_locks(db):
+            stmt = stmt.with_for_update(skip_locked=True)
+        job = db.execute(stmt).scalars().first()
+        if job is None:  # another claim took it back, or its worker caught up
+            continue
         job.worker_token = uuid4().hex
-        if end_attempt(db, job, now, code="lease_expired", error=LEASE_EXPIRED_ERROR, retryable=True):
-            ended.append(job)
-    if lapsed:
+        ended = end_attempt(db, job, now, code="lease_expired", error=LEASE_EXPIRED_ERROR, retryable=True)
         db.commit()
-    for job in ended:
-        discard_outputs(job)
+        if ended:
+            discard_outputs(job)
 
 
 def _next_job_query(kinds: Collection[str], now: datetime, full_owners: set[int], lock: bool):

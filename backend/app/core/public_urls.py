@@ -59,3 +59,9 @@ def published_scene_model_url(user_id: int, sku: str) -> str | None:
 
 def published_scene_thumbnail_url(user_id: int, sku: str) -> str | None:
     return public_file_url(keys.public_thumbnail_key(user_id, sku))
+
+
+def embed_url(sku: str) -> str:
+    """The piece's embed link, as the studio builds it (buildEmbedUrl in src/lib/embed-settings.ts):
+    the studio's public address, then /embed/ and the SKU."""
+    return f"{get_settings().app_public_url.rstrip('/')}/embed/{quote(sku.strip(), safe='')}"

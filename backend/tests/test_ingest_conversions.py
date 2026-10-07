@@ -43,7 +43,7 @@ from app.features.render_jobs import outputs, worker
 from app.features.render_jobs import payload as payloads
 from app.features.render_jobs.service import cancel_job
 from app.main import app
-from app.models import Scene
+from app.models import RenderJob, Scene
 from app.schemas.render_job import RenderJobUploadFile
 
 STUDIO = (500, 1500)
@@ -380,7 +380,7 @@ def test_complete_needs_the_model_and_the_report(db, cloud, converting):
     assert error.detail == "outputs: the job makes model.glb, conversion.json, each once, and may make thumbnail.webp"
 
 
-def test_a_design_with_a_render_plan_is_converted_and_keeps_its_render_credits_held(client, db, owner, cloud):
+def test_a_design_with_a_render_plan_starts_rendering_its_held_credits_moved_onto_its_jobs(client, db, owner, cloud):
     user, headers = owner
     batch = submitted_batch(client, headers, cloud, batch_body(render_plan=STILLS_PLAN))
     job = claim(db)
@@ -388,8 +388,10 @@ def test_a_design_with_a_render_plan_is_converted_and_keeps_its_render_credits_h
     complete(db, job, converted_files(cloud, job))
 
     item = item_row(db, batch["items"][0]["id"])
-    assert (item.status, item.model_credit_held, item.render_credits_held) == ("converted", 0, 4)
-    assert batch_row(db, batch["id"]).status == "processing"  # its renders come next (F2)
+    assert (item.status, item.model_credit_held, item.render_credits_held) == ("rendering", 0, 0)
+    [angle_set] = db.query(RenderJob).filter(RenderJob.ingest_item_id == item.id, RenderJob.kind != "convert").all()
+    assert (angle_set.kind, angle_set.status, angle_set.credits, angle_set.credit_state) == ("angle_set", "queued", 4, "held")
+    assert batch_row(db, batch["id"]).status == "processing"  # its renders come next
     assert balances(db, user) == (STUDIO[0] - 1, STUDIO[1] - 4)
 
 

@@ -28,6 +28,7 @@ from app.features.render_jobs.worker import discard_outputs, end_attempt, runnin
 from app.features.render_jobs.convert_spec import OPTIONAL_OUTPUTS as OPTIONAL_CONVERT_OUTPUTS
 from app.features.render_jobs.convert_spec import convert_outputs
 from app.features.ingest.conversions import complete_conversion
+from app.features.ingest.items import end_item_of_job, lock_design_of
 from app.models import Render, RenderJob, Scene
 from app.schemas.render_job import (
     RenderJobCompleteRequest,
@@ -201,7 +202,8 @@ def complete_job(db: Session, job_id: int, token: str, body: RenderJobCompleteRe
     and the job keeps running. A second complete finds the job completed: 409, nothing charged.
     Outputs that can't be kept end the job, refunded: 409 when its scene was deleted, 402 when
     the owner's storage is full. A convert job's files make its design's scene instead
-    (features/ingest/conversions.py).
+    (features/ingest/conversions.py). A batch design's job moves its design on in the same
+    commit.
     """
     job = running_job(db, job_id, token)
     checked = _checked_outputs(job, body.outputs)
@@ -210,6 +212,7 @@ def complete_job(db: Session, job_id: int, token: str, body: RenderJobCompleteRe
     scene = db.get(Scene, job.scene_id) if job.scene_id is not None else None
     if scene is None:
         raise _ended_without_outputs(db, job, "input_missing", "The job's scene was deleted.", 409)
+    lock_design_of(db, job)  # a batch design's, before its owner's billing row (ingest/items.py)
     try:
         count_storage_bytes(db, job.user_id, sum(output.bytes for _, output in checked))
     except HTTPException as exc:
@@ -226,6 +229,7 @@ def complete_job(db: Session, job_id: int, token: str, body: RenderJobCompleteRe
     job.renderer = body.renderer.model_dump(mode="json")
     job.finished_at = now
     job.updated_at = now
+    end_item_of_job(db, job, "completed")
     db.commit()
     db.refresh(job)
     return job

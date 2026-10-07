@@ -21,7 +21,8 @@ from app.features.billing.plans import GB, PLAN_LABELS, BatchLimits, PlanTier, g
 from app.features.billing.quota_service import get_or_create_billing
 from app.features.ingest.designs import Design, known_category, name_problem, plan_designs, sku_problems
 from app.features.ingest.items import lock_owner_batches
-from app.features.ingest.render_plans import plan_render
+from app.features.ingest.progress import DesignRenders, batch_job_credits, design_renders
+from app.features.ingest.render_plans import checked_plan, plan_render
 from app.features.render_jobs import idempotency
 from app.features.scene.skus import sku_holders
 from app.models import IngestBatch, IngestItem, User
@@ -36,7 +37,9 @@ from app.schemas.ingest import (
     IngestItemIn,
     IngestItemOut,
     IngestItemPage,
+    IngestPlannedJob,
     IngestProblem,
+    IngestRenderPlanQuote,
     IngestSkuCheckOut,
 )
 
@@ -221,7 +224,9 @@ def check_skus(db: Session, skus: list[str]) -> IngestSkuCheckOut:
     )
 
 
-def item_view(item: IngestItem) -> IngestItemOut:
+def item_view(item: IngestItem, renders: DesignRenders | None = None) -> IngestItemOut:
+    """A design as the API answers it; with its render jobs and thumbnail when they were read."""
+    renders = renders or DesignRenders()
     return IngestItemOut(
         id=item.id,
         batch_id=item.batch_id,
@@ -245,15 +250,26 @@ def item_view(item: IngestItem) -> IngestItemOut:
         polygon_count=item.polygon_count,
         size_mm=item.size_mm,
         warnings=item.warnings or [],
+        embed_url=item.embed_url,
+        thumbnail_url=renders.thumbnail_url,
+        jobs=renders.jobs,
         created_at=item.created_at,
         updated_at=item.updated_at,
     )
 
 
+def item_views(db: Session, items: list[IngestItem]) -> list[IngestItemOut]:
+    """Designs with their render jobs and thumbnails, read together."""
+    renders = design_renders(db, items)
+    return [item_view(item, renders[item.id]) for item in items]
+
+
 def batch_views(db: Session, batches: list[IngestBatch]) -> list[IngestBatchOut]:
-    """Batches with their designs counted by status and their credits held, in one query."""
+    """Batches with their designs counted by status, and their credits held, charged and given
+    back, by their designs and their jobs, in three queries."""
     counts: dict[int, dict[str, int]] = defaultdict(dict)
-    held: dict[int, list[int]] = defaultdict(lambda: [0, 0])
+    # Held by the designs (model, render), and given back to them (model, render).
+    designs: dict[int, list[int]] = defaultdict(lambda: [0, 0, 0, 0])
     if batches:
         rows = db.execute(
             select(
@@ -262,14 +278,16 @@ def batch_views(db: Session, batches: list[IngestBatch]) -> list[IngestBatchOut]
                 func.count(),
                 func.sum(IngestItem.model_credit_held),
                 func.sum(IngestItem.render_credits_held),
+                func.sum(IngestItem.model_credits_refunded),
+                func.sum(IngestItem.render_credits_refunded),
             )
             .where(IngestItem.batch_id.in_([batch.id for batch in batches]))
             .group_by(IngestItem.batch_id, IngestItem.status)
         ).all()
-        for batch_id, status, count, model_credits, render_credits in rows:
+        for batch_id, status, count, *sums in rows:
             counts[batch_id][status] = count
-            held[batch_id][0] += model_credits or 0
-            held[batch_id][1] += render_credits or 0
+            designs[batch_id] = [total + (part or 0) for total, part in zip(designs[batch_id], sums, strict=True)]
+    jobs = batch_job_credits(db, [batch.id for batch in batches])
     return [
         IngestBatchOut(
             id=batch.id,
@@ -284,7 +302,13 @@ def batch_views(db: Session, batches: list[IngestBatch]) -> list[IngestBatchOut]
             quote=IngestCredits(
                 model_credits=batch.item_count, render_credits=batch.item_count * batch.render_credits_per_design
             ),
-            held=IngestCredits(model_credits=held[batch.id][0], render_credits=held[batch.id][1]),
+            held=IngestCredits(
+                model_credits=designs[batch.id][0], render_credits=designs[batch.id][1] + jobs[batch.id].held
+            ),
+            charged=IngestCredits(model_credits=jobs[batch.id].scenes_made, render_credits=jobs[batch.id].charged),
+            refunded=IngestCredits(
+                model_credits=designs[batch.id][2], render_credits=designs[batch.id][3] + jobs[batch.id].refunded
+            ),
             created_at=batch.created_at,
             updated_at=batch.updated_at,
             submitted_at=batch.submitted_at,
@@ -330,4 +354,14 @@ def list_items(db: Session, user: User, batch_id: int, status: str | None, page:
     items = db.execute(
         select(IngestItem).where(*conditions).order_by(IngestItem.position).limit(limit).offset((page - 1) * limit)
     ).scalars()
-    return IngestItemPage(items=[item_view(item) for item in items], total=total, page=page, limit=limit)
+    return IngestItemPage(items=item_views(db, list(items)), total=total, page=page, limit=limit)
+
+
+def quote_render_plan(db: Session, user: User, raw: dict) -> IngestRenderPlanQuote:
+    """What a render plan costs each design, before any batch is made: 400 and 402 as making a
+    batch with it would answer."""
+    _, renders = checked_plan(db, user, raw)
+    return IngestRenderPlanQuote(
+        render_credits=sum(planned.credits for planned in renders),
+        jobs=[IngestPlannedJob(kind=planned.kind, credits=planned.credits, files=planned.files) for planned in renders],
+    )

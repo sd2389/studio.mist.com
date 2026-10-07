@@ -29,7 +29,7 @@ from app.features.render_jobs.pricing import render_job_cost
 from app.features.render_jobs.specs import check_poses, parse_spec, spec_warnings
 from app.features.scene.look import saved_look, validate_look, variant_look
 from app.features.scene.service import require_owned_scene
-from app.features.ingest.items import end_item_of_job
+from app.features.ingest.items import end_item_of_job, lock_design_of
 from app.models import Render, RenderJob, Scene
 from app.models.user import User
 from app.schemas.render_job import RenderJobBulkCreate, RenderJobCreate, RenderJobOut, RenderJobOutput
@@ -296,6 +296,7 @@ def cancel_job(db: Session, user: User, job_id: int) -> RenderJob:
     job = get_job_for_user(db, user, job_id)
     now = datetime.utcnow()
     if _update_job(db, job.id, RenderJob.status == "queued", status="canceled", finished_at=now, updated_at=now):
+        lock_design_of(db, job)  # a batch design's, before the refund (ingest/items.py)
         refund_render_job(db, job)
         end_item_of_job(db, job, "canceled")
     elif not _update_job(

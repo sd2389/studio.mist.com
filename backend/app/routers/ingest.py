@@ -21,6 +21,8 @@ from app.schemas.ingest import (
     IngestItemIds,
     IngestItemOut,
     IngestItemPage,
+    IngestRenderPlanQuote,
+    IngestRenderPlanQuoteIn,
     IngestRetried,
     IngestSkuCheck,
     IngestSkuCheckOut,
@@ -57,6 +59,16 @@ def create_batch(
     if not created:
         response.status_code = 200
     return ingest_service.created_view(db, batch)
+
+
+@router.post("/render-plan/quote", response_model=IngestRenderPlanQuote, dependencies=_adds_work)
+def quote_render_plan(
+    body: IngestRenderPlanQuoteIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> IngestRenderPlanQuote:
+    """What a render plan costs each design; 400 and 402 as a batch with it would be refused. Nothing is made."""
+    return ingest_service.quote_render_plan(db, user, body.render_plan)
 
 
 @router.post("/sku-check", response_model=IngestSkuCheckOut, dependencies=_adds_work)
@@ -153,7 +165,8 @@ def retry_item(
     user: User = Depends(get_current_user),
     _rate: Annotated[None, Depends(_batch_call)] = None,
 ) -> IngestItemOut:
-    return ingest_service.item_view(ingest_lifecycle.retry_item(db, user, batch_id, item_id))
+    [item] = ingest_service.item_views(db, [ingest_lifecycle.retry_item(db, user, batch_id, item_id)])
+    return item
 
 
 @router.post("/batches/{batch_id}/cancel", response_model=IngestBatchOut)

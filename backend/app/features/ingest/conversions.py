@@ -5,8 +5,9 @@ The job's files (render_jobs/convert_spec.py) are checked for their names, types
 sizes like any job's outputs. Then the model passes what every upload passes, each failure the
 design's reason: a real GLB (model_unreadable), its own triangle count within the owner's plan
 (over_polygon_cap), room in storage (over_limit), its SKU still free (sku_taken). The scene, the
-design's spent model credit and the completed job are saved in one commit, so a job completes
-once and makes one scene; a design that fails gets back what it holds.
+design's spent model credit and embed link, its render plan's jobs (renders.py) and the
+completed job are saved in one commit, so a job completes once, makes one scene and queues its
+renders once; a design that fails gets back what it holds.
 """
 
 from __future__ import annotations
@@ -22,11 +23,13 @@ from sqlalchemy.orm import Session
 
 from app.core import storage
 from app.core import storage_keys as keys
+from app.core.public_urls import embed_url
 from app.core.validation import validation_detail
 from app.features.billing.plans import PlanTier, get_quotas
 from app.features.billing.quota_service import assert_polygon_limit, assert_storage_for_upload, count_storage_bytes
 from app.features.ingest.designs import file_name
 from app.features.ingest.items import settle_batch
+from app.features.ingest.renders import BATCH_PRIORITY, MAX_ATTEMPTS, render_converted_design
 from app.features.render_jobs.convert_spec import (
     MAX_REPORT_BYTES,
     MODEL_OUTPUT,
@@ -44,10 +47,6 @@ from app.features.upload.service import SceneDetails, count_model_triangles, cre
 from app.features.upload.thumbnails import read_checked_thumbnail
 from app.models import IngestBatch, IngestItem, RenderJob, Scene, User
 from app.schemas.render_job import RenderJobOutputReport, RendererInfo
-
-# Batch jobs wait behind the studio's (100), and get as many attempts.
-BATCH_PRIORITY = 10
-MAX_ATTEMPTS = 3
 
 T = TypeVar("T")
 SlotId = Annotated[str, Field(min_length=1, max_length=128)]
@@ -179,9 +178,10 @@ def _record_conversion(
     db: Session, job: RenderJob, item: IngestItem, scene: Scene, upload_bytes: int, triangles: int,
     report: ConversionReport, renderer: RendererInfo,
 ) -> None:
-    """What the design's scene is saved with: the design holding its scene, done (converted,
-    when its batch renders it next), its model credit spent once; its storage counted; the job
-    completed; its batch settled. Not committed."""
+    """What the design's scene is saved with: the design holding its scene and its embed link,
+    done (or converted, then rendering its batch's plan, which reads the scene's look as made),
+    its model credit spent once; its storage counted; the job completed; its batch settled. Not
+    committed."""
     now = datetime.utcnow()
     renders_next = db.get(IngestBatch, item.batch_id).render_plan is not None
     spent = db.execute(
@@ -195,6 +195,7 @@ def _record_conversion(
         .values(
             status="converted" if renders_next else "done",
             scene_id=scene.id,
+            embed_url=embed_url(item.sku),
             model_credit_held=0,
             bought_model_credit_held=0,
             polygon_count=triangles,
@@ -217,6 +218,8 @@ def _record_conversion(
     job.renderer = renderer.model_dump(mode="json")
     job.finished_at = now
     job.updated_at = now
+    if renders_next:
+        render_converted_design(db, item.id, scene)
     settle_batch(db, item.batch_id)
 
 

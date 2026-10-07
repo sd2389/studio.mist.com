@@ -5,6 +5,7 @@ batch's owner reads either."""
 
 import csv
 import io
+import zipfile
 from datetime import datetime, timedelta
 
 import pytest
@@ -28,6 +29,8 @@ from ingest_samples import (  # noqa: F401 - fixtures
 from render_samples import DEFAULT_PLAN, api_session, batch_outputs, gpu, planned_batch, scene_of  # noqa: F401 - fixtures
 
 from app.config import get_settings
+from app.core import storage as storage_mod
+from app.core.storage.local import LocalBackend
 from app.features.billing.plans import get_quotas
 from app.features.billing.quota_service import get_or_create_billing
 from app.features.ingest.manifest import COLUMNS, formula_safe
@@ -339,3 +342,54 @@ def test_every_job_but_an_archive_says_what_drew_it(client, db, owner, cloud, gp
         outputs.complete_job(db, job.id, job.worker_token, RenderJobCompleteRequest.model_validate({"outputs": reports}))
 
     assert (refused.value.status_code, refused.value.detail) == (400, "renderer: what drew the job is required")
+
+
+def test_on_local_storage_an_archive_goes_through_the_api_from_payload_to_download(
+    client, db, owner, other, cloud, gpu, archiver, tmp_path, monkeypatch
+):
+    """Local storage signs nothing: the worker reads each file from the API's job routes with its
+    token, PUTs its parts to the API and completes over HTTP, as the real one does."""
+    user, headers = owner
+    batch = finished_batch(client, headers, cloud, db, gpu, count=1)
+    client.post(f"/ingest/batches/{batch['id']}/archive", headers=headers)
+    local = LocalBackend(tmp_path / "uploads")
+    for key, data in cloud.objects.items():
+        local.put_bytes(key, data)
+    monkeypatch.setattr(storage_mod, "get_storage", lambda: local)
+    job = archiver.claim_one()
+    token = {"X-Job-Token": job.worker_token}
+
+    payload = client.get(f"/render-jobs/{job.id}/payload", headers=token)
+    assert payload.status_code == 200, payload.text
+    payload = payload.json()
+    assert payload["kind"] == "batch_archive" and payload["spec"]["stem"] == "Autumn-rings"
+    entries = [(payload["manifest_name"], payload["manifest"].encode())]
+    for file in payload["files"]:
+        assert file["source"]["path"].startswith(f"/render-jobs/{job.id}/inputs/")
+        fetched = client.get(file["source"]["path"], headers=token)
+        assert fetched.status_code == 200, file
+        entries.append((file["path"], fetched.content))
+    assert client.get(payload["files"][1]["source"]["path"], headers={"X-Job-Token": "wrong"}).status_code == 401
+    assert client.get(f"/render-jobs/{job.id}/inputs/renders/999999", headers=token).status_code == 404
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        for name, data in entries:
+            archive.writestr(name, data)
+    part = buffer.getvalue()
+    name = "Autumn-rings-part-1.zip"
+    signed = client.post(
+        f"/render-jobs/{job.id}/uploads", headers=token, json={"files": [{"name": name, "content_type": "application/zip", "bytes": len(part)}]}
+    ).json()["files"][0]
+    assert signed["url"] == f"/render-jobs/{job.id}/uploads/{name}"
+    assert client.put(signed["url"], headers={**token, **signed["headers"]}, content=part).status_code == 204
+    done = client.post(f"/render-jobs/{job.id}/complete", headers=token, json={"outputs": [{
+        "name": name, "key": signed["key"], "content_type": "application/zip", "bytes": len(part),
+        "width": None, "height": None, "label": None, "meta": {"files": len(entries)},
+    }], "renderer": None})
+    assert done.status_code == 200 and done.json()["status"] == "completed", done.text
+
+    download = client.get(f"/ingest/batches/{batch['id']}/archive/1", headers=headers)
+    assert download.status_code == 200 and download.content == part
+    assert 'filename="Autumn-rings-part-1.zip"' in download.headers["content-disposition"]
+    assert set(unzip(download.content)) == {"manifest.csv", *(file["path"] for file in payload["files"])}
+    assert client.get(f"/ingest/batches/{batch['id']}/archive/1", headers=other[1]).status_code == 404

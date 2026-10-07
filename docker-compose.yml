@@ -94,6 +94,8 @@ services:
       INTERNAL_PROXY_TOKEN: ${INTERNAL_PROXY_TOKEN:-}
       # The render workers' shared secret; unset, nothing claims render jobs.
       RENDER_WORKER_TOKEN: ${RENDER_WORKER_TOKEN:-}
+      # API keys are hashed with it; required when APP_ENV=production.
+      API_KEY_PEPPER: ${API_KEY_PEPPER:-}
       # AWS_BUCKET: ${AWS_BUCKET-}
       # AWS_REGION: ${AWS_REGION:-auto}
       # AWS_S3_ENDPOINT: ${AWS_S3_ENDPOINT-}

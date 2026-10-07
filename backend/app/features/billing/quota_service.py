@@ -66,6 +66,7 @@ def _features_for_tier(tier: PlanTier) -> PlanFeatures:
         batch_export_enabled=quotas.batch_export,
         video_8k_enabled=quotas.max_8k_video_seconds > 0,
         campaign_pack_enabled=quotas.campaign_pack,
+        api_access_enabled=quotas.api_access,
         bulk_upload=BulkUploadLimits(
             max_designs=batches.max_designs,
             max_bytes=batches.max_bytes,

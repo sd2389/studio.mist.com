@@ -48,6 +48,11 @@ POSE_ID = r"^[A-Za-z0-9._:-]{1,64}$"
 # A catalogue slug, or an older id saved before the catalogue. Never a URL: no scheme, no colon.
 SETTING_ID = r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,191}$"
 
+Lighting = Literal["studio", "soft", "dark", "catalog", "dramatic"]
+Finish = Literal["polished", "brushed", "satin", "hammered", "sandblasted"]
+# What a slot is: metal, a stone or accent stones (slot_roles.py; ADR 0006).
+SlotRole = Literal["metal", "gem", "accent"]
+
 Position = Annotated[float, Field(ge=-10, le=10)]
 Rotation = Annotated[float, Field(ge=-360, le=360)]
 # The studio orbits up to 20 units from a target within ±10.
@@ -74,6 +79,13 @@ def check_css_background(value: str) -> str:
     functions = {name.lower() for name in _CSS_FUNCTION.findall(value)}
     if not (_CSS_BACKGROUND.fullmatch(value) and _CSS_ONE_VALUE.fullmatch(value)) or not functions <= _CSS_FUNCTIONS:
         raise ValueError(_NOT_A_BACKGROUND)
+    return value
+
+
+def check_custom_background(value: Any) -> Any:
+    """A link must be the app's own to a private file; whose file it is, validate_look checks."""
+    if isinstance(value, str) and private_file_key(value) is None:
+        check_css_background(value)
     return value
 
 
@@ -170,15 +182,12 @@ class SceneSettings(SceneBuckets):
     activePoseId: str | None = Field(default=None, pattern=POSE_ID)
     embed: EmbedSettings | None = None
     sceneSetup: str | None = Field(default=None, pattern=PRESET_ID)
-    finish: Literal["polished", "brushed", "satin", "hammered", "sandblasted"] | None = None
+    finish: Finish | None = None
 
     @field_validator("customBackground")
     @classmethod
     def _colour_gradient_or_image(cls, value: str | ImageBackground | None) -> str | ImageBackground | None:
-        """A link must be the app's own to a private file; whose file it is, validate_look checks."""
-        if isinstance(value, str) and private_file_key(value) is None:
-            check_css_background(value)
-        return value
+        return check_custom_background(value)
 
 
 class MaterialOption(LookPart):
@@ -190,6 +199,8 @@ class SlotConfig(LookPart):
     slotId: str = Field(min_length=1, max_length=128)
     label: str | None = Field(default=None, max_length=255)
     kind: Literal["metal", "gem", "accent", "default"] | None = None
+    # What its design's conversion found it to be (ADR 0006); the studio goes by `kind`.
+    role: SlotRole | None = None
     defaultMaterial: str | None = Field(default=None, max_length=128)
     materialOptions: list[MaterialOption] | None = Field(default=None, max_length=64)
 
@@ -217,7 +228,7 @@ class Look(LookPart):
     model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
 
     material: str = Field(pattern=PRESET_ID)
-    lighting: Literal["studio", "soft", "dark", "catalog", "dramatic"]
+    lighting: Lighting
     slot_selections: dict[Annotated[str, Field(min_length=1, max_length=128)], str] = Field(max_length=256)
     scene_settings: SceneSettings
     model_config_data: ModelConfig = Field(alias="model_config")
@@ -280,18 +291,12 @@ def variant_look(scene: Scene, variant_id: str) -> dict[str, Any] | None:
     }
 
 
-def _check_slot_selections(db: Session, look: Look, owner_id: int) -> None:
-    """Each selection names a slot of the model and a preset, an active catalogue metal or gem,
-    or one of the owner's library materials."""
-    slots = {normalize_slot_id(slot.slotId) for slot in look.model_config_data.slots or []}
+def check_material_refs(db: Session, refs: Mapping[str, str], owner_id: int) -> None:
+    """Each material, keyed by the field that names it, is a preset, an active catalogue metal or
+    gem, or one of the owner's library materials; 400 naming the field otherwise."""
     catalog_refs: dict[str, str] = {}
     custom_refs: dict[int, str] = {}
-    for slot, ref in look.slot_selections.items():
-        field = f"look.slot_selections.{slot}"
-        # A model config without slots takes them from the selections, as the studio does
-        # (resolveModelConfig in src/features/viewer/domain/saved-look.ts).
-        if slots and normalize_slot_id(slot) not in slots:
-            raise HTTPException(status_code=400, detail=f"{field}: the model has no slot '{slot}'")
+    for field, ref in refs.items():
         if catalog_match := _VALID_CATALOG_REF.fullmatch(ref):
             catalog_refs.setdefault(catalog_match.group(1), field)
         elif custom_match := _VALID_CUSTOM_REF.fullmatch(ref):
@@ -309,6 +314,18 @@ def _check_slot_selections(db: Session, look: Look, owner_id: int) -> None:
             raise HTTPException(status_code=400, detail=f"{field}: custom:{material_id} is not one of your materials")
 
 
+def _check_slot_selections(db: Session, look: Look, owner_id: int) -> None:
+    """Each selection names a slot of the model and a material (check_material_refs)."""
+    slots = {normalize_slot_id(slot.slotId) for slot in look.model_config_data.slots or []}
+    for slot in look.slot_selections:
+        # A model config without slots takes them from the selections, as the studio does
+        # (resolveModelConfig in src/features/viewer/domain/saved-look.ts).
+        if slots and normalize_slot_id(slot) not in slots:
+            raise HTTPException(status_code=400, detail=f"look.slot_selections.{slot}: the model has no slot '{slot}'")
+    fields = {f"look.slot_selections.{slot}": ref for slot, ref in look.slot_selections.items()}
+    check_material_refs(db, fields, owner_id)
+
+
 _SETTING_CATALOGS = (
     ("ENVIRONMENT-METAL", CatalogEnvironment),
     ("ENVIRONMENT-GEM", CatalogEnvironment),
@@ -317,13 +334,13 @@ _SETTING_CATALOGS = (
 )
 
 
-def _check_setting_slugs(db: Session, settings: Mapping[str, Any]) -> None:
-    """A slug the catalogue has retired is refused; one it never had is an older id, which
-    passes as the embed takes it."""
+def check_setting_slugs(db: Session, settings: Mapping[str, Any], field: str = "look.scene_settings") -> None:
+    """A slug the catalogue has retired is refused (400 naming the setting under `field`); one it
+    never had is an older id, which passes as the embed takes it."""
     for key, model in _SETTING_CATALOGS:
         slug = settings.get(key)
         if slug and db.execute(select(model.is_active).where(model.slug == slug)).scalar_one_or_none() is False:
-            raise HTTPException(status_code=400, detail=f"look.scene_settings.{key}: '{slug}' is no longer in the catalogue")
+            raise HTTPException(status_code=400, detail=f"{field}.{key}: '{slug}' is no longer in the catalogue")
 
 
 def background_image_key(db: Session, owner_id: int, asset_id: int) -> str | None:
@@ -339,22 +356,29 @@ def background_image_key(db: Session, owner_id: int, asset_id: int) -> str | Non
     return key if keys.key_belongs_to_user(key, owner_id) else None
 
 
-def _keep_background_image_by_id(db: Session, settings: dict[str, Any], owner_id: int) -> None:
-    """A background image becomes {"type": "image", "asset_id": id}, once it is one of the
-    owner's background assets; a link to anything else is 400."""
-    value = settings.get("customBackground")
+def background_image_id(
+    db: Session, value: Any, owner_id: int, field: str = "look.scene_settings.customBackground"
+) -> int | None:
+    """The owner's background asset a custom background shows (by id, or by its link); None for
+    none, a colour or a gradient; 400 naming `field` for an image that isn't one of theirs."""
     if isinstance(value, dict):
         asset_id = value["asset_id"]
     elif isinstance(value, str) and (key := private_file_key(value)):
         asset = asset_at_key(db, owner_id, "background", key)
         asset_id = asset.id if asset else None
     else:
-        return  # none, or a colour or a gradient
+        return None
     if asset_id is None or background_image_key(db, owner_id, asset_id) is None:
-        raise HTTPException(
-            status_code=400, detail="look.scene_settings.customBackground: not one of your background images"
-        )
-    settings["customBackground"] = {"type": "image", "asset_id": asset_id}
+        raise HTTPException(status_code=400, detail=f"{field}: not one of your background images")
+    return asset_id
+
+
+def _keep_background_image_by_id(db: Session, settings: dict[str, Any], owner_id: int) -> None:
+    """A background image becomes {"type": "image", "asset_id": id}, once it is one of the
+    owner's background assets; a link to anything else is 400."""
+    asset_id = background_image_id(db, settings.get("customBackground"), owner_id)
+    if asset_id is not None:
+        settings["customBackground"] = {"type": "image", "asset_id": asset_id}
 
 
 def validate_look(db: Session, look: Mapping[str, Any], owner_id: int) -> dict[str, Any]:
@@ -372,7 +396,7 @@ def validate_look(db: Session, look: Mapping[str, Any], owner_id: int) -> dict[s
         raise HTTPException(status_code=400, detail=validation_detail(exc, "look")) from exc
     _check_slot_selections(db, parsed, owner_id)
     normalised = parsed.model_dump(mode="json", by_alias=True, exclude_unset=True)
-    _check_setting_slugs(db, normalised["scene_settings"])
+    check_setting_slugs(db, normalised["scene_settings"])
     _keep_background_image_by_id(db, normalised["scene_settings"], owner_id)
     return normalised
 

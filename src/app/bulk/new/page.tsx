@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { BulkUploadShell } from "@/features/bulk";
 import { FeatureDisabledPage } from "@/features/feature-flags";
-import { fetchRecentBatchesServer } from "@/lib/api/ingest-server";
+import { fetchLookTemplatesServer, fetchRecentBatchesServer } from "@/lib/api/ingest-server";
 import { requirePageUser } from "@/lib/auth/require-page-user";
 import { fetchBillingAccountServer } from "@/lib/billing/server-fetch";
 import { fetchFeatureFlagsServer, isFeatureEnabled } from "@/lib/feature-flags/server-fetch";
@@ -28,11 +28,16 @@ export default async function BulkUploadPage() {
       />
     );
   }
-  const [billing, recentBatches] = await Promise.all([fetchBillingAccountServer(), fetchRecentBatchesServer()]);
+  const [billing, recentBatches, lookTemplates] = await Promise.all([
+    fetchBillingAccountServer(),
+    fetchRecentBatchesServer(),
+    fetchLookTemplatesServer(),
+  ]);
   return (
     <BulkUploadShell
       billing={billing}
       recentBatches={recentBatches}
+      lookTemplates={lookTemplates}
       userEmail={user.email}
       isAdmin={user.role === "admin"}
     />

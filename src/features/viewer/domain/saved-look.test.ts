@@ -8,11 +8,12 @@ import {
 import type { SceneDetail, SceneLook } from "@/lib/api/scenes";
 import { applyMaterialPresetBySlot } from "@/lib/apply-material-preset";
 import type { EditCatalogs } from "@/lib/catalog/edit-catalogs";
+import { registerLookMaterials } from "@/lib/catalog/look-materials";
 import type { BackgroundItem, EnvironmentItem, GroundItem } from "@/lib/catalog/types";
 import { buildModelConfigFromSlots, getDefaultSceneSettings } from "@/lib/slot-materials/model-config";
 import { useCatalogParamsStore } from "@/stores/catalog-params-store";
 import { useUserLibraryStore } from "@/stores/user-library-store";
-import { buildLookCatalogIndex, registerLookMaterials, savedFinish, savedLook } from "./saved-look";
+import { buildLookCatalogIndex, savedFinish, savedLook } from "./saved-look";
 import { shouldPersistViewerScene } from "./viewer-scene-persist";
 
 const NO_LOOK: SceneLook = { environments: [], backgrounds: [], grounds: [], metals: [], gems: [], user_materials: [] };

@@ -4,7 +4,7 @@ import { AppHeader } from "@/components/layout/AppHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import type { IngestBatch } from "@/lib/api/ingest";
+import type { IngestBatch, LookTemplate } from "@/lib/api/ingest";
 import type { UserBillingSnapshot } from "@/lib/billing/types";
 import { JEWELRY_CATEGORIES } from "@/lib/upload/categories";
 import { MAX_BATCH_NAME_LENGTH, sortProblems } from "../domain/batch-request";
@@ -13,11 +13,13 @@ import { BatchPlanPanel } from "./BatchPlanPanel";
 import { BulkDropPanel } from "./BulkDropPanel";
 import { BulkUploadActions } from "./BulkUploadActions";
 import { DesignList } from "./DesignList";
+import { LookTemplatePicker } from "./LookTemplatePicker";
 import { ProblemList } from "./ProblemList";
 import { RecentBatches } from "./RecentBatches";
 import { RenderPlanPicker } from "./RenderPlanPicker";
 import { useBulkDrop } from "./useBulkDrop";
 import { useBulkUploadFlow, type BulkUploadFlow } from "./useBulkUploadFlow";
+import { useLookTemplates } from "./useLookTemplates";
 import { useRenderPlanChoice, type RenderPlanChoice } from "./useRenderPlanChoice";
 import { useSkuCheck } from "./useSkuCheck";
 import type { DesignUploadState } from "./useBatchUploads";
@@ -25,6 +27,8 @@ import type { DesignUploadState } from "./useBatchUploads";
 type BulkUploadShellProps = {
   billing: UserBillingSnapshot | null;
   recentBatches: IngestBatch[];
+  /** The user's latest look templates. */
+  lookTemplates: LookTemplate[];
   userEmail?: string | null;
   isAdmin?: boolean;
 };
@@ -62,14 +66,16 @@ function uploadsByDesign(flow: BulkUploadFlow): Map<number, DesignUploadState> |
 
 /**
  * `/bulk/new`: many CAD files at once (files, a folder or ZIPs, with an optional CSV manifest),
- * checked as the API will check them, priced, uploaded straight to storage and submitted.
+ * checked as the API will check them, with the look their scenes take and what each renders,
+ * priced, uploaded straight to storage and submitted.
  */
-export function BulkUploadShell({ billing, recentBatches, userEmail, isAdmin }: BulkUploadShellProps) {
+export function BulkUploadShell({ billing, recentBatches, lookTemplates, userEmail, isAdmin }: BulkUploadShellProps) {
   const drop = useBulkDrop(billing?.features.bulk_upload?.max_file_bytes ?? null, billing?.features.bulk_upload?.max_bytes ?? null);
   const { plan } = drop;
   const skuCheck = useSkuCheck(skusToCheck(withoutProblems(plan.designs, plan.problems)));
+  const looks = useLookTemplates(lookTemplates);
   const renders = useRenderPlanChoice();
-  const flow = useBulkUploadFlow(drop, skuCheck.held, renders.body);
+  const flow = useBulkUploadFlow(drop, skuCheck.held, { lookTemplateId: looks.selectedId, renderPlan: renders.body });
   const sorted = sortProblems(flow.problems);
   const bytes = batchBytes(plan.designs);
   const limits = billing?.features.bulk_upload;
@@ -149,6 +155,7 @@ export function BulkUploadShell({ billing, recentBatches, userEmail, isAdmin }: 
                   ))}
                 </select>
               </div>
+              <LookTemplatePicker looks={looks} disabled={made} />
               <RenderPlanPicker choice={renders} designCount={plan.designs.length} disabled={made} />
               <BatchPlanPanel
                 billing={billing}

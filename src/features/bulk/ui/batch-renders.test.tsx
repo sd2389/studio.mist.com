@@ -103,6 +103,7 @@ const BATCH: IngestBatch = {
   total_bytes: 8_400_000,
   counts: { rendering: 1, failed: 1 },
   render_plan: null,
+  look_template: null,
   options: {},
   quote: { model_credits: 2, render_credits: 14 },
   held: { model_credits: 0, render_credits: 3 },

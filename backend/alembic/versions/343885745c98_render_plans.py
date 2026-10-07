@@ -1,7 +1,7 @@
 """render plans: a design's embed link, what it was refunded, and its outputs' public copies
 
 Revision ID: 343885745c98
-Revises: 351e0e870d0a
+Revises: 7c70876cdcf2
 Create Date: 2026-10-07 09:00:00.000000
 
 ADR 0006 F2 renders a batch's plan for each design once its scene is made.
@@ -24,7 +24,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = '343885745c98'
-down_revision: Union[str, Sequence[str], None] = '351e0e870d0a'
+down_revision: Union[str, Sequence[str], None] = '7c70876cdcf2'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

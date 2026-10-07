@@ -278,7 +278,8 @@ def _collapse_generic_gem_slots(slot_tokens: dict[str, list[str]]) -> dict[str, 
     return merged
 
 
-def _slot_kind(slot: str) -> Literal["metal", "gem", "accent", "default"]:
+def slot_kind(slot: str) -> Literal["metal", "gem", "accent", "default"]:
+    """What a slot is by its id, as the studio tells (inferSlotKind in model-config.ts)."""
     if slot == "Heads" or slot.startswith("Metal "):
         return "metal"
     if slot.startswith("Gem "):
@@ -289,14 +290,14 @@ def _slot_kind(slot: str) -> Literal["metal", "gem", "accent", "default"]:
 
 
 def _default_material(slot: str) -> str:
-    kind = _slot_kind(slot)
+    kind = slot_kind(slot)
     if kind in ("gem", "accent"):
         return "diamond"
     return "gold-14k-yellow"
 
 
 def _options_for_slot(slot: str) -> list[tuple[str, str]]:
-    kind = _slot_kind(slot)
+    kind = slot_kind(slot)
     if kind in ("gem", "accent"):
         return GEM_PRESETS
     return METAL_PRESETS
@@ -335,7 +336,7 @@ def build_slot_material_config(filename: str, payload: bytes) -> dict:
         {
             "slotId": slot,
             "label": slot,
-            "kind": _slot_kind(slot),
+            "kind": slot_kind(slot),
             "defaultMaterial": default_materials[slot],
             "materialOptions": material_options[slot],
         }
@@ -408,8 +409,9 @@ def merge_slot_material_config(inferred: dict, provided: dict | None) -> dict:
     return merged
 
 
+# The studio scene and the metals' finish too: a bulk upload's look template sets both.
 _SCENE_EXTENDED_KEYS = frozenset(
-    {"advanced", "modelTransform", "customBackground", "poses", "activePoseId"}
+    {"advanced", "modelTransform", "customBackground", "poses", "activePoseId", "sceneSetup", "finish"}
 )
 
 

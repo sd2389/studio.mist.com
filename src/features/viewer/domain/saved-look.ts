@@ -4,6 +4,7 @@ import {
 } from "@/lib/catalog/scene-catalog-index";
 import type { Scene, SceneLook } from "@/lib/api/scenes";
 import type { EditCatalogs } from "@/lib/catalog/edit-catalogs";
+import { registerLookMaterials } from "@/lib/catalog/look-materials";
 import type { CatalogItem, CatalogPage } from "@/lib/catalog/types";
 import type { SlotMaterialRef } from "@/lib/library/custom-material-ref";
 import { sanitizeSlotSelections } from "@/lib/slot-materials/material-rules";
@@ -11,14 +12,12 @@ import {
   buildModelConfigFromSlots,
   getDefaultSceneSettings,
 } from "@/lib/slot-materials/model-config";
-import { useCatalogParamsStore } from "@/stores/catalog-params-store";
 import {
   useMaterialPresetStore,
   type FinishId,
   type LightingPresetId,
   type MaterialPresetId,
 } from "@/stores/material-preset-store";
-import { useUserLibraryStore } from "@/stores/user-library-store";
 import { FINISHES } from "../ui/studio-material-groups";
 
 /**
@@ -54,19 +53,6 @@ export function savedLook(look: LookSnapshot) {
     slotSelections: sanitizeSlotSelections(selections, resolveModelConfig(look)),
     sceneSettings,
   };
-}
-
-/**
- * Makes the look's catalogue and library materials resolvable by the slot materials. The
- * embed has no catalogue or library access, and the studio's Edit tab loads first pages only.
- */
-export function registerLookMaterials(look: SceneLook | null | undefined): void {
-  if (!look) return;
-  const catalog = useCatalogParamsStore.getState();
-  catalog.registerMetals(look.metals);
-  catalog.registerGems(look.gems);
-  const library = useUserLibraryStore.getState();
-  for (const material of look.user_materials) library.upsertMaterial(material);
 }
 
 /**

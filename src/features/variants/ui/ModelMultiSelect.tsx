@@ -1,24 +1,13 @@
 "use client";
 
 import { ChevronLeft, ChevronRight, Search } from "lucide-react";
-import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  listScenes,
-  SCENE_SEARCH_MAX_LENGTH,
-  scenePageCount,
-  type Scene,
-  type SceneListPage,
-} from "@/lib/api/scenes";
+import { useScenePages } from "@/features/scene";
+import { SCENE_SEARCH_MAX_LENGTH, scenePageCount, type Scene } from "@/lib/api/scenes";
 import { cn } from "@/lib/utils";
 
 const MODELS_PER_PAGE = 20;
-
-type ModelQuery = { q: string; page: number };
-
-/** The answer to one query: a page of models, or why it failed. */
-type ModelResult = { query: ModelQuery; page?: SceneListPage; error?: string };
 
 type ModelMultiSelectProps = {
   currentSceneId: number;
@@ -27,45 +16,13 @@ type ModelMultiSelectProps = {
   disabled?: boolean;
 };
 
-/** Pages of the user's models, searched by the API, each fetched when its query changes. */
-function useModelPages() {
-  const [search, setSearch] = useState("");
-  const [query, setQuery] = useState<ModelQuery>({ q: "", page: 1 });
-  const [result, setResult] = useState<ModelResult | null>(null);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      const q = search.trim();
-      setQuery((current) => (current.q === q ? current : { q, page: 1 }));
-    }, 300);
-    return () => window.clearTimeout(timer);
-  }, [search]);
-
-  useEffect(() => {
-    let mounted = true;
-    void listScenes({ q: query.q, page: query.page, limit: MODELS_PER_PAGE })
-      .then((page) => {
-        if (mounted) setResult({ query, page });
-      })
-      .catch((err) => {
-        if (mounted) setResult({ query, error: err instanceof Error ? err.message : "Failed to load models" });
-      });
-    return () => {
-      mounted = false;
-    };
-  }, [query]);
-
-  const showPage = (page: number) => setQuery((current) => ({ ...current, page }));
-  return { search, setSearch, query, result, loading: result?.query !== query, showPage };
-}
-
 export function ModelMultiSelect({
   currentSceneId,
   selectedIds,
   onChange,
   disabled = false,
 }: ModelMultiSelectProps) {
-  const { search, setSearch, query, result, loading, showPage } = useModelPages();
+  const { search, setSearch, query, result, loading, showPage } = useScenePages(MODELS_PER_PAGE);
 
   function toggle(id: number) {
     if (selectedIds.includes(id)) {

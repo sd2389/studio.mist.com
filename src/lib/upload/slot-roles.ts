@@ -1,14 +1,15 @@
 import * as THREE from "three";
 import { normalizeSlotId } from "@/lib/slot-materials/material-rules";
-import type { PersistedModelConfig, SlotKind } from "@/lib/slot-materials/model-config";
+import type { PersistedModelConfig, SlotKind, SlotRole } from "@/lib/slot-materials/model-config";
 import { countMeshTriangles } from "@/lib/upload/count-polygons";
 
 /**
  * What each slot of a converted model is: metal, a stone or accent stones. Look templates pick
  * materials by role (ADR 0006, "Look templates by slot role"), so a "Pave" layer that the
- * segmentation calls a stone gets a stone's material whatever its slot is called.
+ * segmentation calls a stone gets a stone's material whatever its slot is called. The type is
+ * the slot config's (`SlotMaterialConfig.role`).
  */
-export type SlotRole = "metal" | "gem" | "accent";
+export type { SlotRole };
 
 export type SlotRoles = {
   roles: Record<string, SlotRole>;

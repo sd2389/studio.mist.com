@@ -11,7 +11,7 @@ import type { DroppedFile } from "@/lib/upload/dropped-files";
  */
 
 const flags = vi.hoisted(() => ({ value: {} as Record<string, boolean> }));
-const server = vi.hoisted(() => ({ view: null as unknown, recent: [] as unknown[], billing: null as unknown }));
+const server = vi.hoisted(() => ({ view: null as unknown, recent: [] as unknown[], billing: null as unknown, templates: [] as unknown[] }));
 const NOT_FOUND = vi.hoisted(() => new Error("NEXT_NOT_FOUND"));
 
 vi.mock("next/navigation", () => ({
@@ -35,6 +35,7 @@ vi.mock("@/lib/billing/server-fetch", () => ({ fetchBillingAccountServer: async 
 vi.mock("@/lib/api/ingest-server", () => ({
   fetchRecentBatchesServer: async () => server.recent,
   fetchBatchViewServer: async () => server.view,
+  fetchLookTemplatesServer: async () => server.templates,
 }));
 vi.mock("@/components/dashboard/DashboardClient", () => ({ DashboardClient: () => null }));
 
@@ -145,6 +146,7 @@ function batchView(status: IngestBatchStatus, items: IngestItem[]): BatchView {
       total_bytes: items.length * 4_200_000,
       counts,
       render_plan: null,
+      look_template: null,
       options: { decimate: "auto", default_category: "Ring" },
       quote: { model_credits: items.length, render_credits: 0 },
       held: { model_credits: counts.converting ?? 0, render_credits: 0 },
@@ -175,6 +177,7 @@ afterEach(() => {
   server.view = null;
   server.recent = [];
   server.billing = null;
+  server.templates = [];
   vi.restoreAllMocks();
 });
 
@@ -221,14 +224,28 @@ describe("with bulk_pipeline off", () => {
 });
 
 describe("with bulk_pipeline on", () => {
-  it("shows the drop, the plan's limits, the price and the recent batches", async () => {
+  it("shows the drop, the look, the plan's limits, the price and the recent batches", async () => {
     flags.value = { bulk_pipeline: true };
     server.billing = billing("studio");
     server.recent = [PROCESSING.batch];
+    server.templates = [
+      {
+        id: 12,
+        name: "Look of Two-tone solitaire",
+        source_scene_id: 7,
+        template: { lighting: "catalog", finish: "satin", materials: { metal: "gold-18k-yellow" }, slot_materials: {}, scene_settings: {} },
+        labels: { "gold-18k-yellow": "18K Yellow" },
+        look: { environments: [], backgrounds: [], grounds: [], metals: [], gems: [], user_materials: [] },
+        created_at: "2026-10-06T09:00:00Z",
+        updated_at: "2026-10-06T09:00:00Z",
+      },
+    ];
     const html = renderToStaticMarkup(await BulkUploadPage());
     const page = text(html);
 
     expect(page).toContain("Drop CAD files, a folder or a ZIP");
+    expect(page).toContain("Look Studio default Each design keeps the materials its file suggests. Look of Two-tone solitaire Metal 18K Yellow");
+    expect(page).toContain("Use the look of…");
     expect(page).toContain("Studio: up to 500 designs and 20 GB a batch, 100 MB a file, 3 batches open at once.");
     expect(page).toContain("0 model credits · one a design");
     expect(page).toContain("Drop the designs to upload first.");

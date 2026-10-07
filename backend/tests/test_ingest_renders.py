@@ -223,6 +223,32 @@ def test_the_jobs_render_the_scenes_look_as_it_was_made_behind_the_studios_jobs(
     )
 
 
+def test_the_jobs_render_the_batchs_look_template_as_the_scene_took_it(client, db, owner, cloud):
+    """F1's template is applied when the scene is made; its jobs render the look it left."""
+    user, headers = owner
+    now = datetime.utcnow()
+    finished = Scene(
+        user_id=user.id, model_key=f"customers/{user.id}/models/look.glb", name="Two-tone solitaire", lighting="catalog",
+        model_config={"slots": [{"slotId": "Metal 1", "kind": "metal"}, {"slotId": "Gem 1", "kind": "gem"}]},
+        slot_selections={"Metal 1": "gold-18k-rose", "Gem 1": "ruby"},
+        scene_settings={"finish": "satin", "quality_mode": "photometric"}, created_at=now, updated_at=now,
+    )
+    db.add(finished)
+    db.commit()
+    template = client.post(f"/ingest/look-templates/from-scene/{finished.id}", headers=headers)
+    assert template.status_code == 201, template.text
+    batch = submitted_batch(
+        client, headers, cloud, batch_body(render_plan=DEFAULT_PLAN, look_template_id=template.json()["id"])
+    )
+
+    convert_all(db, cloud)
+
+    angle_set, turntable = design_jobs(db, batch["items"][0]["id"])
+    assert angle_set.look == turntable.look
+    assert (angle_set.look["lighting"], angle_set.look["scene_settings"]["finish"]) == ("catalog", "satin")
+    assert angle_set.look["slot_selections"] == {"Metal 1": "gold-18k-rose", "Gem 1": "ruby"}
+
+
 def test_a_look_that_cant_be_rendered_fails_the_design_and_gives_back_its_render_credits(client, db, owner, cloud, monkeypatch):
     user, headers = owner
     batch = planned_batch(client, headers, cloud)

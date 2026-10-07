@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from app.routers import (
     admin,
     ai_background,
+    api_keys,
     auth,
     billing,
     catalog,
@@ -15,6 +16,7 @@ from app.routers import (
     renders,
     scenes,
     upload,
+    v1,
 )
 
 api_router = APIRouter()
@@ -32,3 +34,6 @@ api_router.include_router(admin.router, prefix="/admin", tags=["admin"])
 api_router.include_router(feature_flags.router, prefix="/features", tags=["features"])
 api_router.include_router(render_jobs.router, prefix="/render-jobs", tags=["render-jobs"])
 api_router.include_router(ingest.router, prefix="/ingest", tags=["ingest"])
+api_router.include_router(api_keys.router, prefix="/api-keys", tags=["api-keys"])
+# The customer API: API keys only (features/api_keys/principal.py).
+api_router.include_router(v1.router, prefix="/v1", tags=["v1"])

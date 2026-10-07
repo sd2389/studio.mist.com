@@ -5,7 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy.orm import Session
 
-from app.core.deps import _extract_bearer, get_current_user
+from app.core.deps import extract_bearer, get_current_user
 from app.core.rate_limit import rate_limit_dependency
 from app.database import get_db
 from app.features.auth import service as auth_service
@@ -55,7 +55,7 @@ def logout(
     db: Session = Depends(get_db),
     authorization: Annotated[str | None, Header()] = None,
 ) -> MessageResponse:
-    token = _extract_bearer(authorization)
+    token = extract_bearer(authorization)
     if not token:
         return MessageResponse(message="Logged out")
     return auth_service.logout(db, token)

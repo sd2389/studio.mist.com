@@ -28,6 +28,8 @@ class PlanQuotas:
     # Several scenes or variants in one request (POST /render-jobs/bulk).
     batch_export: bool
     campaign_pack: bool
+    # API keys and the customer API (docs/adr/0006-bulk-pipeline.md): Studio only at first.
+    api_access: bool
     # One owner's jobs a worker runs at once, and their unfinished (waiting or running) jobs.
     max_running_jobs: int
     max_queued_jobs: int
@@ -54,6 +56,7 @@ PLAN_QUOTAS: dict[PlanTier, PlanQuotas] = {
         watermark_exports=True,
         batch_export=False,
         campaign_pack=False,
+        api_access=False,
         max_running_jobs=1,
         max_queued_jobs=5,
         max_video_fps=30,
@@ -75,6 +78,7 @@ PLAN_QUOTAS: dict[PlanTier, PlanQuotas] = {
         watermark_exports=False,
         batch_export=True,
         campaign_pack=True,
+        api_access=False,
         max_running_jobs=2,
         max_queued_jobs=20,
         max_video_fps=60,
@@ -96,6 +100,7 @@ PLAN_QUOTAS: dict[PlanTier, PlanQuotas] = {
         watermark_exports=False,
         batch_export=True,
         campaign_pack=True,
+        api_access=True,
         max_running_jobs=4,
         max_queued_jobs=50,
         max_video_fps=60,

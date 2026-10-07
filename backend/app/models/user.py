@@ -7,6 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.scene import Base
 
 if TYPE_CHECKING:
+    from app.models.api_key import ApiKey
     from app.models.billing import UserBilling
     from app.models.scene import Scene
     from app.models.user_library import UserAsset, UserMaterial
@@ -43,6 +44,8 @@ class User(Base):
     billing: Mapped["UserBilling | None"] = relationship(
         "UserBilling", back_populates="user", uselist=False, cascade="all, delete-orphan"
     )
+    # Deleting the account deletes its API keys (the database cascades too).
+    api_keys: Mapped[list["ApiKey"]] = relationship("ApiKey", cascade="all, delete-orphan")
 
 
 class Session(Base):

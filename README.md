@@ -127,6 +127,7 @@ Templates: [`.env.example`](.env.example) (web, Compose) and [`backend/.env.exam
 | `DEMO_EMBED_PASSWORD` | backend | Password for the embed demo's owner account; unset, the seed gives it a random one |
 | `HEALTH_DEPS_TOKEN` | backend | `X-Health-Token` value for `GET /health/deps` in production |
 | `INTERNAL_PROXY_TOKEN` | web, backend | Shared secret, the same on both: the web server's sign-in and sign-up proxies send it with the caller's IP, and the API believes a forwarded IP only with it (never a bare `X-Forwarded-For`). Unset, sign-ins through the web app share one per-IP budget, and the API warns at startup in production |
+| `API_KEY_PEPPER` | backend | Server secret (at least 32 characters) that API keys are hashed with (HMAC-SHA-256); only the hash is stored. Required in production, where making or using a key answers 503 without it; changing it invalidates every key at once |
 | `RENDER_WORKER_TOKEN` | backend, worker | Shared secret for render workers, or several comma-separated while one is rotated in; the job-claim endpoint returns 503 until it is set |
 | `RENDER_API_URL` | worker | Backend URL |
 | `HARNESS_BASE_URL` | worker, goldens | URL of the worker's app (`BUILD_TARGET=worker`), which serves `/render-harness`; for the worker it must be on loopback, or unset when it starts the app itself |

@@ -25,5 +25,7 @@
 | Core | `backend/app/core` | Storage, model key helpers |
 | Feature toggles | `src/features/feature-flags`, `backend/app/features/feature_flags` | Admin on/off switches, public flag snapshot, route gating |
 | Admin console | `src/features/admin`, `backend/app/features/admin` | Users, credits, webhooks, support ops |
+| API keys | `src/features/api-keys`, `src/app/api/api-keys`, `src/lib/api/api-keys.ts` | The profile page's keys section: make a key (name, scopes, expiry), its secret shown once with a copy button, the list, revoke ([ADR 0006](adr/0006-bulk-pipeline.md) G1) |
+| Backend API keys and `/v1` | `backend/app/features/api_keys`, `backend/app/routers/api_keys.py`, `backend/app/routers/v1.py` | The key format and its peppered hash; `api_principal(scope)` for `/v1` (revocation, expiry, owner and plan, per-key limits); making, listing and revoking keys from a session |
 
 Update this file when adding a new feature app.

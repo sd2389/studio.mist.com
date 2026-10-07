@@ -63,6 +63,14 @@ class Settings(BaseSettings):
     rate_limit_render_jobs_per_hour: int = 300
     # Calls on bulk upload batches: one each, however many designs or files a call names.
     rate_limit_ingest_per_hour: int = 300
+    # The customer API (/v1), per API key: reads and writes a minute (ADR 0006's proposal).
+    rate_limit_api_reads_per_minute: int = 600
+    rate_limit_api_writes_per_minute: int = 60
+    # Making and revoking API keys on the profile page, per user.
+    rate_limit_api_key_changes_per_hour: int = 30
+    # The server secret API keys are hashed with (HMAC-SHA-256). Changing it invalidates every
+    # key at once. Required in production, where API keys answer 503 without it.
+    api_key_pepper: str | None = Field(default=None, validation_alias="API_KEY_PEPPER")
     max_upload_bytes: int = 100 * 1024 * 1024
     stripe_secret_key: str | None = Field(default=None, validation_alias="STRIPE_SECRET_KEY")
     stripe_webhook_secret: str | None = Field(default=None, validation_alias="STRIPE_WEBHOOK_SECRET")

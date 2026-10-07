@@ -1,3 +1,4 @@
+from app.models.api_key import ApiKey
 from app.models.catalog import (
     CatalogBackground,
     CatalogEnvironment,
@@ -45,4 +46,5 @@ __all__ = [
     "IngestBatch",
     "IngestItem",
     "LookTemplate",
+    "ApiKey",
 ]

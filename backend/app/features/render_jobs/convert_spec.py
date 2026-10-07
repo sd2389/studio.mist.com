@@ -6,7 +6,8 @@ POST /render-jobs never does. A worker on the CPU pool claims them, reads the pa
 and a signed GET for the source and each companion), runs the harness's convert mode on them and
 uploads, under the job's prefix:
 
-- model.glb: the converted model, binary glTF 2.0, in millimetres, decimated to `max_polygons`
+- model.glb: the converted model, binary glTF 2.0, as the upload page stores one (fitted to the
+  viewer's units; its size in millimetres is in conversion.json), decimated to `max_polygons`
   when `decimate` is "auto" (a design still over it fails with `over_polygon_cap`);
 - thumbnail.webp: a `thumbnail.size` px square WebP of it. Optional: a thumbnail that fails is a
   warning, not a failed design;

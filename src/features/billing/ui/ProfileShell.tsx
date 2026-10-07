@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { BoughtCreditsNote } from "@/components/billing/BoughtCreditsNote";
+import { ApiKeysSection } from "@/features/api-keys";
+import type { ApiKeyList } from "@/lib/api/api-keys";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -22,9 +24,11 @@ import type { AuthUser } from "@/lib/auth/types";
 type ProfileShellProps = {
   initialUser: AuthUser;
   initialBilling: UserBillingSnapshot;
+  /** The user's API keys; null hides the section (the customer API is off, or they couldn't be read). */
+  initialApiKeys?: ApiKeyList | null;
 };
 
-export function ProfileShell({ initialUser, initialBilling }: ProfileShellProps) {
+export function ProfileShell({ initialUser, initialBilling, initialApiKeys = null }: ProfileShellProps) {
   const router = useRouter();
   const [user, setUser] = useState(initialUser);
   const [billing] = useState(initialBilling);
@@ -145,6 +149,10 @@ export function ProfileShell({ initialUser, initialBilling }: ProfileShellProps)
           <BuyCreditsCard />
 
           <PlanFeaturesCard features={features} />
+
+          {initialApiKeys ? (
+            <ApiKeysSection initial={initialApiKeys} canCreate={features.api_access_enabled === true} />
+          ) : null}
 
           <Card>
             <CardHeader>

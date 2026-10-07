@@ -35,6 +35,8 @@ export type PlanFeatures = {
   embed_enabled: boolean;
   batch_export_enabled: boolean;
   video_8k_enabled: boolean;
+  /** API keys and the customer API (Studio); sent by APIs from ADR 0006 G1 on. */
+  api_access_enabled?: boolean;
   /** Sent by APIs from ADR 0006 E3 on. */
   bulk_upload?: BulkUploadLimits;
   /** What a video rendered on the server may be: its frame rate, its length, and its length at 8K (0: none). */

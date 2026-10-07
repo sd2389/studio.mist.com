@@ -1,0 +1,245 @@
+{
+  "manifest_name": "manifest.csv",
+  "cases": [
+    {
+      "name": "a design's turntable larger than a part goes alone",
+      "part_bytes": 65536,
+      "manifest_bytes": 60,
+      "files": [
+        [
+          "R-1/thumbnail.webp",
+          6144
+        ],
+        [
+          "R-1/stills/front.jpg",
+          30720
+        ],
+        [
+          "R-1/stills/side.jpg",
+          20480
+        ],
+        [
+          "R-1/video/turntable.mp4",
+          153600
+        ],
+        [
+          "R-2/thumbnail.webp",
+          5120
+        ],
+        [
+          "R-2/stills/front.jpg",
+          25600
+        ],
+        [
+          "R-2/spin/spin.zip",
+          40960
+        ]
+      ],
+      "parts": 4
+    },
+    {
+      "name": "everything fits one part",
+      "part_bytes": 1048576,
+      "manifest_bytes": 4000,
+      "files": [
+        [
+          "R-1/stills/front.jpg",
+          20480
+        ],
+        [
+          "R-2/stills/front.jpg",
+          20480
+        ],
+        [
+          "R-3/stills/front.jpg",
+          20480
+        ],
+        [
+          "R-4/stills/front.jpg",
+          20480
+        ],
+        [
+          "R-5/stills/front.jpg",
+          20480
+        ],
+        [
+          "R-6/stills/front.jpg",
+          20480
+        ],
+        [
+          "R-7/stills/front.jpg",
+          20480
+        ],
+        [
+          "R-8/stills/front.jpg",
+          20480
+        ],
+        [
+          "R-9/stills/front.jpg",
+          20480
+        ],
+        [
+          "R-10/stills/front.jpg",
+          20480
+        ]
+      ],
+      "parts": 1
+    },
+    {
+      "name": "files that nearly fill a part each take one",
+      "part_bytes": 102400,
+      "manifest_bytes": 900,
+      "files": [
+        [
+          "R-1/video/turntable.mp4",
+          102200
+        ],
+        [
+          "R-2/video/turntable.mp4",
+          102200
+        ],
+        [
+          "R-3/video/turntable.mp4",
+          102200
+        ],
+        [
+          "R-4/video/turntable.mp4",
+          102200
+        ],
+        [
+          "R-5/video/turntable.mp4",
+          102200
+        ]
+      ],
+      "parts": 6
+    },
+    {
+      "name": "small files fill parts to the byte",
+      "part_bytes": 10240,
+      "manifest_bytes": 2500,
+      "files": [
+        [
+          "R-001/stills/three-quarter.jpg",
+          1037
+        ],
+        [
+          "R-002/stills/three-quarter.jpg",
+          1074
+        ],
+        [
+          "R-003/stills/three-quarter.jpg",
+          1111
+        ],
+        [
+          "R-004/stills/three-quarter.jpg",
+          1148
+        ],
+        [
+          "R-005/stills/three-quarter.jpg",
+          1185
+        ],
+        [
+          "R-006/stills/three-quarter.jpg",
+          1222
+        ],
+        [
+          "R-007/stills/three-quarter.jpg",
+          1259
+        ],
+        [
+          "R-008/stills/three-quarter.jpg",
+          1296
+        ],
+        [
+          "R-009/stills/three-quarter.jpg",
+          1333
+        ],
+        [
+          "R-010/stills/three-quarter.jpg",
+          1370
+        ],
+        [
+          "R-011/stills/three-quarter.jpg",
+          1407
+        ],
+        [
+          "R-012/stills/three-quarter.jpg",
+          1444
+        ],
+        [
+          "R-013/stills/three-quarter.jpg",
+          1481
+        ],
+        [
+          "R-014/stills/three-quarter.jpg",
+          1518
+        ],
+        [
+          "R-015/stills/three-quarter.jpg",
+          1555
+        ],
+        [
+          "R-016/stills/three-quarter.jpg",
+          1592
+        ],
+        [
+          "R-017/stills/three-quarter.jpg",
+          1629
+        ],
+        [
+          "R-018/stills/three-quarter.jpg",
+          1666
+        ],
+        [
+          "R-019/stills/three-quarter.jpg",
+          1703
+        ],
+        [
+          "R-020/stills/three-quarter.jpg",
+          1740
+        ],
+        [
+          "R-021/stills/three-quarter.jpg",
+          1777
+        ],
+        [
+          "R-022/stills/three-quarter.jpg",
+          1814
+        ],
+        [
+          "R-023/stills/three-quarter.jpg",
+          1851
+        ],
+        [
+          "R-024/stills/three-quarter.jpg",
+          1888
+        ],
+        [
+          "R-025/stills/three-quarter.jpg",
+          1925
+        ],
+        [
+          "R-026/stills/three-quarter.jpg",
+          1962
+        ],
+        [
+          "R-027/stills/three-quarter.jpg",
+          1999
+        ],
+        [
+          "R-028/stills/three-quarter.jpg",
+          2036
+        ],
+        [
+          "R-029/stills/three-quarter.jpg",
+          2073
+        ],
+        [
+          "R-030/stills/three-quarter.jpg",
+          2110
+        ]
+      ],
+      "parts": 6
+    }
+  ]
+}

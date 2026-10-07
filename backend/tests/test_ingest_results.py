@@ -9,7 +9,7 @@ import zipfile
 from datetime import datetime, timedelta
 
 import pytest
-from archive_samples import archiver, finished_batch, signed_key, unzip  # noqa: F401 - fixtures
+from archive_samples import SMALL_PARTS, archiver, finished_batch, signed_key, small_parts, unzip  # noqa: F401 - fixtures
 from fastapi import HTTPException
 from ingest_samples import (  # noqa: F401 - fixtures
     SIGNED,
@@ -33,8 +33,10 @@ from app.core import storage as storage_mod
 from app.core.storage.local import LocalBackend
 from app.features.billing.plans import get_quotas
 from app.features.billing.quota_service import get_or_create_billing
+from app.features.ingest import archive as ingest_archive
+from app.features.ingest import retention
 from app.features.ingest.manifest import COLUMNS, formula_safe
-from app.models import Render, RenderJob
+from app.models import Render, RenderJob, StorageDeletion
 
 APP = get_settings().app_public_url.rstrip("/")
 
@@ -191,19 +193,20 @@ def test_an_archive_is_built_once_the_batch_has_finished_and_asking_again_answer
     assert client.get(f"/ingest/batches/{batch['id']}", headers=headers).json()["archive"]["job"]["id"] == job["id"]
 
 
-def test_the_archive_parts_hold_every_output_and_the_manifest_once(client, db, owner, cloud, gpu, archiver):
+def test_the_archive_parts_hold_every_output_and_the_manifest_once(client, db, owner, cloud, gpu, archiver, small_parts):
     user, headers = owner
     batch = finished_batch(client, headers, cloud, db, gpu, count=2)
     storage_before = get_or_create_billing(db, user).storage_bytes_used
     assert client.post(f"/ingest/batches/{batch['id']}/archive", headers=headers).status_code == 201
 
-    job = archiver.build(first_part_files=4)
+    job = archiver.build()
 
     assert (job.status, job.credit_state, job.renderer) == ("completed", "none", None)
+    assert job.spec["part_bytes"] == small_parts
     archive = client.get(f"/ingest/batches/{batch['id']}", headers=headers).json()["archive"]
-    assert [(part["part"], part["name"], part["files"]) for part in archive["parts"]] == [
-        (1, "Autumn-rings-part-1.zip", 5), (2, "Autumn-rings-part-2.zip", 8),
-    ]
+    assert [(part["part"], part["name"]) for part in archive["parts"]] == [(1, "Autumn-rings-part-1.zip"), (2, "Autumn-rings-part-2.zip")]
+    assert sum(part["files"] for part in archive["parts"]) == 1 + 2 * 6
+    assert len(archive["parts"]) <= job.spec["max_parts"]
     made_at = datetime.fromisoformat(archive["made_at"].removesuffix("Z"))
     assert datetime.fromisoformat(archive["expires_at"].removesuffix("Z")) - made_at == timedelta(days=14)
     stored = [part["key"] for part in batch_row(db, batch["id"]).archive_keys]
@@ -253,7 +256,7 @@ def test_parts_are_numbered_from_one_with_none_left_out(client, db, owner, cloud
     batch = finished_batch(client, owner[1], cloud, db, gpu, count=1)
     client.post(f"/ingest/batches/{batch['id']}/archive", headers=owner[1])
     job = archiver.claim_one()
-    parts = archiver.parts(job, first_part_files=2)
+    parts = archiver.parts(job)
     renamed = [(f"{job.spec['stem']}-part-2.zip", parts[0][1], parts[0][2])]
 
     with pytest.raises(HTTPException) as refused:
@@ -264,13 +267,16 @@ def test_parts_are_numbered_from_one_with_none_left_out(client, db, owner, cloud
     assert db.get(RenderJob, job.id).status == "running"
 
 
-def test_a_new_archive_replaces_the_last_and_gives_its_bytes_back(client, db, owner, cloud, gpu, archiver):
+def test_a_new_archive_replaces_the_last_and_gives_its_bytes_back(client, db, owner, cloud, gpu, archiver, monkeypatch):
     user, headers = owner
-    batch = finished_batch(client, headers, cloud, db, gpu, count=1)
+    batch = finished_batch(client, headers, cloud, db, gpu, count=2)
     storage_before = get_or_create_billing(db, user).storage_bytes_used
-    client.post(f"/ingest/batches/{batch['id']}/archive", headers=headers)
-    archiver.build(first_part_files=2)
+    with monkeypatch.context() as patched:
+        patched.setattr(ingest_archive, "PART_BYTES", SMALL_PARTS)
+        client.post(f"/ingest/batches/{batch['id']}/archive", headers=headers)
+    archiver.build()
     old_keys = [part["key"] for part in batch_row(db, batch["id"]).archive_keys]
+    assert len(old_keys) == 2
 
     assert client.post(f"/ingest/batches/{batch['id']}/archive", headers=headers).status_code == 201
     newer = archiver.build()
@@ -393,3 +399,73 @@ def test_on_local_storage_an_archive_goes_through_the_api_from_payload_to_downlo
     assert 'filename="Autumn-rings-part-1.zip"' in download.headers["content-disposition"]
     assert set(unzip(download.content)) == {"manifest.csv", *(file["path"] for file in payload["files"])}
     assert client.get(f"/ingest/batches/{batch['id']}/archive/1", headers=other[1]).status_code == 404
+
+
+def test_a_replacement_archive_is_held_to_the_limit_by_what_it_adds_over_the_one_it_replaces(
+    client, db, owner, cloud, gpu, archiver
+):
+    """As with 9 GB used of 10, a 2 GB archive among them: a new 2 GB archive in its place fits."""
+    user, headers = owner
+    batch = finished_batch(client, headers, cloud, db, gpu, count=1)
+    client.post(f"/ingest/batches/{batch['id']}/archive", headers=headers)
+    archiver.build()
+    [old] = batch_row(db, batch["id"]).archive_keys
+    limit = get_quotas("studio").storage_bytes
+    billing = get_or_create_billing(db, user)
+    billing.storage_bytes_used = limit - 100  # the old archive counted in it
+    db.commit()
+
+    client.post(f"/ingest/batches/{batch['id']}/archive", headers=headers)
+    job = archiver.claim_one()
+    [(name, data, files)] = archiver.parts(job)
+    grown = data + b"\0" * 50  # 50 bytes more than the old one, within the 100 left
+    assert len(grown) > 100 and len(grown) - old["bytes"] <= 100
+    assert archiver.complete(job, archiver.upload(job, [(name, grown, files)])).status == "completed"
+    used = limit - 100 + len(grown) - old["bytes"]
+    assert get_or_create_billing(db, user).storage_bytes_used == used
+
+    client.post(f"/ingest/batches/{batch['id']}/archive", headers=headers)
+    job = archiver.claim_one()
+    [(name, data, files)] = archiver.parts(job)
+    with pytest.raises(HTTPException) as refused:
+        archiver.complete(job, archiver.upload(job, [(name, grown + b"\0" * 200, files)]))  # 200 more than it replaces
+
+    assert refused.value.status_code == 402
+    db.expire_all()
+    assert db.get(RenderJob, job.id).error_code == "over_limit"
+    assert batch_row(db, batch["id"]).archive_keys[0]["bytes"] == len(grown)  # the archive before stays
+    assert get_or_create_billing(db, user).storage_bytes_used == used
+
+
+def test_replaced_parts_that_cant_be_deleted_stay_queued_and_the_sweep_deletes_them(
+    client, db, owner, cloud, gpu, archiver, monkeypatch
+):
+    user, headers = owner
+    batch = finished_batch(client, headers, cloud, db, gpu, count=1)
+    storage_before = get_or_create_billing(db, user).storage_bytes_used
+    client.post(f"/ingest/batches/{batch['id']}/archive", headers=headers)
+    archiver.build()
+    [old] = batch_row(db, batch["id"]).archive_keys
+    real_delete = cloud.delete
+
+    def down(key: str) -> None:
+        raise RuntimeError("storage is down")
+
+    monkeypatch.setattr(cloud, "delete", down)
+    client.post(f"/ingest/batches/{batch['id']}/archive", headers=headers)
+    newer = archiver.build()
+
+    [new] = batch_row(db, batch["id"]).archive_keys
+    assert newer.status == "completed" and old["key"] in cloud.objects
+    db.expire_all()
+    assert [(row.key, row.reason, row.attempts) for row in db.query(StorageDeletion)] == [(old["key"], "archive_replaced", 1)]
+    assert get_or_create_billing(db, user).storage_bytes_used == storage_before + new["bytes"]  # the old bytes went back once
+
+    monkeypatch.setattr(cloud, "delete", real_delete)
+    result = retention.sweep_expired(db)
+
+    assert (result.deleted, result.failures) == (1, 0)
+    assert old["key"] not in cloud.objects and new["key"] in cloud.objects
+    db.expire_all()
+    assert db.query(StorageDeletion).count() == 0
+    assert get_or_create_billing(db, user).storage_bytes_used == storage_before + new["bytes"]

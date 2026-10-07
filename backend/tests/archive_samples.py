@@ -10,7 +10,9 @@ import pytest
 from ingest_samples import SIGNED, WORKER_SETTINGS, batch_body, designs, submitted_batch
 from render_samples import DEFAULT_PLAN, convert_all
 
+from app.features.ingest import archive as ingest_archive
 from app.features.render_jobs import outputs, worker
+from app.features.render_jobs.archive_spec import ZIP_END_BYTES, deflated_at_most, zip_entry_bytes
 from app.features.render_jobs import payload as job_payload
 from app.models import RenderJob
 from app.schemas.render_job import ArchiveJobPayload, RenderJobCompleteRequest, RenderJobUploadFile
@@ -51,14 +53,21 @@ class FakeArchiveWorker:
     def payload(self, job: RenderJob) -> ArchiveJobPayload:
         return job_payload.job_payload(self.db, job.id, job.worker_token)
 
-    def parts(self, job: RenderJob, first_part_files: int | None = None) -> list[tuple[str, bytes, int]]:
-        """The job's parts as (name, bytes, files): the manifest, then every file, the first
-        `first_part_files` of them in the first part and the rest in a second."""
+    def parts(self, job: RenderJob) -> list[tuple[str, bytes, int]]:
+        """The job's parts as (name, bytes, files): the manifest, then every file, packed as the
+        worker packs them into parts of the spec's size (archive_spec.parts_needed)."""
         payload = self.payload(job)
-        entries = [(payload.manifest_name, payload.manifest.encode())]
-        entries += [(file.path, self.cloud.objects[signed_key(file.source.url)]) for file in payload.files]
-        split = len(entries) if first_part_files is None else 1 + first_part_files
-        groups = [entries[:split], entries[split:]] if split < len(entries) else [entries]
+        manifest = payload.manifest.encode()
+        groups = [[(payload.manifest_name, manifest)]]
+        projected = ZIP_END_BYTES + zip_entry_bytes(payload.manifest_name, deflated_at_most(len(manifest)))
+        for file in payload.files:
+            data = self.cloud.objects[signed_key(file.source.url)]
+            adds = zip_entry_bytes(file.path, len(data))
+            if projected + adds > job.spec["part_bytes"]:
+                groups.append([])
+                projected = ZIP_END_BYTES
+            projected += adds
+            groups[-1].append((file.path, data))
         parts = []
         for number, group in enumerate(groups, start=1):
             buffer = io.BytesIO()
@@ -84,12 +93,23 @@ class FakeArchiveWorker:
         body = RenderJobCompleteRequest.model_validate({"outputs": reports})
         return outputs.complete_job(self.db, job.id, job.worker_token, body)
 
-    def build(self, first_part_files: int | None = None) -> RenderJob:
+    def build(self) -> RenderJob:
         """Claim the archive waiting, and make, upload and complete its parts."""
         job = self.claim_one()
-        return self.complete(job, self.upload(job, self.parts(job, first_part_files)))
+        return self.complete(job, self.upload(job, self.parts(job)))
 
 
 @pytest.fixture()
 def archiver(db, cloud) -> FakeArchiveWorker:
     return FakeArchiveWorker(db, cloud)
+
+
+# Parts of 300 KB: a design's four 63 KB stills fill most of one, so two designs take two.
+SMALL_PARTS = 300 * 1024
+
+
+@pytest.fixture()
+def small_parts(monkeypatch) -> int:
+    """Archives asked for from now on pack into parts of SMALL_PARTS."""
+    monkeypatch.setattr(ingest_archive, "PART_BYTES", SMALL_PARTS)
+    return SMALL_PARTS

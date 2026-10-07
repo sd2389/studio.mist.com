@@ -594,6 +594,30 @@ def count_storage_bytes(db: Session, user_id: int, byte_size: int) -> None:
         )
 
 
+def change_storage_bytes(db: Session, user_id: int, delta: int) -> None:
+    """Count `delta` more bytes of the owner's storage, or fewer when it is negative (a file that
+    replaces a larger one), never below zero; 402 when growing would pass the plan's limit.
+
+    One conditional UPDATE, so the limit holds on the net change against everything counted
+    already. Not committed: the caller commits it with the files it counts.
+    """
+    billing = db.execute(select(UserBilling).where(UserBilling.user_id == user_id)).scalars().first()
+    storage_limit = get_quotas(normalize_tier(billing.plan_tier if billing else None)).storage_bytes
+    used = UserBilling.storage_bytes_used
+    stmt = update(UserBilling).where(UserBilling.user_id == user_id)
+    if delta > 0:
+        stmt = stmt.where(used <= storage_limit - delta)
+    changed = db.execute(
+        stmt.values(storage_bytes_used=case((used + delta > 0, used + delta), else_=0), updated_at=datetime.utcnow())
+        .execution_options(synchronize_session=False)
+    )
+    if changed.rowcount != 1:
+        raise HTTPException(
+            status_code=402,
+            detail="Storage limit reached. Upgrade your plan or delete unused models.",
+        )
+
+
 def release_storage_bytes(db: Session, billing: UserBilling, byte_size: int) -> None:
     """Give back `byte_size` of storage, never below zero, in one UPDATE, so two deletes at once
     both count. Not committed: the caller commits it with what it deleted."""

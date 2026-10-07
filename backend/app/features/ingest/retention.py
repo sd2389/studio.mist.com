@@ -7,16 +7,20 @@
 - **Archive parts**, 14 days after they were made (`archive_expires_at`). Their bytes go back to
   the owner's storage in the transaction that takes the parts off the batch.
 
-Only keys under the batch's own prefixes are ever deleted: a design's files under
-customers/<user>/ingest/<batch>/<item>/, an archive's under its job's renders prefix. A scene's
-model, thumbnail and renders live elsewhere and stay.
+Each batch is claimed with one conditional UPDATE, so sweeps running at once, or again, act on it
+once: a second finds it claimed and leaves it. The claim queues the files for deletion in its own
+transaction (deletions.py): raw files under the owner's batch lock, which a retry takes too,
+marked `sources_deleted_at`; an archive's parts taken off the batch with their bytes given back,
+the billing row locked before the batch as every change takes them, only if the batch still has
+those parts. Then every queued file is deleted, its row with it. A sweep that stops after a claim,
+or a deletion that fails, leaves the files queued, and the next sweep deletes them: none is left
+behind, and no byte is given back twice. Files an archive that replaced another queued are
+deleted the same way.
 
-Each batch is claimed with one conditional UPDATE, so sweeps running at once, or again, act on
-it once: a second finds it claimed and leaves it. Raw files are claimed under the owner's batch
-lock, which a retry takes too, then deleted; an archive's parts are deleted first, then taken off
-the batch with their bytes given back, the billing row locked before the batch as every change
-takes them, only if the batch still has those parts. A deletion that fails leaves the batch to
-the next sweep. Run it daily: `python -m scripts.sweep_ingest_retention` (scripts/).
+Only keys under the batch's own prefixes are ever queued: a design's files under
+customers/<user>/ingest/<batch>/<item>/, an archive's under its job's renders prefix. A scene's
+model, thumbnail and renders live elsewhere and stay. Run it daily:
+`python -m scripts.sweep_ingest_retention` (scripts/).
 """
 
 from __future__ import annotations
@@ -27,26 +31,25 @@ from datetime import datetime
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from app.core import storage
 from app.core import storage_keys as keys
-from app.core.observability import get_logger, log_event
-from app.features.ingest.archive import delete_parts, release_archive_bytes
+from app.features.ingest.archive import part_bytes_of, part_keys, release_archive_bytes
+from app.features.ingest.deletions import drain_deletions, queue_deletions
 from app.features.ingest.items import lock_owner_batches
 from app.models import IngestBatch, IngestItem
 from app.models.ingest import FINISHED_BATCH_STATUSES
 
-# Batches each pass takes at most; the next run takes the rest.
+# Batches each pass claims at most; the next run takes the rest.
 BATCHES_PER_PASS = 200
-_logger = get_logger("studio.ingest")
 
 
 @dataclass
 class SweepResult:
-    sources_batches: int = 0  # batches whose raw CAD files went
-    source_files: int = 0
-    archives: int = 0  # archives whose parts went
+    sources_batches: int = 0  # batches whose raw CAD files were claimed
+    source_files: int = 0  # and queued for deletion
+    archives: int = 0  # archives whose parts were taken off their batches
     archive_bytes: int = 0  # given back to their owners' storage
-    failures: int = 0  # files that couldn't be deleted, left for the next run
+    deleted: int = 0  # queued files deleted, this run's and any left before
+    failures: int = 0  # files that couldn't be deleted, left queued for the next run
 
 
 def sources_gone(batch: IngestBatch, now: datetime | None = None) -> bool:
@@ -78,22 +81,9 @@ def source_keys(db: Session, batch_id: int, user_id: int) -> list[str]:
     return found
 
 
-def _delete_keys(found: list[str]) -> int:
-    """Delete each key (deleting one that is gone already is fine); how many couldn't be."""
-    failed = 0
-    for key in found:
-        try:
-            storage.delete(key)
-        except Exception as exc:  # noqa: BLE001 - logged and left for the next run
-            failed += 1
-            log_event(_logger, "ingest.retention_delete_failed", key=key, error=str(exc))
-    return failed
-
-
 def sweep_sources(db: Session, batch_id: int, user_id: int, now: datetime, result: SweepResult) -> None:
-    """Claim one batch's raw files, under its owner's lock, then delete them; a batch claimed
-    already, or no longer due (retried meanwhile), is left. When a deletion fails the claim is
-    undone, for the next run."""
+    """Claim one batch's raw files, under its owner's lock, and queue them for deletion in the
+    same commit; a batch claimed already, or no longer due (retried meanwhile), is left."""
     lock_owner_batches(db, user_id)
     claimed = db.execute(
         update(IngestBatch)
@@ -105,30 +95,18 @@ def sweep_sources(db: Session, batch_id: int, user_id: int, now: datetime, resul
         db.rollback()
         return
     found = source_keys(db, batch_id, user_id)
+    queue_deletions(db, found, reason="raw_cad")
     db.commit()
-    if failed := _delete_keys(found):
-        result.failures += failed
-        db.execute(
-            update(IngestBatch)
-            .where(IngestBatch.id == batch_id, IngestBatch.sources_deleted_at == now)
-            .values(sources_deleted_at=None)
-            .execution_options(synchronize_session=False)
-        )
-        db.commit()
-        return
     result.sources_batches += 1
     result.source_files += len(found)
 
 
 def sweep_archive(db: Session, batch_id: int, user_id: int, job_id: int, parts: list[dict], now: datetime, result: SweepResult) -> None:
-    """Delete one batch's expired parts, then take them off the batch and give their bytes back
-    in one transaction, if the batch still has these parts: a second sweep, or a new archive
-    that replaced them (and gave their bytes back itself), finds it hasn't."""
-    if failed := delete_parts(user_id, job_id, parts):
-        result.failures += failed
-        return
-    released = sum(int(part.get("bytes") or 0) for part in parts)
-    release_archive_bytes(db, user_id, released)
+    """Take one batch's expired parts off it, give their bytes back and queue them for deletion,
+    in one transaction, if the batch still has these parts: a second sweep, or a new archive that
+    replaced them (and gave their bytes back itself), finds it hasn't."""
+    released = part_bytes_of(parts)
+    release_archive_bytes(db, user_id, released)  # the billing row first, as every change takes it
     cleared = db.execute(
         update(IngestBatch)
         .where(IngestBatch.id == batch_id, IngestBatch.archive_job_id == job_id, IngestBatch.archive_expires_at <= now)
@@ -138,13 +116,15 @@ def sweep_archive(db: Session, batch_id: int, user_id: int, job_id: int, parts: 
     if not cleared:
         db.rollback()  # and the bytes with it
         return
+    queue_deletions(db, part_keys(user_id, job_id, parts), reason="archive_expired")
     db.commit()
     result.archives += 1
     result.archive_bytes += released
 
 
 def sweep_expired(db: Session, now: datetime | None = None, *, limit: int = BATCHES_PER_PASS) -> SweepResult:
-    """Delete every batch's raw CAD files and archive parts past their time (see above)."""
+    """Claim every batch's raw CAD files and archive parts past their time, then delete every file
+    queued, this run's and any an earlier run or a replaced archive left (see above)."""
     now = now or datetime.utcnow()
     result = SweepResult()
     due_sources = db.execute(
@@ -161,4 +141,6 @@ def sweep_expired(db: Session, now: datetime | None = None, *, limit: int = BATC
         sweep_sources(db, batch_id, user_id, now, result)
     for batch_id, user_id, job_id, parts in due_archives:
         sweep_archive(db, batch_id, user_id, job_id, list(parts or []), now, result)
+    drained = drain_deletions(db)
+    result.deleted, result.failures = drained.deleted, drained.failed
     return result

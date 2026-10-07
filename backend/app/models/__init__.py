@@ -13,6 +13,7 @@ from app.models.rate_limit import RateLimitCounter
 from app.models.render import Render
 from app.models.render_job import RenderJob
 from app.models.scene import Base, Scene
+from app.models.storage_deletion import StorageDeletion
 from app.models.billing import BillingEvent, CreditAdjustment, CreditPurchase, UserBilling
 from app.models.feature_flag import FeatureFlag
 from app.models.user import ContactMessage, PasswordResetToken, Session, User
@@ -45,4 +46,5 @@ __all__ = [
     "IngestBatch",
     "IngestItem",
     "LookTemplate",
+    "StorageDeletion",
 ]

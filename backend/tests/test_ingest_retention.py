@@ -5,13 +5,15 @@ never a scene's own files. Sweeping again, or two sweeps at once, changes nothin
 
 from datetime import datetime, timedelta
 
-from archive_samples import archiver, finished_batch  # noqa: F401 - fixtures
+import pytest
+
+from archive_samples import archiver, finished_batch, small_parts  # noqa: F401 - fixtures
 from ingest_samples import batch_row, claim, client, cloud, complete, converted_files, fail, owner  # noqa: F401 - fixtures
 from render_samples import api_session, batch_outputs, gpu, planned_batch, scene_of  # noqa: F401 - fixtures
 
 from app.features.billing.quota_service import get_or_create_billing
 from app.features.ingest import retention
-from app.models import IngestItem
+from app.models import IngestItem, StorageDeletion
 
 DAY = timedelta(days=1)
 
@@ -91,14 +93,14 @@ def test_an_unfinished_or_unexpired_batch_keeps_its_files(client, db, owner, clo
     assert len(ingest_keys(cloud, user.id, batch["id"])) == 1
 
 
-def test_an_archive_goes_once_it_expires_and_gives_its_bytes_back_exactly_once(client, db, owner, cloud, gpu, archiver):
+def test_an_archive_goes_once_it_expires_and_gives_its_bytes_back_exactly_once(client, db, owner, cloud, gpu, archiver, small_parts):
     user, headers = owner
     expired = finished_batch(client, headers, cloud, db, gpu, count=1)
     kept = finished_batch(client, headers, cloud, db, gpu, count=1, prefix="P")
     storage_before = get_or_create_billing(db, user).storage_bytes_used
     for batch in (expired, kept):
         client.post(f"/ingest/batches/{batch['id']}/archive", headers=headers)
-        archiver.build(first_part_files=2)
+        archiver.build()
     expired_parts = list(batch_row(db, expired["id"]).archive_keys)
     kept_parts = list(batch_row(db, kept["id"]).archive_keys)
     expired_job = batch_row(db, expired["id"]).archive_job_id
@@ -134,7 +136,13 @@ def test_an_expired_archive_downloads_no_more_before_the_sweep_takes_it(client, 
     assert client.get(f"/ingest/batches/{batch['id']}", headers=owner[1]).json()["archive"]["parts"] == []
 
 
-def test_a_file_that_cant_be_deleted_leaves_its_batch_for_the_next_run(client, db, owner, cloud, gpu, monkeypatch):
+def queued(db) -> list[tuple[str, str]]:
+    """The files waiting to be deleted, as (reason, key)."""
+    db.expire_all()
+    return sorted((row.reason, row.key) for row in db.query(StorageDeletion))
+
+
+def test_a_file_that_cant_be_deleted_stays_queued_for_the_next_run(client, db, owner, cloud, gpu, monkeypatch):
     user, headers = owner
     batch = finished_batch(client, headers, cloud, db, gpu, count=2)
     expire(db, batch["id"], sources=True)
@@ -148,13 +156,66 @@ def test_a_file_that_cant_be_deleted_leaves_its_batch_for_the_next_run(client, d
 
     monkeypatch.setattr(cloud, "delete", flaky_delete)
     result = retention.sweep_expired(db)
-    assert (result.sources_batches, result.failures) == (0, 1)
-    assert batch_row(db, batch["id"]).sources_deleted_at is None
+    assert (result.sources_batches, result.deleted, result.failures) == (1, 1, 1)
+    assert batch_row(db, batch["id"]).sources_deleted_at is not None  # claimed: nothing converts from it again
     assert ingest_keys(cloud, user.id, batch["id"]) == [stuck]
+    [row] = db.query(StorageDeletion).all()
+    assert (row.key, row.reason, row.attempts, row.last_error) == (stuck, "raw_cad", 1, "storage is down")
 
     monkeypatch.setattr(cloud, "delete", real_delete)
-    assert retention.sweep_expired(db).sources_batches == 1
+    result = retention.sweep_expired(db)
+    assert (result.sources_batches, result.deleted, result.failures) == (0, 1, 0)
     assert ingest_keys(cloud, user.id, batch["id"]) == []
+    assert queued(db) == []
+
+
+def test_a_sweep_that_stops_after_its_claims_leaves_nothing_behind_and_gives_bytes_back_once(
+    client, db, owner, cloud, gpu, archiver, monkeypatch
+):
+    """The process dies once the claims are committed, before a file is deleted: the next sweep
+    finds the files queued and deletes them, and the archive's bytes went back with its claim only."""
+    user, headers = owner
+    batch = finished_batch(client, headers, cloud, db, gpu, count=2)
+    client.post(f"/ingest/batches/{batch['id']}/archive", headers=headers)
+    archiver.build()
+    parts = list(batch_row(db, batch["id"]).archive_keys)
+    storage_before = get_or_create_billing(db, user).storage_bytes_used
+    expire(db, batch["id"], sources=True, archive=True)
+    raw_files = ingest_keys(cloud, user.id, batch["id"])
+
+    def crash(*_args, **_kwargs):
+        raise SystemExit("killed")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(retention, "drain_deletions", crash)
+        with pytest.raises(SystemExit):
+            retention.sweep_expired(db)
+
+    row = batch_row(db, batch["id"])
+    assert row.sources_deleted_at is not None and row.archive_job_id is None
+    assert ingest_keys(cloud, user.id, batch["id"]) == raw_files  # nothing deleted yet
+    assert all(part["key"] in cloud.objects for part in parts)
+    assert queued(db) == sorted([("archive_expired", part["key"]) for part in parts] + [("raw_cad", key) for key in raw_files])
+    released = get_or_create_billing(db, user).storage_bytes_used
+    assert released == storage_before - sum(part["bytes"] for part in parts)
+
+    result = retention.sweep_expired(db)
+
+    assert (result.sources_batches, result.archives, result.deleted, result.failures) == (0, 0, len(raw_files) + len(parts), 0)
+    assert ingest_keys(cloud, user.id, batch["id"]) == []
+    assert not any(part["key"] in cloud.objects for part in parts)
+    assert queued(db) == []
+    assert get_or_create_billing(db, user).storage_bytes_used == released  # not given back twice
+
+
+def test_deleting_a_queued_file_that_is_gone_already_succeeds(db, cloud):
+    from app.features.ingest.deletions import drain_deletions, queue_deletions
+
+    ids = queue_deletions(db, ["customers/7/ingest/1/1/gone.stl", "published/7/R-1/model.glb"], reason="raw_cad")
+    db.commit()
+
+    assert len(ids) == 1  # only a customer's private files are ever queued
+    assert (drain_deletions(db).deleted, queued(db)) == (1, [])
 
 
 def test_a_design_whose_cad_file_expired_cant_convert_again(client, db, owner, cloud, gpu):
@@ -185,4 +246,5 @@ def test_the_cli_reports_what_it_deleted(client, db, owner, cloud, gpu, monkeypa
     monkeypatch.setattr(sweep_ingest_retention, "SessionLocal", lambda: nullcontext(db))
 
     assert sweep_ingest_retention.main() == 0
-    assert "raw CAD files deleted : 1 of 1 batch(es)" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "raw CAD files claimed : 1 of 1 batch(es)" in out and "files deleted         : 1" in out

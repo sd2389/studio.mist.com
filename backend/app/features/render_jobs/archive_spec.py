@@ -18,7 +18,7 @@ from typing import Any
 
 from pydantic import Field
 
-from app.features.billing.plans import GB, MB
+from app.features.billing.plans import GB
 from app.features.render_jobs.job_files import MAX_ZIP_BYTES, ZIP_CONTENT_TYPE, PlannedOutput
 from app.features.render_jobs.specs import SpecModel
 
@@ -28,9 +28,12 @@ ARCHIVE_KIND = "batch_archive"
 PART_BYTES = 2 * GB
 # The most parts one job uploads and completes (a complete names at most 100 outputs).
 MAX_PARTS = 100
-# What a ZIP adds to an entry beside its bytes: headers, data descriptor and its name twice, ample.
-ENTRY_OVERHEAD_BYTES = 1024
-# What the manifest takes at most for each design, its links included.
+# What fflate's ZIP adds to an entry beside its bytes and its name twice (the local header, the
+# data descriptor and the central header), and its end record: ZIP_ENTRY_BYTES and ZIP_END_BYTES
+# in scripts/render-worker/outputs.mjs.
+ZIP_ENTRY_BYTES = 30 + 16 + 46
+ZIP_END_BYTES = 22
+# The most the manifest takes for each design, its links included: well above any row's cells.
 MANIFEST_ROW_BYTES = 8 * 1024
 
 
@@ -38,16 +41,36 @@ class ArchiveSpec(SpecModel):
     batch_id: int = Field(ge=1)
     # The parts' file stem: the batch's name, cleaned.
     stem: str = Field(min_length=1, max_length=96, pattern=r"^[A-Za-z0-9._-]+$")
-    part_bytes: int = Field(ge=1 * MB, le=MAX_ZIP_BYTES)
+    part_bytes: int = Field(ge=1024, le=MAX_ZIP_BYTES)
     max_parts: int = Field(ge=1, le=MAX_PARTS)
 
 
-def parts_needed(file_bytes: list[int], part_bytes: int = PART_BYTES) -> int:
-    """The most parts files of these sizes can take as the worker packs them. A part closes only
-    when the next file doesn't fit, so two parts in a row hold more than `part_bytes` together:
-    k parts hold more than ⌊k/2⌋ parts' worth."""
-    total = sum(file_bytes) + ENTRY_OVERHEAD_BYTES * len(file_bytes)
-    return 2 * math.ceil(total / part_bytes) + 1
+def zip_entry_bytes(name: str, size: int) -> int:
+    """What an entry of `size` bytes under `name` adds to a part (zipEntryBytes in outputs.mjs)."""
+    return size + ZIP_ENTRY_BYTES + 2 * len(name.encode())
+
+
+def deflated_at_most(size: int) -> int:
+    """The most deflate makes of `size` bytes of text: a part's room for the manifest
+    (deflatedAtMost in scripts/render-worker/archive.mjs)."""
+    return math.ceil(size * 1.01) + 1024
+
+
+def parts_needed(manifest_name: str, manifest_bytes: int, files: list[tuple[str, int]], part_bytes: int = PART_BYTES) -> int:
+    """How many parts the worker packs the manifest and these files (path, size) into, in order:
+    its packing, mirrored (writeArchiveParts in scripts/render-worker/archive.mjs). The manifest
+    opens the first part; a file that would take a part past `part_bytes` starts the next one, so
+    a file larger than a part goes alone. Packing so never needs more parts when a file is smaller
+    than given, so a size given as its cap (a thumbnail's) bounds the parts the real one takes."""
+    parts = 1
+    projected = ZIP_END_BYTES + zip_entry_bytes(manifest_name, deflated_at_most(manifest_bytes))
+    for name, size in files:
+        adds = zip_entry_bytes(name, size)
+        if projected + adds > part_bytes:  # the part holds an entry already: the manifest, or a file
+            parts += 1
+            projected = ZIP_END_BYTES
+        projected += adds
+    return parts
 
 
 def part_name(spec: Mapping[str, Any], number: int) -> str:

@@ -1,12 +1,13 @@
-"""The batch results migration: a batch's archive job and expiry, and when its raw CAD files went;
-nothing on the batches it finds, and its downgrade takes the columns away again. Steps on SQLite."""
+"""The batch results migration: a batch's archive job and expiry, when its raw CAD files went, and
+the files waiting to be deleted; nothing on the batches it finds, and its downgrade takes the
+columns and the table away again. Steps on SQLite."""
 
 from datetime import datetime
 
 import pytest
 from alembic import command
 from migration_steps import alembic_config, columns, model_diffs, point_alembic_at, previous_revision, schema_at_head
-from sqlalchemy import text
+from sqlalchemy import inspect, text
 
 from app.models import User
 
@@ -27,6 +28,7 @@ def test_the_batch_results_migration_round_trip(sqlite_url):
     engine = schema_at_head(sqlite_url)
     command.downgrade(config, previous_revision(REVISION))
     assert not set(COLUMNS) & columns(engine, "ingest_batches")
+    assert "storage_deletions" not in inspect(engine).get_table_names()
     with engine.begin() as connection:
         connection.execute(User.__table__.insert().values(id=7, email="g@example.com", password_hash="h", role="user"))
         connection.execute(
@@ -40,11 +42,13 @@ def test_the_batch_results_migration_round_trip(sqlite_url):
 
     command.upgrade(config, "head")
 
-    assert model_diffs(engine, ("ingest_batches",)) == []
+    assert model_diffs(engine, ("ingest_batches", "storage_deletions")) == []
+    assert columns(engine, "storage_deletions") == {"id", "key", "reason", "attempts", "last_error", "created_at"}
     with engine.connect() as connection:
         row = connection.execute(text(f"SELECT {', '.join(COLUMNS)}, expires_at FROM ingest_batches")).one()
     assert tuple(row)[:3] == (None, None, None) and row.expires_at is not None
 
     command.downgrade(config, previous_revision(REVISION))
     assert not set(COLUMNS) & columns(engine, "ingest_batches")
+    assert "storage_deletions" not in inspect(engine).get_table_names()
     engine.dispose()

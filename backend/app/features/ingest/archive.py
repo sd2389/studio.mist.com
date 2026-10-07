@@ -5,9 +5,10 @@ The owner asks for it once the batch has finished; asking while one builds answe
 job is free: it holds no credits. Its worker reads the payload (the manifest as it is then, and a
 signed GET for each design's outputs and thumbnail, with its path in the archive), zips them
 into parts and uploads them under the job's prefix (render_jobs/archive_spec.py). Completing the
-job keeps the parts on the batch for 14 days, counts their bytes toward the owner's storage and
-gives back those of the archive it replaces, whose parts go; the retention sweep (retention.py)
-deletes them once they expire. A part downloads through a signed URL that lives 300 s.
+job keeps the parts on the batch for 14 days and counts toward the owner's storage what they
+add over the archive they replace, whose parts are queued for deletion (deletions.py); the
+retention sweep (retention.py) lets them go once they expire. A part downloads through a signed
+URL that lives 300 s.
 """
 
 from __future__ import annotations
@@ -25,10 +26,10 @@ from sqlalchemy.orm import Session
 
 from app.core import storage
 from app.core import storage_keys as keys
-from app.core.observability import get_logger, log_event
 from app.features.billing.plans import get_quotas, normalize_tier
-from app.features.billing.quota_service import count_storage_bytes, get_or_create_billing, release_storage_bytes
-from app.features.ingest.items import lock_owner_batches
+from app.features.billing.quota_service import change_storage_bytes, get_or_create_billing, release_storage_bytes
+from app.features.ingest.deletions import queue_deletions
+from app.features.ingest.items import lock_owner_batches, uses_row_locks
 from app.features.ingest.manifest import MANIFEST_NAME, manifest_csv
 from app.features.ingest.renders import BATCH_PRIORITY, MAX_ATTEMPTS
 from app.features.ingest.results import DesignFile, design_results
@@ -62,7 +63,6 @@ from app.schemas.render_job import (
 ARCHIVE_DAYS = 14
 DOWNLOAD_URL_SECONDS = 300
 _BUILDING = ("queued", "running")
-_logger = get_logger("studio.ingest")
 
 
 class ArchiveRefused(Exception):
@@ -165,10 +165,15 @@ def _building(db: Session, batch_id: int) -> RenderJob | None:
 
 
 def _archive_job(
-    user: User, batch: IngestBatch, files: list[DesignFile], max_running: int, key: str | None, body_hash: str
+    db: Session, user: User, batch: IngestBatch, max_running: int, key: str | None, body_hash: str
 ) -> RenderJob:
-    sizes = [file.bytes if file.bytes is not None else MAX_THUMBNAIL_BYTES for file in files]
-    max_parts = parts_needed([*sizes, MANIFEST_ROW_BYTES * batch.item_count])
+    """The job, its parts counted as the worker will pack them: the manifest at its most for so
+    many designs, then each file at its stored size or its cap (archive_spec.parts_needed). 409
+    when that is more parts than a job makes."""
+    files = [(path, _size_at_most(file)) for path, file in archive_entries(db, batch)]
+    if not files:
+        raise HTTPException(status_code=409, detail="Nothing to archive: no design of this batch has made a file")
+    max_parts = parts_needed(MANIFEST_NAME, MANIFEST_ROW_BYTES * (batch.item_count + 1), files, PART_BYTES)
     if max_parts > MAX_PARTS:
         detail = f"The batch's files are too large for one archive of at most {MAX_PARTS} parts."
         raise HTTPException(status_code=409, detail=detail)
@@ -213,10 +218,7 @@ def start_archive(db: Session, user: User, batch: IngestBatch, idempotency_key: 
     if (building := _building(db, batch.id)) is not None:
         db.commit()
         return building, False
-    files = [file for result in design_results(db, batch) for file in result.files]
-    if not files:
-        raise HTTPException(status_code=409, detail="Nothing to archive: no design of this batch has made a file")
-    job = _archive_job(user, batch, files, max_running, idempotency_key, body_hash)
+    job = _archive_job(db, user, batch, max_running, idempotency_key, body_hash)
     db.add(job)
     try:
         db.commit()
@@ -259,6 +261,18 @@ def _unique_path(path: str, taken: set[str]) -> str:
     return candidate
 
 
+def archive_entries(db: Session, batch: IngestBatch) -> list[tuple[str, DesignFile]]:
+    """Every file each design made, in the order dropped, with its path in the archive (each
+    path once, the manifest's kept for the manifest)."""
+    taken = {MANIFEST_NAME}
+    return [(_unique_path(file.path, taken), file) for result in design_results(db, batch) for file in result.files]
+
+
+def _size_at_most(file: DesignFile) -> int:
+    """A file's stored size, or the most it may be when none is recorded (a thumbnail's)."""
+    return file.bytes if file.bytes is not None else MAX_THUMBNAIL_BYTES
+
+
 def archive_payload(db: Session, job: RenderJob) -> ArchiveJobPayload | None:
     """What the job zips: the manifest as it is now, then every file each design made, in the
     order dropped, each signed for as long as the job may run. None when the batch is gone."""
@@ -266,16 +280,9 @@ def archive_payload(db: Session, job: RenderJob) -> ArchiveJobPayload | None:
     if batch is None:
         return None
     runtime = max_runtime_seconds(job.kind)
-    taken = {MANIFEST_NAME}
     files = [
-        ArchiveFile(
-            path=_unique_path(file.path, taken),
-            source=_source(job, file, runtime),
-            bytes=file.bytes,
-            max_bytes=file.bytes if file.bytes is not None else MAX_THUMBNAIL_BYTES,
-        )
-        for result in design_results(db, batch)
-        for file in result.files
+        ArchiveFile(path=path, source=_source(job, file, runtime), bytes=file.bytes, max_bytes=_size_at_most(file))
+        for path, file in archive_entries(db, batch)
     ]
     return ArchiveJobPayload(
         kind=ARCHIVE_KIND,
@@ -317,42 +324,47 @@ def _ordered_parts(
     return [output for _, output in ordered]
 
 
-def _swap_archive(db: Session, batch_id: int, job_id: int, parts: list[dict], now: datetime) -> tuple[int | None, list[dict]]:
-    """Make these the batch's parts, and return the archive they replace (its job and parts), each
-    replaced once: the swap only takes the batch as it was read."""
-    for _ in range(3):
-        old_job_id, old_parts = db.execute(
-            select(IngestBatch.archive_job_id, IngestBatch.archive_keys)
-            .where(IngestBatch.id == batch_id)
-            .execution_options(populate_existing=True)
-        ).one()
-        as_read = IngestBatch.archive_job_id.is_(None) if old_job_id is None else IngestBatch.archive_job_id == old_job_id
-        swapped = db.execute(
-            update(IngestBatch)
-            .where(IngestBatch.id == batch_id, as_read)
-            .values(archive_job_id=job_id, archive_keys=parts, archive_expires_at=now + timedelta(days=ARCHIVE_DAYS), updated_at=now)
-            .execution_options(synchronize_session=False)
-        ).rowcount
-        if swapped:
-            return old_job_id, list(old_parts or [])
-    raise HTTPException(status_code=409, detail="The batch's archive changed while this one completed; try again")
+def _lock_billing(db: Session, user_id: int) -> None:
+    """Lock the owner's billing row (Postgres) before the batch: a sweep giving an archive's bytes
+    back takes it first too, so the archive read after it is the one counted until the commit."""
+    if uses_row_locks(db):
+        db.execute(select(UserBilling.id).where(UserBilling.user_id == user_id).with_for_update())
 
 
-def delete_parts(user_id: int, job_id: int | None, parts: list[dict]) -> int:
-    """Delete an archive's parts, only those under its own job's prefix; how many couldn't be."""
+def _archive_as_stored(db: Session, batch_id: int) -> tuple[int | None, list[dict]]:
+    """The batch's archive now: the job that made it, and its parts."""
+    job_id, parts = db.execute(
+        select(IngestBatch.archive_job_id, IngestBatch.archive_keys)
+        .where(IngestBatch.id == batch_id)
+        .execution_options(populate_existing=True)
+    ).one()
+    return job_id, list(parts or []) if job_id is not None else []
+
+
+def _swap_archive(db: Session, batch_id: int, job_id: int, replaced_job_id: int | None, parts: list[dict], now: datetime) -> None:
+    """Make these the batch's parts, in place of the archive read (409 if another took its place
+    meanwhile, which the billing lock keeps from happening)."""
+    as_read = IngestBatch.archive_job_id.is_(None) if replaced_job_id is None else IngestBatch.archive_job_id == replaced_job_id
+    swapped = db.execute(
+        update(IngestBatch)
+        .where(IngestBatch.id == batch_id, as_read)
+        .values(archive_job_id=job_id, archive_keys=parts, archive_expires_at=now + timedelta(days=ARCHIVE_DAYS), updated_at=now)
+        .execution_options(synchronize_session=False)
+    ).rowcount
+    if not swapped:
+        raise HTTPException(status_code=409, detail="The batch's archive changed while this one completed; try again")
+
+
+def part_bytes_of(parts: list[dict]) -> int:
+    return sum(int(part.get("bytes") or 0) for part in parts)
+
+
+def part_keys(user_id: int, job_id: int | None, parts: list[dict]) -> list[str]:
+    """An archive's parts' keys, only those under its own job's prefix."""
     if job_id is None:
-        return 0
+        return []
     prefix = keys.render_job_prefix(user_id, job_id)
-    failed = 0
-    for part in parts:
-        if not str(part.get("key", "")).startswith(prefix):
-            continue
-        try:
-            storage.delete(part["key"])
-        except Exception as exc:  # noqa: BLE001 - logged and left for the sweep
-            failed += 1
-            log_event(_logger, "ingest.archive_delete_failed", key=part["key"], error=str(exc))
-    return failed
+    return [part["key"] for part in parts if str(part.get("key", "")).startswith(prefix)]
 
 
 def release_archive_bytes(db: Session, user_id: int, released: int) -> None:
@@ -363,21 +375,16 @@ def release_archive_bytes(db: Session, user_id: int, released: int) -> None:
 
 def complete_archive(
     db: Session, job: RenderJob, checked: list[tuple[PlannedOutput, RenderJobOutputReport]], renderer: RendererInfo | None
-) -> tuple[int | None, list[dict]]:
-    """Keep the job's parts on its batch for 14 days, their bytes counted toward the owner's
-    storage, and complete the job; the archive they replace gives its bytes back. Not committed:
-    returns that archive (its job and parts), whose files the caller deletes once committed.
-    ArchiveRefused when the batch is gone or the owner's storage is full."""
+) -> list[int]:
+    """Keep the job's parts on its batch for 14 days in place of the archive it had, and complete
+    the job. The owner's storage counts the change, the new parts less the replaced ones, held to
+    the plan's limit in one conditional UPDATE; the replaced parts are queued for deletion in the
+    same transaction. Not committed: returns the queued deletions, which the caller tries once
+    committed (deletions.py). ArchiveRefused when the batch is gone or the change doesn't fit."""
     outputs = _ordered_parts(job, checked)
     batch = _job_batch(db, job)
     if batch is None:
         raise ArchiveRefused("input_missing", 409, "The job's batch was deleted.")
-    try:
-        # The owner's billing row is locked first, as every change takes it before the batch.
-        count_storage_bytes(db, job.user_id, sum(output.bytes for output in outputs))
-    except HTTPException as exc:
-        raise ArchiveRefused("over_limit", exc.status_code, str(exc.detail)) from exc
-    now = datetime.utcnow()
     parts = [
         {
             "name": output.name,
@@ -388,7 +395,14 @@ def complete_archive(
         }
         for output in outputs
     ]
-    replaced_job_id, replaced = _swap_archive(db, batch.id, job.id, parts, now)
-    release_archive_bytes(db, job.user_id, sum(int(part.get("bytes") or 0) for part in replaced))
+    _lock_billing(db, job.user_id)
+    replaced_job_id, replaced = _archive_as_stored(db, batch.id)
+    try:
+        change_storage_bytes(db, job.user_id, part_bytes_of(parts) - part_bytes_of(replaced))
+    except HTTPException as exc:
+        raise ArchiveRefused("over_limit", exc.status_code, str(exc.detail)) from exc
+    now = datetime.utcnow()
+    _swap_archive(db, batch.id, job.id, replaced_job_id, parts, now)
+    queued = queue_deletions(db, part_keys(job.user_id, replaced_job_id, replaced), reason="archive_replaced")
     mark_completed(job, renderer, now)
-    return replaced_job_id, replaced
+    return queued

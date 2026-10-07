@@ -28,7 +28,8 @@ from app.features.render_jobs.worker import discard_outputs, end_attempt, mark_c
 from app.features.render_jobs.archive_spec import ARCHIVE_KIND, archive_outputs, archive_part_names
 from app.features.render_jobs.convert_spec import OPTIONAL_OUTPUTS as OPTIONAL_CONVERT_OUTPUTS
 from app.features.render_jobs.convert_spec import convert_outputs
-from app.features.ingest.archive import ArchiveRefused, complete_archive, delete_parts
+from app.features.ingest.archive import ArchiveRefused, complete_archive
+from app.features.ingest.deletions import drain_deletions
 from app.features.ingest.conversions import complete_conversion
 from app.features.ingest.items import end_item_of_job, lock_design_of
 from app.features.ingest.media import finish_design_render
@@ -250,13 +251,14 @@ def _complete_archive_job(
     db: Session, job: RenderJob, checked: list[tuple[PlannedOutput, RenderJobOutputReport]], body: RenderJobCompleteRequest
 ) -> RenderJob:
     """A batch_archive job's parts become its batch's archive (features/ingest/archive.py), and
-    the parts of the one they replace are deleted once that is committed. A batch that is gone
-    (409) or storage that is full (402) ends the job instead, its parts deleted."""
+    the parts of the one they replace, queued for deletion with it, are deleted once that is
+    committed; any that can't be stay queued for the retention sweep. A batch that is gone (409) or
+    storage that can't take the change (402) ends the job instead, its parts deleted."""
     try:
-        replaced_job_id, replaced = complete_archive(db, job, checked, body.renderer)
+        queued = complete_archive(db, job, checked, body.renderer)
     except ArchiveRefused as refused:
         raise _ended_without_outputs(db, job, refused.code, refused.message, refused.status_code) from refused
     db.commit()
-    delete_parts(job.user_id, replaced_job_id, replaced)
+    drain_deletions(db, queued)
     db.refresh(job)
     return job

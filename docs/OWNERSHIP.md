@@ -3,12 +3,12 @@
 | Feature / area | Path | Owns |
 |----------------|------|------|
 | Upload & slot review | `src/features/upload` | File pick, presign/register flow, slot review UI |
-| Bulk upload | `src/features/bulk`, `src/app/bulk`, `src/app/api/ingest` | Many CAD files at once (files, folders, ZIPs opened in the browser) with a CSV manifest, checked as the API checks them, uploaded straight to storage on signed URLs; the look picker (look templates by slot role, F1) and the render plan each design gets with its price (F2); the batch page with each design's renders, retries, resumed uploads and cancel ([ADR 0006](adr/0006-bulk-pipeline.md) E3, F1, F2) |
+| Bulk upload | `src/features/bulk`, `src/app/bulk`, `src/app/api/ingest` | Many CAD files at once (files, folders, ZIPs opened in the browser) with a CSV manifest, checked as the API checks them, uploaded straight to storage on signed URLs; the look picker (look templates by slot role, F1) and the render plan each design gets with its price (F2); the batch page with each design's renders, retries, resumed uploads and cancel, and its results: the manifest, the ZIP's parts and how long files are kept ([ADR 0006](adr/0006-bulk-pipeline.md) E3, F1, F2, F3) |
 | Viewer (3D studio) | `src/features/viewer` | Canvas, model, sidebar, shell, embed; the one studio (`/viewer`) |
 | Scene editing | `src/features/editor` | The studio's Edit tab (`SceneEditPanel`): details and variants, specs, full catalogues and user library, position, camera, layers, batch exports, embed settings. `/model/:id` redirects to `/viewer` |
 | Scene persistence | `src/features/scene` | Scene API client, types re-exports |
 | Capture / export bridges | `src/features/render` | Screenshot, video, hires, transparent capture bridges; export plan gates (size cap, Free watermark, Campaign Pack tiers) |
-| Render worker | `scripts/render-worker`, `Dockerfile.worker` | Claims render jobs and renders them in the harness's export mode in headless Chrome on the host's GPU: launch profiles and self-check, sink, network policy, asset cache, uploads |
+| Render worker | `scripts/render-worker`, `Dockerfile.worker` | Claims render jobs and renders them in the harness's export mode in headless Chrome on the host's GPU: launch profiles and self-check, sink, network policy, asset cache, uploads; zips a bulk batch's archive into parts, no page |
 | Campaign pack | `src/features/render/campaign-pack` | One-click ZIP: stills per metal × angle, turntables, 360° spin + viewer, ASET image, embed |
 | Studio scenes | `src/features/scene-setups` | Scene presets, reflective floors, props (plinth, crystals, silk), model-bounds staging |
 | Ring designer | `src/features/ring-builder`, `src/app/design` | Parametric configurator UI, build worker, downloads, studio handoff |
@@ -18,7 +18,7 @@
 | CAD import | `src/lib/convert` | Format loaders (GLB, STL, 3DM, OBJ, FBX, PLY, 3MF, STEP, IGES), units, metal/gem segmentation |
 | Design system | `src/components/ui` | Buttons, dialogs, primitives |
 | Backend upload | `backend/app/features/upload` | Register/multipart ingest orchestration; `create_scene_from_glb`, shared with bulk uploads |
-| Backend bulk ingest | `backend/app/features/ingest` | Batches of CAD files: manifests, SKU checks, plan limits, signed uploads, credit holds, convert jobs and the scenes they make; look templates by slot role, made of a scene and applied to each design's scene; render plans, the render jobs each design gets, its thumbnail, public media and embed link ([ADR 0006](adr/0006-bulk-pipeline.md)) |
+| Backend bulk ingest | `backend/app/features/ingest` | Batches of CAD files: manifests, SKU checks, plan limits, signed uploads, credit holds, convert jobs and the scenes they make; look templates by slot role, made of a scene and applied to each design's scene; render plans, the render jobs each design gets, its thumbnail, public media and embed link; the manifest, the batch archive job and the retention sweep (`scripts/sweep_ingest_retention.py`) ([ADR 0006](adr/0006-bulk-pipeline.md)) |
 | Backend scene | `backend/app/features/scene` | Scene queries and patches; looks and their checks; slot roles |
 | Backend render | `backend/app/features/render` | Render save and listing |
 | Backend files | `backend/app/features/file_access` | Static file streaming |

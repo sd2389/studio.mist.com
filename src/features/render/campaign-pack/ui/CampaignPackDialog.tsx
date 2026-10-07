@@ -1,9 +1,7 @@
 "use client";
 
-import { PackageOpen, Sparkles } from "lucide-react";
+import { PackageOpen } from "lucide-react";
 import { useMemo, useState } from "react";
-import { UpgradeButton } from "@/components/billing/UpgradePrompt";
-import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -14,16 +12,19 @@ import {
 import type { PersistedModelConfig } from "@/lib/slot-materials/model-config";
 import { useMaterialPresetStore } from "@/stores/material-preset-store";
 import { useExportPlan } from "../../ui/useExportPlan";
+import { useServerExports } from "../../ui/useServerExports";
 import { DEFAULT_CAMPAIGN_PACK_CONFIG } from "../domain/defaults";
 import { planCampaignPack } from "../domain/plan";
 import type { CampaignPackConfig, PackPlan, SavedPoseLike } from "../domain/types";
-import { readStudioLook } from "../engine/start-pack";
 import { PackOutputOptions } from "./PackOutputOptions";
-import { PackMessageView, PackProgressView, PackSummaryView } from "./PackRunViews";
+import { PackRunFooter, PackRunStateView } from "./PackRunViews";
 import { PackAnglePicker, PackMetalPicker } from "./PackSubjectPickers";
 import { formatBytes } from "./pack-ui";
+import { ServerPackFooter, ServerPackJobs } from "./ServerPackViews";
 import { useCampaignPackRun } from "./useCampaignPackRun";
 import { usePackIdentity } from "./usePackIdentity";
+import { useServerPackJob } from "./useServerPackJob";
+import { useStudioLook } from "./useStudioLook";
 
 export type CampaignPackDialogProps = {
   open: boolean;
@@ -55,6 +56,17 @@ function planSummary(plan: PackPlan): string {
   return `${parts.join(" · ") || "Nothing selected"} · ≈ ${formatBytes(plan.totals.estimatedBytes)}`;
 }
 
+type FooterState = { locked: boolean; blocked: string | null; hasScene: boolean; identityPending: boolean };
+
+/** The footer's line: why the pack can't start, or what it makes. */
+function footerSummary(plan: PackPlan, { locked, blocked, hasScene, identityPending }: FooterState): string {
+  if (locked) return "Campaign packs come with Grow and Studio.";
+  if (blocked) return blocked;
+  if (!hasScene) return "Packs render from a saved piece: open one of yours in the studio to render it.";
+  if (identityPending) return "Reading the piece's SKU and name…";
+  return `${plan.totals.files} files · ${planSummary(plan)}`;
+}
+
 export function CampaignPackDialog({
   open,
   onOpenChange,
@@ -68,17 +80,16 @@ export function CampaignPackDialog({
   const [backgroundTouched, setBackgroundTouched] = useState(false);
   const poses = useMaterialPresetStore((s) => s.sceneSettings.poses) as SavedPoseLike[] | undefined;
   const savedPoses = poses ?? NO_POSES;
-  const identity = usePackIdentity({ modelId, sku, name, sceneId, enabled: open });
+  // A pack waits for the scene's SKU and name, which name its files and decide its embed.
+  const { identity, pending: identityPending } = usePackIdentity({ modelId, sku, name, sceneId, enabled: open });
   const { state, start, cancel, reset } = useCampaignPackRun();
   // Grow and Studio only: other plans see the pack with an upgrade in place of the run button.
   const exportPlan = useExportPlan();
   const locked = exportPlan !== null && !exportPlan.campaignPack;
   const running = state.status === "running";
   const hasSku = Boolean(identity.sku);
-  const studio = useMemo(
-    () => (open ? readStudioLook() : { backdrop: null, hasStudioSet: false, hasTracedGems: false }),
-    [open],
-  );
+  // Read again while the dialog waits: it can open before the stage has the piece's gems.
+  const studio = useStudioLook(open, !running);
   // A styled studio set (mirror floor, plinth…) is the look the user built: keep it unless
   // they pick a clean background themselves.
   const effectiveConfig = useMemo<CampaignPackConfig>(
@@ -94,6 +105,17 @@ export function CampaignPackDialog({
     [effectiveConfig, identity, savedPoses, studio.hasTracedGems],
   );
   const blocked = emptyReason(effectiveConfig, plan);
+  // While server exports are on, the pack renders on the server (ADR 0005, D2); else on this
+  // device, as it always has. Until the flag is read, neither way starts.
+  const serverExports = useServerExports();
+  const server = useServerPackJob({
+    // Priced only while the dialog is open, where the price shows.
+    active: open && serverExports === true && !locked && !blocked && !identityPending,
+    config: effectiveConfig,
+    rootName: plan.rootName,
+    hasTracedGems: studio.hasTracedGems,
+  });
+  const showSettings = serverExports ? server.jobs.length === 0 : state.status === "idle";
 
   // Options edit the effective config; keep derived values (auto background, embed without
   // a SKU) out of state unless the user actually changed them.
@@ -108,9 +130,13 @@ export function CampaignPackDialog({
   }
 
   function handleOpenChange(next: boolean) {
-    // A pack takes minutes; only the explicit Cancel button may stop it.
+    // A pack takes minutes; only the explicit Cancel button may stop one in this browser. One on
+    // the server renders on with the dialog closed, and waits in Exports.
     if (!next && running) return;
-    if (!next) reset();
+    if (!next) {
+      reset();
+      server.clear();
+    }
     onOpenChange(next);
   }
 
@@ -128,11 +154,11 @@ export function CampaignPackDialog({
           </DialogTitle>
           <DialogDescription className="text-muted-foreground">
             Every marketing asset for <span className="text-foreground">{plan.rootName}</span> — stills in each metal,
-            turntables, a 360° spin and an embed — rendered on this device into one ZIP.
+            turntables, a 360° spin and an embed — rendered {serverExports ? "on our servers" : "on this device"} into one ZIP.
           </DialogDescription>
         </DialogHeader>
 
-        {state.status === "idle" ? (
+        {showSettings ? (
           <div className="space-y-5">
             <PackMetalPicker value={config.metals} onChange={(metals) => setConfig({ ...config, metals })} />
             <PackAnglePicker
@@ -147,33 +173,33 @@ export function CampaignPackDialog({
               hasSku={hasSku}
               hasTracedGems={studio.hasTracedGems}
             />
-            {/* Sticky offsets are inset by the dialog's p-4; -bottom-4 pins it to the edge. */}
-            <div className="sticky -bottom-4 -mx-4 -mb-4 flex flex-col gap-2 border-t border-border bg-card/95 px-4 py-3 backdrop-blur sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-xs text-muted-foreground" role="status">
-                {locked ? "Campaign packs come with Grow and Studio." : blocked ?? `${plan.totals.files} files · ${planSummary(plan)}`}
-              </p>
-              {locked ? (
-                <UpgradeButton className="gap-2">
-                  <Sparkles className="size-4" aria-hidden />
-                  Upgrade to render
-                </UpgradeButton>
-              ) : (
-                <Button type="button" onClick={handleStart} disabled={Boolean(blocked) || !exportPlan} className="gap-2">
-                  <Sparkles className="size-4" aria-hidden />
-                  Render campaign pack
-                </Button>
-              )}
-            </div>
+            {serverExports ? (
+              <ServerPackFooter
+                summary={footerSummary(plan, { locked, blocked, hasScene: server.hasScene, identityPending })}
+                quote={locked ? null : server.quote}
+                locked={locked}
+                canStart={Boolean(exportPlan) && !blocked && server.hasScene && !identityPending}
+                starting={server.starting}
+                error={server.error}
+                onStart={server.start}
+              />
+            ) : (
+              <PackRunFooter
+                summary={footerSummary(plan, { locked, blocked, hasScene: true, identityPending })}
+                locked={locked}
+                disabled={Boolean(blocked) || !exportPlan || serverExports === null || identityPending}
+                onStart={handleStart}
+              />
+            )}
           </div>
         ) : null}
-        {state.status === "running" ? <PackProgressView progress={state.progress} onCancel={cancel} /> : null}
-        {state.status === "done" ? (
-          <PackSummaryView result={state.result} url={state.url} onAgain={reset} onClose={() => handleOpenChange(false)} />
-        ) : null}
-        {state.status === "error" ? <PackMessageView tone="error" message={state.message} onBack={reset} /> : null}
-        {state.status === "cancelled" ? (
-          <PackMessageView tone="cancelled" message="Cancelled — nothing was downloaded." onBack={reset} />
-        ) : null}
+        {serverExports ? (
+          showSettings ? null : (
+            <ServerPackJobs jobs={server.jobs} onRetried={server.add} onAgain={server.clear} onClose={() => handleOpenChange(false)} />
+          )
+        ) : (
+          <PackRunStateView state={state} onCancel={cancel} onAgain={reset} onClose={() => handleOpenChange(false)} />
+        )}
       </DialogContent>
     </Dialog>
   );

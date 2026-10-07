@@ -16,11 +16,11 @@ from sqlalchemy import ColumnElement, case, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.features.billing import credit_pools as pools
-from app.features.billing.plans import PLAN_LABELS, PlanTier, get_quotas, normalize_tier
+from app.features.billing.plans import PLAN_LABELS, PlanTier, get_batch_limits, get_quotas, normalize_tier
 from app.models.billing import UserBilling
 from app.models.render_job import RenderJob
 from app.models.user import User
-from app.schemas.billing import BoughtBalances, PlanFeatures, QuotaBalances, UserBillingSnapshot
+from app.schemas.billing import BoughtBalances, BulkUploadLimits, PlanFeatures, QuotaBalances, UserBillingSnapshot
 
 # allowance_granted_for while Free's allowance is the last one the plan credits were set from.
 FREE_ALLOWANCE = "free"
@@ -56,6 +56,7 @@ def get_or_create_billing(db: Session, user: User) -> UserBilling:
 
 def _features_for_tier(tier: PlanTier) -> PlanFeatures:
     quotas = get_quotas(tier)
+    batches = get_batch_limits(tier)
     return PlanFeatures(
         max_variants_per_model=quotas.max_variants_per_model,
         max_image_resolution=quotas.max_image_resolution,
@@ -65,6 +66,12 @@ def _features_for_tier(tier: PlanTier) -> PlanFeatures:
         batch_export_enabled=quotas.batch_export,
         video_8k_enabled=quotas.max_8k_video_seconds > 0,
         campaign_pack_enabled=quotas.campaign_pack,
+        bulk_upload=BulkUploadLimits(
+            max_designs=batches.max_designs,
+            max_bytes=batches.max_bytes,
+            max_file_bytes=batches.max_file_bytes,
+            max_open_batches=batches.max_open_batches,
+        ),
         max_video_fps=quotas.max_video_fps,
         max_video_seconds=quotas.max_video_seconds,
         max_8k_video_seconds=quotas.max_8k_video_seconds,

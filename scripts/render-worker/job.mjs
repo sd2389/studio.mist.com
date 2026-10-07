@@ -10,10 +10,11 @@ import { startSink } from "./sink.mjs";
 
 /*
  * One job, start to end (ADR 0005, "Process"): payload → the model into the job's folder → a
- * sink with a fresh token (and, for a turntable, ffmpeg behind it) → the harness's export mode in
- * a fresh browser context → a turntable's MP4 finished or a spin's ZIP written → uploads →
- * complete, with heartbeats all along. Any failure is reported with a code, except when the API
- * has taken the job back (401, 404 or 409), which drops it.
+ * sink with a fresh token (and, for a turntable, ffmpeg behind it; for a Campaign Pack, an ffmpeg
+ * for each turntable the page opens) → the harness's export mode in a fresh browser context → a
+ * turntable's MP4 finished, or a spin's or a pack's ZIP written → uploads → complete, with
+ * heartbeats all along. Any failure is reported with a code, except when the API has taken the
+ * job back (401, 404 or 409), which drops it.
  */
 
 /** Tries for one PUT, as the ADR says, asking for fresh URLs when storage refuses one. */

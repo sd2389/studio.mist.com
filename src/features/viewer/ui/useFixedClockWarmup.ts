@@ -8,6 +8,24 @@ import { getHiresRefs } from "@/stores/hires-export-store";
 const FRAME_SECONDS = 1 / 60;
 
 /**
+ * Keeps a `frameloop="never"` canvas drawing on the fixed clock, a frame every animation frame
+ * from frame `first`, until the function it returns is called: for work that waits on what the
+ * stage's frames do, such as the Campaign Pack's environment probe, which the live environment
+ * bridge answers from its frame callback.
+ */
+export function tickFixedClock(first: number): () => void {
+  let frame = first;
+  let raf = 0;
+  const tick = () => {
+    advance(frame * FRAME_SECONDS);
+    frame += 1;
+    raf = requestAnimationFrame(tick);
+  };
+  raf = requestAnimationFrame(tick);
+  return () => cancelAnimationFrame(raf);
+}
+
+/**
  * For a canvas on `frameloop="never"` (the render harness): once the scene has mounted, so
  * everything it suspends on (model, environments) has loaded, draws exactly `frames` frames on
  * a fixed clock, then stops and calls `onSettled`. What the canvas holds then depends on neither

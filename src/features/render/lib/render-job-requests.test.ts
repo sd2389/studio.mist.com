@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { LookSnapshot } from "@/features/viewer";
+import { DEFAULT_CAMPAIGN_PACK_CONFIG } from "../campaign-pack/domain/defaults";
 import { DEFAULT_STILL_EXPORT } from "../ui/StillExportSettings";
 import {
+  campaignPackJobRequest,
+  campaignPackJobSpec,
   jobRetryRequest,
   orbitPath,
   posesPath,
@@ -167,6 +170,33 @@ function failedJob(job: Partial<RenderJob>): RenderJob {
   };
 }
 
+describe("campaignPackJobSpec", () => {
+  const view = { position: [1.2, 0.6, 1.8] as [number, number, number], target: [0, 0.1, 0] as [number, number, number] };
+
+  it("is the dialog's config, the ASET image only where there are traced gems to draw it from", () => {
+    expect(campaignPackJobSpec(DEFAULT_CAMPAIGN_PACK_CONFIG, { hasTracedGems: true, view })).toEqual(DEFAULT_CAMPAIGN_PACK_CONFIG);
+    expect(campaignPackJobSpec(DEFAULT_CAMPAIGN_PACK_CONFIG, { hasTracedGems: false, view })).toEqual({ ...DEFAULT_CAMPAIGN_PACK_CONFIG, cutScope: false });
+  });
+
+  it("carries the studio camera a pack that isn't auto-framed shoots from", () => {
+    const manual = { ...DEFAULT_CAMPAIGN_PACK_CONFIG, autoFrame: false };
+    expect(campaignPackJobSpec(manual, { hasTracedGems: true, view })).toEqual({ ...manual, view });
+    expect(campaignPackJobSpec(manual, { hasTracedGems: true, view: null })).toEqual(manual);
+  });
+
+  it("asks for the pack of the scene in the studio's look, named after its root folder", () => {
+    const look = { material: "platinum" } as unknown as LookSnapshot;
+    expect(campaignPackJobRequest(DEFAULT_CAMPAIGN_PACK_CONFIG, { sceneId: 812, look, name: "RING-1" })).toEqual({
+      kind: "campaign_pack",
+      scene_id: 812,
+      variant_id: null,
+      look,
+      name: "RING-1",
+      spec: DEFAULT_CAMPAIGN_PACK_CONFIG,
+    });
+  });
+});
+
 describe("jobRetryRequest", () => {
   it("asks for a still again with its look, variant and name, less the count and names the API added", () => {
     const job = failedJob({
@@ -206,6 +236,13 @@ describe("jobRetryRequest", () => {
     const job = failedJob({ kind: "turntable", spec: { width: 1920, height: 1080, fps: 30, frames: 120, output_names: ["ring.mp4"] } });
 
     expect(jobRetryRequest(job)?.spec).toEqual({ width: 1920, height: 1080, fps: 30, frames: 120 });
+  });
+
+  it("asks for a Campaign Pack again as its config, less the count the API made of every image and frame", () => {
+    const job = failedJob({ kind: "campaign_pack", name: "RING-1", spec: { ...DEFAULT_CAMPAIGN_PACK_CONFIG, frames: 2041, output_names: ["RING-1_campaign-pack.zip"] } });
+
+    expect(jobRetryRequest(job)).toMatchObject({ kind: "campaign_pack", name: "RING-1", spec: DEFAULT_CAMPAIGN_PACK_CONFIG });
+    expect(jobRetryRequest(job)?.spec).not.toHaveProperty("frames");
   });
 
   it("is null for a job of no scene", () => {

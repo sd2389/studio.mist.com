@@ -21,26 +21,34 @@
  * Playwright's Chromium, ffmpeg with libx264 and ffprobe, and the backend's virtualenv
  * (backend/.venv, or WORKER_SMOKE_PYTHON).
  */
-import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { createWriteStream, existsSync, readFileSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
-import net from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { ssim } from "ssim.js";
 import { createAssetCache } from "./assets.mjs";
 import { launchBrowser, PAGE_VIEWPORT } from "./browser.mjs";
 import { guardContext, pagePolicy } from "./network.mjs";
 import { startSink } from "./sink.mjs";
 import { checkPack, checkSpin, checkTurntable, decodePng } from "./smoke-outputs.mjs";
+import {
+  api,
+  BACKEND,
+  backendEnv,
+  freePort,
+  printLogs,
+  PROFILE,
+  signal,
+  smokePython,
+  startBackend,
+  startWorker,
+  startWorkerApp,
+  stopAll,
+  stopOnInterrupt,
+  waitForJob,
+} from "./smoke-stack.mjs";
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const BACKEND = path.join(ROOT, "backend");
 const DEMO_RING = path.join(BACKEND, "scripts/fixtures/demo-embed-ring.glb");
-/** The swiftshader profile runs anywhere; WORKER_GPU=metal tries the Mac's GPU instead. */
-const PROFILE = process.env.WORKER_GPU || "swiftshader";
 const JOB_TIMEOUT_MS = 10 * 60_000;
 const KILL_LEASE_SECONDS = 60;
 /** The still the smoke user asks for: a Campaign Pack angle, framed on the ring. */
@@ -91,100 +99,7 @@ const RESKIN_MAX_DIFFERENCE = 3;
 const RESKINNED_FRONT = "Smoke-ring/stills/18k-yellow-gold_front.png";
 
 const killScenario = process.argv.includes("--kill");
-const started = [];
 const log = (message) => console.log(`[smoke] ${message}`);
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-/** The first port from `from` up that nothing listens on. */
-async function freePort(from) {
-  for (let port = from; port < from + 100; port += 1) {
-    const free = await new Promise((resolve) => {
-      const server = net.createServer().once("error", () => resolve(false));
-      server.listen(port, "127.0.0.1", () => server.close(() => resolve(true)));
-    });
-    if (free) return port;
-  }
-  throw new Error(`no free port from ${from}`);
-}
-
-/** Starts a process whose output goes to `<work>/<name>.log`; `stopAll` stops it. */
-function start(name, command, args, { cwd = ROOT, env, logDir }) {
-  const child = spawn(command, args, { cwd, env, stdio: ["ignore", "pipe", "pipe"], detached: true });
-  const out = createWriteStream(path.join(logDir, `${name}.log`));
-  child.stdout.pipe(out);
-  child.stderr.pipe(out);
-  const exited = new Promise((resolve) => child.once("exit", (code, signal) => resolve(code ?? signal)));
-  const entry = { name, child, exited, logFile: path.join(logDir, `${name}.log`) };
-  started.push(entry);
-  return entry;
-}
-
-/** Signals a process and everything it started (its process group). */
-function signal(entry, name) {
-  try {
-    process.kill(-entry.child.pid, name);
-  } catch {
-    // Gone already.
-  }
-}
-
-async function stopAll() {
-  await Promise.all(
-    started.map(async (entry) => {
-      if (entry.child.exitCode !== null || entry.child.signalCode !== null) return;
-      signal(entry, "SIGTERM");
-      const timer = setTimeout(() => signal(entry, "SIGKILL"), 10_000);
-      await entry.exited;
-      clearTimeout(timer);
-    }),
-  );
-}
-
-async function run(command, args, options) {
-  const entry = start(`${path.basename(command)}-${started.length}`, command, args, options);
-  const code = await entry.exited;
-  const output = await readFile(entry.logFile, "utf8");
-  if (code !== 0) throw new Error(`${command} ${args.join(" ")} exited ${code}:\n${output}`);
-  return output;
-}
-
-async function waitForHttp(url, entry, timeoutMs = 120_000) {
-  const until = Date.now() + timeoutMs;
-  while (Date.now() < until) {
-    if (entry.child.exitCode !== null) throw new Error(`${entry.name} exited ${entry.child.exitCode}`);
-    const ok = await fetch(url, { signal: AbortSignal.timeout(5000) }).then((response) => response.ok, () => false);
-    if (ok) return;
-    await sleep(500);
-  }
-  throw new Error(`${url} never answered`);
-}
-
-function api(baseUrl, token) {
-  return async (method, route, body) => {
-    const response = await fetch(`${baseUrl}${route}`, {
-      method,
-      headers: { Authorization: `Bearer ${token}`, ...(body ? { "Content-Type": "application/json" } : {}) },
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    if (!response.ok) throw new Error(`${method} ${route}: ${response.status} ${await response.text()}`);
-    return response.headers.get("content-type")?.includes("json") ? response.json() : Buffer.from(await response.arrayBuffer());
-  };
-}
-
-/** Polls the job until it ends; `onChange` hears every status (and error code) it passes through. */
-async function waitForJob(call, id, onChange = () => {}) {
-  const until = Date.now() + JOB_TIMEOUT_MS;
-  let last = "";
-  while (Date.now() < until) {
-    const job = await call("GET", `/render-jobs/${id}`);
-    const seen = `${job.status}${job.error_code ? ` (${job.error_code})` : ""}`;
-    if (seen !== last) onChange(job, seen);
-    last = seen;
-    if (["completed", "failed", "canceled"].includes(job.status)) return job;
-    await sleep(500);
-  }
-  throw new Error(`job ${id} did not end within ${JOB_TIMEOUT_MS / 60_000} min`);
-}
 
 /** Share of pixels that differ at all between two images of one size. */
 function changedShare(a, b) {
@@ -254,54 +169,6 @@ async function checkAllowlist({ harnessUrl, apiUrl, assets }) {
   } finally {
     await browser.close();
   }
-}
-
-async function startBackend({ workDir, port, workerToken, python }) {
-  const env = {
-    PATH: process.env.PATH,
-    HOME: process.env.HOME,
-    APP_ENV: "development",
-    DATABASE_URL: `sqlite:///${path.join(workDir, "smoke.db")}`,
-    STORAGE_BACKEND: "local",
-    UPLOAD_DIR: path.join(workDir, "uploads"),
-    RENDER_WORKER_TOKEN: workerToken,
-    RENDER_JOB_LEASE_SECONDS: String(killScenario ? KILL_LEASE_SECONDS : 120),
-    AI_BACKGROUND_MODE: "stub",
-  };
-  const seedOutput = await run(python, ["-m", "scripts.seed_worker_smoke"], { cwd: BACKEND, env, logDir: workDir });
-  const seed = JSON.parse(seedOutput.trim().split("\n").at(-1));
-  const backend = start("backend", python, ["-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", String(port)], { cwd: BACKEND, env, logDir: workDir });
-  const url = `http://127.0.0.1:${port}`;
-  await waitForHttp(`${url}/health`, backend);
-  return { url, seed };
-}
-
-async function startWorkerApp({ workDir, port, apiUrl }) {
-  if (process.env.HARNESS_BASE_URL) return process.env.HARNESS_BASE_URL.replace(/\/+$/, "");
-  const distDir = process.env.NEXT_BUILD_DIR || ".next";
-  if (!existsSync(path.join(ROOT, distDir, "server/app/render-harness/page.js"))) {
-    throw new Error(`no worker build in ${distDir}: run \`BUILD_TARGET=worker npm run build\` first (or set HARNESS_BASE_URL)`);
-  }
-  const env = { ...process.env, BUILD_TARGET: "worker", NEXT_TELEMETRY_DISABLED: "1", API_URL: apiUrl };
-  const app = start("worker-app", process.execPath, [path.join(ROOT, "node_modules/next/dist/bin/next"), "start", "-p", String(port), "-H", "127.0.0.1"], { env, logDir: workDir });
-  const url = `http://127.0.0.1:${port}`;
-  await waitForHttp(`${url}/render-harness?mode=probe`, app);
-  return url;
-}
-
-function startWorker(name, { workDir, apiUrl, harnessUrl, workerToken }) {
-  const env = {
-    ...process.env,
-    RENDER_API_URL: apiUrl,
-    RENDER_WORKER_TOKEN: workerToken,
-    HARNESS_BASE_URL: harnessUrl,
-    WORKER_GPU: PROFILE,
-    WORKER_ID: name,
-    WORKER_POLL_SECONDS: "1",
-    WORKER_CACHE_DIR: path.join(workDir, "asset-cache"),
-    WORKER_TMP_DIR: workDir,
-  };
-  return start(name, process.execPath, [path.join(ROOT, "scripts/render-worker/worker.mjs")], { env, logDir: workDir });
 }
 
 /** Kills the first worker as soon as it renders the job; a second one must finish it after the lease. */
@@ -390,11 +257,11 @@ async function main() {
   const startedAt = Date.now();
   const workDir = await mkdtemp(path.join(os.tmpdir(), "worker-smoke-"));
   await mkdir(path.join(workDir, "uploads"));
-  const python = process.env.WORKER_SMOKE_PYTHON || (existsSync(path.join(BACKEND, ".venv/bin/python")) ? path.join(BACKEND, ".venv/bin/python") : "python3");
   let ok = false;
   try {
     const workerToken = randomBytes(24).toString("hex");
-    const { url: apiUrl, seed } = await startBackend({ workDir, port: await freePort(8790), workerToken, python });
+    const env = backendEnv({ workDir, workerToken, leaseSeconds: killScenario ? KILL_LEASE_SECONDS : 120 });
+    const { url: apiUrl, seed } = await startBackend({ workDir, port: await freePort(8790), python: smokePython(), env, seed: ["scripts.seed_worker_smoke"] });
     log(`API on ${apiUrl} (SQLite, local storage)`);
     const harnessUrl = await startWorkerApp({ workDir, port: await freePort(3900), apiUrl });
     log(`worker app on ${harnessUrl}`);
@@ -451,10 +318,7 @@ async function main() {
   } finally {
     await stopAll();
     if (!ok) {
-      for (const entry of started) {
-        const text = readFileSync(entry.logFile, "utf8").trim().split("\n").slice(-25).join("\n");
-        console.log(`--- ${entry.name} (last lines of ${entry.logFile})\n${text}`);
-      }
+      printLogs();
       log(`kept ${workDir}`);
     } else if (process.env.WORKER_SMOKE_KEEP) {
       log(`kept ${workDir}`);
@@ -464,11 +328,7 @@ async function main() {
   }
 }
 
-// The processes run in their own groups, so a Ctrl-C reaches only this one: stop them first.
-process.once("SIGINT", () => {
-  log("interrupted; stopping what it started");
-  stopAll().then(() => process.exit(130));
-});
+stopOnInterrupt(log);
 
 main().catch((error) => {
   console.error(`[smoke] FAIL: ${error.message}`);

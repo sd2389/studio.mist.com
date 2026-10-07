@@ -149,6 +149,8 @@ Model, AI image and render balances keep bought credits apart from the plan's (`
 
 Top-up credits, and a plan bought at checkout, are granted only once the Checkout Session is paid. A delayed payment method completes the checkout unpaid and is granted on `checkout.session.async_payment_succeeded`; `checkout.session.async_payment_failed` grants nothing. The Stripe webhook endpoint must send both of those events as well as `checkout.session.completed`.
 
+A billing period's allowance is granted once: a paid subscription checkout and `invoice.paid` grant it only when the subscription, the period's start or the plan differs from the last grant (`user_billing.allowance_granted_for`), so the checkout and its first invoice, or an event sent again under a new id, don't refill spent credits. An invoice of a subscription the account has moved on from, or of no subscription, grants nothing.
+
 `python -m scripts.reset_free_ai_credits` (from `backend/`) lowers Free accounts that hold more AI image credits than the Free allowance in `plans.py` (Free used to get 150). Each account keeps the allowance plus the AI credits it paid for, from the purchase ledger and from paid Stripe Checkout Sessions, plus positive admin AI adjustments. No balance goes up, and Grow and Studio accounts are left alone.
 
 - It is a dry run by default: it prints each account's user id, plan, current, paid, granted and new balance, with totals, and changes nothing.

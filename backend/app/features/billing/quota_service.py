@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from fastapi import HTTPException
-from sqlalchemy import case, select, update
+from sqlalchemy import ColumnElement, case, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.features.billing import credit_pools as pools
@@ -21,6 +21,9 @@ from app.models.billing import UserBilling
 from app.models.render_job import RenderJob
 from app.models.user import User
 from app.schemas.billing import BoughtBalances, PlanFeatures, QuotaBalances, UserBillingSnapshot
+
+# allowance_granted_for while Free's allowance is the last one the plan credits were set from.
+FREE_ALLOWANCE = "free"
 
 
 def get_or_create_billing(db: Session, user: User) -> UserBilling:
@@ -40,6 +43,7 @@ def get_or_create_billing(db: Session, user: User) -> UserBilling:
         render_credits_balance=quotas.render_credits,
         custom_material_credits_balance=quotas.custom_material_credits,
         custom_asset_credits_balance=quotas.custom_asset_credits,
+        allowance_granted_for=FREE_ALLOWANCE,
         storage_bytes_used=0,
         created_at=now,
         updated_at=now,
@@ -105,20 +109,36 @@ def snapshot(db: Session, user: User) -> UserBillingSnapshot:
     )
 
 
-def _grant_allowance(db: Session, billing_id: int, tier: PlanTier) -> None:
-    """Make `tier`'s allowance the plan credits, in one UPDATE; bought credits stay. Not committed."""
-    db.execute(
+def subscription_allowance_key(subscription_id: str | None, period_start: datetime | None, tier: PlanTier) -> str:
+    """What a subscription's allowance is granted for: the subscription, the period's start and
+    the plan (allowance_granted_for)."""
+    start = period_start.isoformat() if period_start else "-"
+    return f"{subscription_id or '-'}|{start}|{tier}"
+
+
+def _grant_allowance(db: Session, billing_id: int, tier: PlanTier, key: str, *conditions: ColumnElement[bool]) -> bool:
+    """Make `tier`'s allowance the plan credits and record it as granted for `key`, in one UPDATE,
+    where `conditions` hold; bought credits stay. Whether it did. Not committed."""
+    values = {
+        **pools.allowance_values(tier),
+        UserBilling.allowance_granted_for: key,
+        UserBilling.updated_at: datetime.utcnow(),
+    }
+    granted = db.execute(
         update(UserBilling)
-        .where(UserBilling.id == billing_id)
-        .values({**pools.allowance_values(tier), UserBilling.updated_at: datetime.utcnow()})
+        .where(UserBilling.id == billing_id, *conditions)
+        .values(values)
         .execution_options(synchronize_session=False)
     )
+    return granted.rowcount == 1
 
 
 def reset_allotments(db: Session, billing: UserBilling, tier: PlanTier) -> None:
-    """Make `tier`'s allowance the plan credits now: an admin's reset, and Free's monthly one.
-    Bought credits stay."""
+    """Make `tier`'s allowance the plan credits now, whatever was granted before: an admin's
+    reset, and Free's monthly one. Bought credits stay."""
     values = {**pools.allowance_values(tier), UserBilling.plan_tier: tier, UserBilling.updated_at: datetime.utcnow()}
+    if tier == "free":
+        values[UserBilling.allowance_granted_for] = FREE_ALLOWANCE
     db.execute(
         update(UserBilling).where(UserBilling.id == billing.id).values(values).execution_options(synchronize_session=False)
     )
@@ -133,10 +153,14 @@ def set_subscription_period(
     period_start: datetime | None,
     period_end: datetime | None,
     stripe_subscription_id: str | None,
-) -> None:
-    """Move the account to a paid subscription's plan and billing period, with the period's
-    allowance as its plan credits. Bought credits stay."""
-    _grant_allowance(db, billing.id, tier)
+) -> bool:
+    """Move the account to a paid subscription's plan and billing period, granting the period's
+    allowance once. A paid checkout and each invoice.paid both come here, and Stripe may send
+    either again under a new event id, so the allowance is granted only when the subscription,
+    the period's start or the plan differs from the last grant; the conditional UPDATE also
+    keeps two deliveries at once from both granting it. Bought credits stay. Whether it granted."""
+    key = subscription_allowance_key(stripe_subscription_id, period_start, tier)
+    granted = _grant_allowance(db, billing.id, tier, key, UserBilling.allowance_granted_for.is_distinct_from(key))
     change_plan(
         db,
         billing,
@@ -145,6 +169,7 @@ def set_subscription_period(
         period_end=period_end,
         stripe_subscription_id=stripe_subscription_id,
     )
+    return granted
 
 
 def change_plan(
@@ -166,9 +191,13 @@ def change_plan(
 
 
 def downgrade_to_free(db: Session, billing: UserBilling) -> None:
-    """End the paid plan: Free, with no subscription or period, and Free's allowance as the plan
-    credits. Bought credits stay."""
-    _grant_allowance(db, billing.id, "free")
+    """End the paid plan: Free, with no subscription or period. The plan credits drop to Free's
+    allowance as the account leaves its paid plan, once: ending a plan already ended leaves
+    them. Bought credits stay."""
+    on_a_paid_plan = or_(
+        UserBilling.allowance_granted_for.is_distinct_from(FREE_ALLOWANCE), UserBilling.plan_tier != "free"
+    )
+    _grant_allowance(db, billing.id, "free", FREE_ALLOWANCE, on_a_paid_plan)
     change_plan(db, billing, tier="free", period_start=None, period_end=None, stripe_subscription_id=None)
 
 

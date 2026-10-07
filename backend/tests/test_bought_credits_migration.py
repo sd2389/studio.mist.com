@@ -14,7 +14,7 @@ from app.models import CreditPurchase, User
 REVISION = "270d79dd4b52"
 SEPTEMBER, OCTOBER = datetime(2026, 9, 1), datetime(2026, 10, 1)
 NOW = datetime(2026, 10, 6)
-BILLING_COLUMNS = {"bought_model_credits", "bought_ai_image_credits", "bought_render_credits"}
+BILLING_COLUMNS = {"bought_model_credits", "bought_ai_image_credits", "bought_render_credits", "allowance_granted_for"}
 TABLES = ("user_billing", "render_jobs", "ingest_items")
 
 
@@ -125,13 +125,14 @@ def test_the_backfill_keeps_bought_credits_apart_in_the_customers_favour(sqlite_
     assert model_diffs(engine, TABLES) == []
     assert _rows(
         engine,
-        "SELECT user_id, bought_model_credits, bought_ai_image_credits, bought_render_credits FROM user_billing",
+        "SELECT user_id, bought_model_credits, bought_ai_image_credits, bought_render_credits, allowance_granted_for "
+        "FROM user_billing",
     ) == {
-        1: (10, 40, 0),
-        2: (10, 50, 0),
-        3: (4, 0, 0),
-        4: (0, 0, 10),
-        5: (25, 0, 0),
+        1: (10, 40, 0, "free"),
+        2: (10, 50, 0, None),
+        3: (4, 0, 0, None),
+        4: (0, 0, 10, None),
+        5: (25, 0, 0, None),
     }
     assert _rows(engine, "SELECT id, bought_model_credit_held, bought_render_credits_held FROM ingest_items") == {
         31: (1, 0),

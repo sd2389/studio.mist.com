@@ -1,4 +1,4 @@
-"""plan and bought credits: top-ups kept apart from the plan's credits
+"""plan and bought credits: top-ups kept apart from the plan's credits, a period's allowance granted once
 
 Revision ID: 270d79dd4b52
 Revises: 09b522567b3b
@@ -7,9 +7,10 @@ Create Date: 2026-10-06 18:00:00.000000
 A reset or plan change used to overwrite every balance with the plan's allowance, so top-ups a
 customer had not spent were lost at each renewal, upgrade and cancellation. Model, AI image and
 render credits now each keep their bought credits apart (app/features/billing/credit_pools.py):
-user_billing.bought_* is how many of the balance were bought, and render_jobs.bought_credits and
+user_billing.bought_* is how many of the balance were bought, render_jobs.bought_credits and
 ingest_items.bought_*_held how many of a hold's credits came from bought ones (a refund gives
-those back as bought).
+those back as bought), and user_billing.allowance_granted_for the allowance last granted, so a
+period's allowance is granted once.
 
 The backfill is in the customer's favour; where the data leaves room for doubt it takes the
 reading that never takes a credit away:
@@ -29,6 +30,9 @@ reading that never takes a credit away:
   newest first, up to what each holds, so refunding one gives them back as bought credits rather
   than as plan credits the next reset would replace. Holds from an earlier period keep none: as
   before, their refund adds nothing.
+- allowance_granted_for is 'free' for accounts on Free without a subscription, and NULL for the
+  others, so the first paid checkout or invoice.paid after this grants its period's allowance as
+  it always has (a renewal half processed when this runs is still granted, never skipped).
 
 Downgrading drops the columns. Balances keep their totals; which credits were bought is lost.
 """
@@ -50,12 +54,16 @@ _KINDS = (
     ('ai', 'ai_image_credits_balance', 'bought_ai_image_credits'),
     ('render', 'render_credits_balance', 'bought_render_credits'),
 )
+_PAID_TIERS = ('grow', 'studio')
 
 _billing = sa.table(
     'user_billing',
     sa.column('id', sa.Integer),
     sa.column('user_id', sa.Integer),
+    sa.column('plan_tier', sa.String),
+    sa.column('stripe_subscription_id', sa.String),
     sa.column('period_start', sa.DateTime),
+    sa.column('allowance_granted_for', sa.String),
     *(sa.column(name, sa.Integer) for _, balance, bought in _KINDS for name in (balance, bought)),
 )
 _purchases = sa.table(
@@ -90,6 +98,7 @@ def _add_columns() -> None:
     with op.batch_alter_table('user_billing') as batch:
         for _, _, bought in _KINDS:
             batch.add_column(sa.Column(bought, sa.Integer(), nullable=False, server_default='0'))
+        batch.add_column(sa.Column('allowance_granted_for', sa.String(length=320), nullable=True))
     with op.batch_alter_table('render_jobs') as batch:
         batch.add_column(sa.Column('bought_credits', sa.Integer(), nullable=False, server_default='0'))
     with op.batch_alter_table('ingest_items') as batch:
@@ -149,6 +158,10 @@ def _put_spent_bought_on_holds(bind, holds: list, spent: int, period_start) -> N
         bind.execute(sa.update(table).where(table.c.id == row_id).values({column: taken}))
 
 
+def _is_free_without_subscription(row) -> bool:
+    return (row.plan_tier or 'free').strip().lower() not in _PAID_TIERS and not row.stripe_subscription_id
+
+
 def _backfill(bind) -> None:
     purchases = _purchases_by_user(bind)
     holds = _open_holds(bind)
@@ -159,6 +172,8 @@ def _backfill(bind) -> None:
             bought = min(max(getattr(row, balance_column) or 0, 0), bought_since)
             values[bought_column] = bought
             _put_spent_bought_on_holds(bind, holds[(row.user_id, kind)], bought_since - bought, row.period_start)
+        if _is_free_without_subscription(row):
+            values['allowance_granted_for'] = 'free'
         bind.execute(sa.update(_billing).where(_billing.c.id == row.id).values(values))
 
 
@@ -176,5 +191,6 @@ def downgrade() -> None:
     with op.batch_alter_table('render_jobs') as batch:
         batch.drop_column('bought_credits')
     with op.batch_alter_table('user_billing') as batch:
+        batch.drop_column('allowance_granted_for')
         for _, _, bought in reversed(_KINDS):
             batch.drop_column(bought)

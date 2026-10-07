@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import type { PersistedModelConfig } from "@/lib/slot-materials/model-config";
 import { resolvePresetForSlot, sanitizeSlotSelections } from "@/lib/slot-materials/material-rules";
 import { useMaterialPresetStore } from "@/stores/material-preset-store";
-import { resolveGroupedPreset, type SlotId } from "@/features/viewer/ui/studio-material-groups";
+import { resolveGroupedPreset, slotKind, type SlotId } from "@/features/viewer/ui/studio-material-groups";
 import {
   buildSlotAliasMap,
   filterSlotsByKind,
@@ -32,19 +32,20 @@ export function useStudioSlotContext({
     [modelConfig, slotSelections, collapseGemSlots],
   );
   const allSlotIds = useMemo(() => Object.keys(slotAliasMap), [slotAliasMap]);
-  const slotIds = useMemo(
-    () => (kind ? filterSlotsByKind(allSlotIds, kind) : allSlotIds),
-    [allSlotIds, kind],
-  );
-  const defaultSlot = slotIds[0] ?? (kind === "gem" ? "Gem 1" : "Metal 1");
-  const resolvedActiveSlot = slotIds.includes(activeSlot) ? activeSlot : defaultSlot;
-  const activePhysicalSlots = useMemo(
-    () => slotAliasMap[resolvedActiveSlot] ?? [resolvedActiveSlot],
-    [slotAliasMap, resolvedActiveSlot],
-  );
   const safeSlotSelections = useMemo(
     () => sanitizeSlotSelections(slotSelections, modelConfig),
     [slotSelections, modelConfig],
+  );
+  const slotIds = useMemo(
+    () => (kind ? filterSlotsByKind(allSlotIds, kind, modelConfig, safeSlotSelections) : allSlotIds),
+    [allSlotIds, kind, modelConfig, safeSlotSelections],
+  );
+  const defaultSlot = slotIds[0] ?? (kind === "gem" ? "Gem 1" : "Metal 1");
+  const resolvedActiveSlot = slotIds.includes(activeSlot) ? activeSlot : defaultSlot;
+  const activeSlotKind = slotKind(resolvedActiveSlot, modelConfig, safeSlotSelections);
+  const activePhysicalSlots = useMemo(
+    () => slotAliasMap[resolvedActiveSlot] ?? [resolvedActiveSlot],
+    [slotAliasMap, resolvedActiveSlot],
   );
   const selectedPresetForActiveSlot = useMemo(() => {
     const selected = resolveGroupedPreset(activePhysicalSlots, safeSlotSelections);
@@ -65,6 +66,8 @@ export function useStudioSlotContext({
     allSlotIds,
     slotIds,
     resolvedActiveSlot,
+    /** The picker the active slot's materials come from. */
+    activeSlotKind,
     activePhysicalSlots,
     safeSlotSelections,
     selectedPresetForActiveSlot,

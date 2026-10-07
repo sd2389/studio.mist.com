@@ -5,6 +5,7 @@ import { FinishPreview } from "@/components/ui/finish-preview";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { SlotSelectionMap } from "@/lib/slot-materials/material-rules";
+import type { PersistedModelConfig } from "@/lib/slot-materials/model-config";
 import type { SourceCatalogPayload } from "@/lib/source-catalog";
 import type { FinishId } from "@/stores/material-preset-store";
 import { FINISHES, type SlotId } from "@/features/viewer/ui/studio-material-groups";
@@ -18,6 +19,7 @@ export type MoreMaterialsControlsProps = {
   resolvedActiveSlot: string;
   onActiveSlotChange: (slot: SlotId) => void;
   safeSlotSelections: SlotSelectionMap;
+  modelConfig: PersistedModelConfig;
   catalog: SourceCatalogPayload | null;
   catalogError: string | null;
   finishApplies: boolean;
@@ -34,6 +36,7 @@ export function MoreMaterialsControls({
   resolvedActiveSlot,
   onActiveSlotChange,
   safeSlotSelections,
+  modelConfig,
   catalog,
   catalogError,
   finishApplies,
@@ -81,6 +84,7 @@ export function MoreMaterialsControls({
           slotAliasMap={slotAliasMap}
           resolvedActiveSlot={resolvedActiveSlot}
           safeSlotSelections={safeSlotSelections}
+          modelConfig={modelConfig}
           onActiveSlotChange={onActiveSlotChange}
         />
         {catalogError ? (

@@ -79,6 +79,7 @@ export function MaterialKindPicker({
               slotAliasMap={slotAliasMap}
               resolvedActiveSlot={resolvedActiveSlot}
               safeSlotSelections={safeSlotSelections}
+              modelConfig={modelConfig}
               onActiveSlotChange={onActiveSlotChange}
             />
           </div>

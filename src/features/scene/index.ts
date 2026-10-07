@@ -19,3 +19,4 @@ export type {
   SceneListParams,
   ScenePatch,
 } from "@/lib/api/scenes";
+export { useScenePages, type ScenePageResult, type SceneQuery } from "./use-scene-pages";

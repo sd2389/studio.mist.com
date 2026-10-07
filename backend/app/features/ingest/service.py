@@ -22,6 +22,7 @@ from app.features.billing.quota_service import get_or_create_billing
 from app.features.ingest.designs import Design, known_category, name_problem, plan_designs, sku_problems
 from app.features.ingest.items import lock_owner_batches
 from app.features.ingest.render_plans import plan_render
+from app.features.ingest.saved_templates import batch_template
 from app.features.render_jobs import idempotency
 from app.features.scene.skus import sku_holders
 from app.models import IngestBatch, IngestItem, User
@@ -168,9 +169,10 @@ def create_batch(
     is new: the same Idempotency-Key and body answer the batch they made, another body is 409.
 
     Nothing is made when the owner's plan has no bulk upload or the batch passes its limits
-    (402), the render plan isn't one (400) or renders larger than the plan does (402), any design,
-    manifest row or SKU has a problem (422, every one of them), or the owner has as many batches
-    open as they may (429).
+    (402), the render plan isn't one (400) or renders larger than the plan does (402), the look
+    template isn't the owner's (404) or no longer passes its checks (400), any design, manifest
+    row or SKU has a problem (422, every one of them), or the owner has as many batches open as
+    they may (429).
     """
     idempotency.check_key(idempotency_key)
     body_hash = idempotency.request_hash(body) if idempotency_key is not None else None
@@ -180,6 +182,7 @@ def create_batch(
     limits = get_batch_limits(tier)
     assert_batch_fits_plan(tier, len(body.items), sum(_declared_bytes(item) for item in body.items))
     render_plan, render_credits = (None, 0) if body.render_plan is None else plan_render(db, user, body.render_plan)
+    look_template = None if body.look_template_id is None else batch_template(db, user, body.look_template_id)
     designs, problems = plan_designs(body.items, body.manifest, body.options.default_category, limits)
     if reason := ("A batch needs a name." if not body.name.strip() else name_problem(body.name.strip())):
         problems.append(IngestProblem(field="name", code="name_invalid", message=reason))
@@ -197,6 +200,7 @@ def create_batch(
             db, user, body, designs,
             name=body.name.strip(),
             render_plan=render_plan,
+            look_template=look_template,
             render_credits_per_design=render_credits,
             idempotency_key=idempotency_key,
             request_hash=body_hash,
@@ -280,6 +284,7 @@ def batch_views(db: Session, batches: list[IngestBatch]) -> list[IngestBatchOut]
             total_bytes=batch.total_bytes,
             counts=counts[batch.id],
             render_plan=batch.render_plan,
+            look_template=batch.look_template,
             options=batch.options,
             quote=IngestCredits(
                 model_credits=batch.item_count, render_credits=batch.item_count * batch.render_credits_per_design

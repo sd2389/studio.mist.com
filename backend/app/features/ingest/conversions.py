@@ -4,9 +4,10 @@ the design's scene as a direct upload makes one (docs/adr/0006-bulk-pipeline.md,
 The job's files (render_jobs/convert_spec.py) are checked for their names, types and stored
 sizes like any job's outputs. Then the model passes what every upload passes, each failure the
 design's reason: a real GLB (model_unreadable), its own triangle count within the owner's plan
-(over_polygon_cap), room in storage (over_limit), its SKU still free (sku_taken). The scene, the
-design's spent model credit and the completed job are saved in one commit, so a job completes
-once and makes one scene; a design that fails gets back what it holds.
+(over_polygon_cap), room in storage (over_limit), its SKU still free (sku_taken). The scene takes
+each slot's role and its batch's look template (templates.py). The scene, the design's spent
+model credit and the completed job are saved in one commit, so a job completes once and makes one
+scene; a design that fails gets back what it holds.
 """
 
 from __future__ import annotations
@@ -38,8 +39,10 @@ from app.features.render_jobs.convert_spec import (
     normalised_convert_spec,
 )
 from app.features.render_jobs.worker import discard_outputs, end_attempt, running_job
-from app.features.scene.look import PRESET_ID, ModelConfig, normalize_slot_id
+from app.features.ingest.templates import apply_look_template
+from app.features.scene.look import PRESET_ID, ModelConfig, SlotRole, normalize_slot_id
 from app.features.scene.skus import assert_sku_available
+from app.features.scene.slot_roles import with_slot_roles
 from app.features.upload.service import SceneDetails, count_model_triangles, create_scene_from_glb, read_stored_upload
 from app.features.upload.thumbnails import read_checked_thumbnail
 from app.models import IngestBatch, IngestItem, RenderJob, Scene, User
@@ -75,7 +78,7 @@ class ConversionReport(ReportPart):
     slot_selections: dict[SlotId, Annotated[str, Field(pattern=PRESET_ID)]] = Field(default_factory=dict, max_length=256)
     polygon_count: int = Field(ge=0)  # as the converter counted; the API counts the GLB itself
     units: ConversionUnits
-    roles: dict[SlotId, Literal["metal", "gem", "accent"]] = Field(default_factory=dict, max_length=256)
+    roles: dict[SlotId, SlotRole] = Field(default_factory=dict, max_length=256)
     warnings: list[Annotated[str, Field(max_length=500)]] = Field(default_factory=list, max_length=100)
 
     @model_validator(mode="after")
@@ -88,13 +91,10 @@ class ConversionReport(ReportPart):
         return self
 
     def model_config_with_roles(self) -> dict:
-        """The model config to store, each slot with its role (which look templates go by, F1)."""
+        """The model config to store, every slot with its role, which look templates go by: the
+        one `roles` names, else its kind's (slot_roles.py)."""
         config = self.model_config_data.model_dump(mode="json", by_alias=True, exclude_unset=True)
-        roles = {normalize_slot_id(slot): role for slot, role in self.roles.items()}
-        for slot in config.get("slots") or []:
-            if role := roles.get(normalize_slot_id(slot["slotId"])):
-                slot["role"] = role
-        return config
+        return with_slot_roles(config, self.roles)
 
 
 class DesignRefused(Exception):
@@ -177,11 +177,11 @@ def _refused_as(code: str, check: Callable[[], T]) -> T:
 
 def _record_conversion(
     db: Session, job: RenderJob, item: IngestItem, scene: Scene, upload_bytes: int, triangles: int,
-    report: ConversionReport, renderer: RendererInfo,
+    report: ConversionReport, renderer: RendererInfo, warnings: list[str],
 ) -> None:
     """What the design's scene is saved with: the design holding its scene, done (converted,
-    when its batch renders it next), its model credit spent once; its storage counted; the job
-    completed; its batch settled. Not committed."""
+    when its batch renders it next), its model credit spent once, what it should be told; its
+    storage counted; the job completed; its batch settled. Not committed."""
     now = datetime.utcnow()
     renders_next = db.get(IngestBatch, item.batch_id).render_plan is not None
     spent = db.execute(
@@ -199,7 +199,7 @@ def _record_conversion(
             bought_model_credit_held=0,
             polygon_count=triangles,
             size_mm=max(report.units.size_mm),
-            warnings=report.warnings,
+            warnings=warnings,
             error=None,
             error_code=None,
             updated_at=now,
@@ -220,6 +220,26 @@ def _record_conversion(
     settle_batch(db, item.batch_id)
 
 
+def _scene_details(item: IngestItem, report: ConversionReport, template: dict | None) -> tuple[SceneDetails, list[str]]:
+    """What the design's scene is made with, and what its design is told: its batch's names, the
+    converter's model config with each slot's role, and the batch's look template applied to it
+    (templates.py), else the converter's selections and the studio's default look."""
+    model_config = report.model_config_with_roles()
+    names = {"name": item.name, "sku": item.sku, "category": item.category, "note": item.note}
+    if template is None:
+        details = SceneDetails(**names, model_config=model_config, slot_selections=report.slot_selections or None)
+        return details, report.warnings
+    look = apply_look_template(template, model_config, report.slot_selections)
+    details = SceneDetails(
+        **names,
+        lighting=look.lighting,
+        model_config=model_config,
+        slot_selections=look.slot_selections or None,
+        scene_settings=look.scene_settings,
+    )
+    return details, [*report.warnings, *look.warnings]
+
+
 def _make_scene(
     db: Session, job: RenderJob, item: IngestItem, files: dict[str, RenderJobOutputReport], renderer: RendererInfo
 ) -> Scene:
@@ -232,14 +252,7 @@ def _make_scene(
     triangles = _refused_as("model_unreadable", lambda: count_model_triangles(model_bytes))
     _refused_as("over_polygon_cap", lambda: assert_polygon_limit(db, owner, triangles))
     _refused_as("over_limit", lambda: assert_storage_for_upload(db, owner, upload_bytes))
-    details = SceneDetails(
-        name=item.name,
-        sku=item.sku,
-        category=item.category,
-        note=item.note,
-        model_config=report.model_config_with_roles(),
-        slot_selections=report.slot_selections or None,
-    )
+    details, warnings = _scene_details(item, report, db.get(IngestBatch, item.batch_id).look_template)
     try:
         return create_scene_from_glb(
             db,
@@ -247,7 +260,9 @@ def _make_scene(
             model_key=keys.model_key(owner.id, file_name(item.filename)),
             model_bytes=model_bytes,
             details=details,
-            pay=lambda scene: _record_conversion(db, job, item, scene, upload_bytes, triangles, report, renderer),
+            pay=lambda scene: _record_conversion(
+                db, job, item, scene, upload_bytes, triangles, report, renderer, warnings
+            ),
             thumbnail=thumbnail,
         )
     except HTTPException as exc:

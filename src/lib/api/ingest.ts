@@ -4,7 +4,11 @@
  * to a batch needs the `bulk_pipeline` flag (404 while it is off); reading and canceling don't.
  */
 import { apiGet, apiPost } from "@/lib/api/client";
+import type { SceneLook } from "@/lib/api/scenes";
 import { AuthRequestError } from "@/lib/auth/is-auth-required-error";
+import type { SlotMaterialRef } from "@/lib/library/custom-material-ref";
+import type { SceneSettingsBuckets, SlotRole } from "@/lib/slot-materials/model-config";
+import type { FinishId, LightingPresetId } from "@/stores/material-preset-store";
 
 /** The most designs one `uploads` or `uploaded` call names (MAX_ITEMS_A_CALL). */
 export const MAX_ITEMS_A_CALL = 100;
@@ -49,7 +53,35 @@ export type IngestBatchCreate = {
   /** The CSV manifest, UTF-8, at most 1 MB: file,sku,name,category,note,units; only file is required. */
   manifest?: string | null;
   render_plan?: Record<string, unknown> | null;
+  /** One of the user's look templates, which each design's scene takes; none for the studio's default look. */
+  look_template_id?: number | null;
   options?: { decimate?: "auto" | "fail"; default_category?: string };
+};
+
+/**
+ * A look by slot role (backend/app/features/ingest/templates.py, ADR 0006): a material for every
+ * slot of a role, a slot's own by role and name (a two-tone ring's head), and the look's lighting,
+ * finish and scene settings.
+ */
+export type LookTemplateSpec = {
+  lighting: LightingPresetId;
+  finish: FinishId;
+  materials: Partial<Record<SlotRole, SlotMaterialRef>>;
+  slot_materials: Partial<Record<SlotRole, Record<string, SlotMaterialRef>>>;
+  scene_settings: Partial<SceneSettingsBuckets>;
+};
+
+/** One of the user's saved look templates, with each material's name and the catalogue items and library materials it names. */
+export type LookTemplate = {
+  id: number;
+  name: string;
+  /** The scene it was made of, while it exists. */
+  source_scene_id: number | null;
+  template: LookTemplateSpec;
+  labels: Record<string, string>;
+  look: SceneLook;
+  created_at: string;
+  updated_at: string;
 };
 
 /** Why a batch can't be made: the item (its index in the request) and CSV row (the header is row 1) it is about. */
@@ -101,6 +133,8 @@ export type IngestBatch = {
   /** Designs at each status; a status none is at is left out. */
   counts: Partial<Record<IngestItemStatus, number>>;
   render_plan: Record<string, unknown> | null;
+  /** The look template its designs' scenes take, as it was when the batch was made. */
+  look_template: LookTemplateSpec | null;
   options: Record<string, unknown>;
   /** What the whole batch costs: a model credit and the render plan's credits for each design. */
   quote: IngestCredits;
@@ -251,4 +285,12 @@ export function retryItem(batchId: number, itemId: number): Promise<IngestItem> 
 /** Cancels what hasn't finished and gives its credits back; works with the flag off too. */
 export function cancelBatch(batchId: number): Promise<IngestBatch> {
   return apiPost<IngestBatch>(batchPath(batchId, "/cancel"), {});
+}
+
+/**
+ * A look template of one of the user's scenes, as its look is now: a new one, or that scene's
+ * template brought up to date. 404 for a scene that isn't theirs; 400 when its look can't be one.
+ */
+export function lookTemplateFromScene(sceneId: number): Promise<LookTemplate> {
+  return apiPost<LookTemplate>(`/api/ingest/look-templates/from-scene/${sceneId}`, {});
 }

@@ -1,13 +1,27 @@
 import "server-only";
 
 import { readUpstreamJson, upstreamFetch } from "@/lib/auth/upstream";
-import { batchItemsSearch, type BatchView, type IngestBatch, type IngestItem, type IngestPage } from "@/lib/api/ingest";
+import {
+  batchItemsSearch,
+  type BatchView,
+  type IngestBatch,
+  type IngestItem,
+  type IngestPage,
+  type LookTemplate,
+} from "@/lib/api/ingest";
 
 /** The signed-in user's newest batches; none when they can't be read. */
 export async function fetchRecentBatchesServer(limit = 5): Promise<IngestBatch[]> {
   const upstream = await upstreamFetch(`/ingest/batches?limit=${limit}`);
   if (!upstream.ok) return [];
   return ((await readUpstreamJson(upstream)) as IngestPage<IngestBatch>).items ?? [];
+}
+
+/** The signed-in user's latest look templates; none when they can't be read. */
+export async function fetchLookTemplatesServer(limit = 6): Promise<LookTemplate[]> {
+  const upstream = await upstreamFetch(`/ingest/look-templates?limit=${limit}`);
+  if (!upstream.ok) return [];
+  return ((await readUpstreamJson(upstream)) as { items?: LookTemplate[] }).items ?? [];
 }
 
 /** A batch of the signed-in user's and its first page of designs; null when it isn't theirs or doesn't exist. */

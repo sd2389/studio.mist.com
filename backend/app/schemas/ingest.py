@@ -4,6 +4,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.scene import SceneLook
 from app.schemas.utc import UTCDateTime
 
 # The most designs or SKUs one request may name, whatever the plan: twice the largest batch.
@@ -54,6 +55,9 @@ class IngestBatchCreate(IngestRequest):
     manifest: str | None = Field(default=None, max_length=1024 * 1024)
     # The stills each design gets once converted; checked by render_plans.py (400 naming the field).
     render_plan: dict[str, Any] | None = None
+    # One of the owner's look templates (404 for any other), which each design's scene takes; the
+    # batch keeps a copy, checked again. None: the studio's default look.
+    look_template_id: int | None = Field(default=None, ge=1)
     options: IngestOptions = Field(default_factory=IngestOptions)
 
 
@@ -116,6 +120,8 @@ class IngestBatchOut(BaseModel):
     total_bytes: int
     counts: dict[str, int]
     render_plan: dict[str, Any] | None
+    # The look template its designs' scenes take, as it was when the batch was made.
+    look_template: dict[str, Any] | None
     options: dict[str, Any]
     # What the whole batch costs: a model credit and the render plan's credits for each design.
     quote: IngestCredits
@@ -198,3 +204,21 @@ class IngestSkuCheckOut(BaseModel):
 
     taken: list[str]
     reserved: list[str]
+
+
+class LookTemplateOut(BaseModel):
+    """One of the caller's look templates (features/ingest/templates.py), with what its swatches
+    need: each material's name, and the catalogue items and library materials it names."""
+
+    id: int
+    name: str
+    source_scene_id: int | None
+    template: dict[str, Any]
+    labels: dict[str, str]
+    look: SceneLook
+    created_at: UTCDateTime
+    updated_at: UTCDateTime
+
+
+class LookTemplateList(BaseModel):
+    items: list[LookTemplateOut]

@@ -10,6 +10,7 @@ from app.core.deps import get_current_user, require_feature
 from app.core.rate_limit import rate_limit_dependency
 from app.database import get_db
 from app.features.ingest import lifecycle as ingest_lifecycle
+from app.features.ingest import saved_templates
 from app.features.ingest import service as ingest_service
 from app.features.ingest import uploads as ingest_uploads
 from app.models.user import User
@@ -27,6 +28,8 @@ from app.schemas.ingest import (
     IngestUploaded,
     IngestUploads,
     ItemStatus,
+    LookTemplateList,
+    LookTemplateOut,
 )
 
 router = APIRouter()
@@ -154,6 +157,35 @@ def retry_item(
     _rate: Annotated[None, Depends(_batch_call)] = None,
 ) -> IngestItemOut:
     return ingest_service.item_view(ingest_lifecycle.retry_item(db, user, batch_id, item_id))
+
+
+@router.get("/look-templates", response_model=LookTemplateList)
+def list_look_templates(
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> LookTemplateList:
+    """The caller's look templates, the latest made first."""
+    templates = saved_templates.list_templates(db, user, limit)
+    return LookTemplateList(items=[saved_templates.template_view(db, template) for template in templates])
+
+
+@router.post(
+    "/look-templates/from-scene/{scene_id}", status_code=201, response_model=LookTemplateOut, dependencies=_adds_work
+)
+def look_template_from_scene(
+    scene_id: int,
+    response: Response,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    _rate: Annotated[None, Depends(_batch_call)] = None,
+) -> LookTemplateOut:
+    """201 with a template of the caller's scene's look, or 200 with that scene's template brought
+    up to date; 404 for a scene that isn't theirs."""
+    template, created = saved_templates.template_from_scene(db, user, scene_id)
+    if not created:
+        response.status_code = 200
+    return saved_templates.template_view(db, template)
 
 
 @router.post("/batches/{batch_id}/cancel", response_model=IngestBatchOut)

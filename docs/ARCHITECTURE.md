@@ -35,7 +35,7 @@ Reuse these instead of rebuilding them per page:
 
 | Need | Use |
 |------|-----|
-| A metal or gem picker tile | `MaterialSwatch` (`src/components/ui/material-swatch.tsx`); icons in `swatch-icons.tsx` |
+| A metal or gem picker tile | `MaterialSwatch` (`src/components/ui/material-swatch.tsx`; `semantics="static"` shows a material inside another control, as the bulk upload's look picker does); icons in `swatch-icons.tsx` |
 | A material's swatch colour or fineness stamp | `presetSwatchHex`, `metalBadge` (`src/lib/material-colors.ts`) |
 | A studio page (sidebar, phone sheet, header, export dialogs) | `StudioLayout` (`@/features/viewer`) |
 | A lit 3D view of jewelry or a stone (full view or catalogue tile) | `StudioCanvas` (`@/features/viewer`) |
@@ -63,6 +63,9 @@ Reuse these instead of rebuilding them per page:
 | Polling something until it settles (1 s, then half as long again, up to 5 s) | `pollUntil`, `pollDelay` (`src/lib/polling.ts`): `pollRenderJob` and the bulk batch page both poll with it |
 | Bulk upload batches: the client and its proxies | `src/lib/api/ingest.ts` (types from `backend/app/schemas/ingest.py`; `batchProblems` reads a 422's problems), `relayIngest` (`src/lib/api/ingest-relay.ts`) for the routes under `src/app/api/ingest/`; `relayUpstreamJson` passes an API's `problems` on |
 | Many CAD files at once: grouping, ZIPs, the CSV manifest, checks, uploads straight to storage | `src/features/bulk/` (`/bulk/new`, `/bulk/<id>`), behind the `bulk_pipeline` flag ([ADR 0006](adr/0006-bulk-pipeline.md)) |
+| A look by slot role for a bulk upload's designs: made of a scene, checked as a job's look is, applied when a design becomes its scene | `template_of_look`, `validate_look_template`, `apply_look_template` (`backend/app/features/ingest/templates.py`), the owner's saved ones in `saved_templates.py`; a slot's role from `role_of_slot` (`backend/app/features/scene/slot_roles.py`); the checks `validate_look` makes, shared: `check_material_refs`, `check_setting_slugs`, `background_image_id` (`backend/app/features/scene/look.py`). On `/bulk/new`, `LookTemplatePicker` and `useLookTemplates` (`src/features/bulk/ui/`) pick one; `lookTemplateFromScene` (`src/lib/api/ingest.ts`) makes one of a scene |
+| A page of the user's scenes, searched as they type | `useScenePages` (`@/features/scene`): `ModelMultiSelect` and the bulk upload's "Use the look of…" |
+| A look's catalogue items and library materials, for its slot materials and swatches | `registerLookMaterials` (`src/lib/catalog/look-materials.ts`): `applySavedLook`, and the bulk upload's look templates (`LookTemplate.look`) |
 | An option pill, or a labelled row of them; an option the plan locks | `Chip`, `ChipField` (`locked`) (`src/components/ui/chip.tsx`); `PlanLock`, the lock a locked option shows (`src/components/ui/plan-lock.tsx`) |
 | A price for a design | `quoteDesign` (`src/lib/pricing/quote.ts`) |
 | An embed link, iframe snippet or copy button | `useEmbedCode`, `useCopyFeedback`, `EmbedKeyNotice` (`src/components/embed/embed-code.tsx`) |

@@ -6,14 +6,23 @@ import type { PlannedDesign } from "./design-checks";
 /** The longest batch name the API keeps. */
 export const MAX_BATCH_NAME_LENGTH = 255;
 
+type BatchChoices = {
+  name: string;
+  manifest: string | null;
+  defaultCategory: string;
+  /** The look template picked; none for the studio's default look. */
+  lookTemplateId?: number | null;
+};
+
 /**
  * The create request for planned designs, in their order: each design's files and sizes only.
  * The API settles SKUs, names and categories itself, from the manifest's rows when there is one
- * and from the file names otherwise, exactly as `planDesigns` previewed them.
+ * and from the file names otherwise, exactly as `planDesigns` previewed them; and it checks and
+ * applies the look template, which the page only picks.
  */
 export function batchCreateBody(
   designs: PlannedDesign[],
-  { name, manifest, defaultCategory }: { name: string; manifest: string | null; defaultCategory: string },
+  { name, manifest, defaultCategory, lookTemplateId }: BatchChoices,
 ): IngestBatchCreate {
   return {
     name: name.trim(),
@@ -23,6 +32,7 @@ export function batchCreateBody(
       companions: files.companions.map(({ path, file }) => ({ filename: path, bytes: file.size })),
     })),
     manifest,
+    ...(lookTemplateId == null ? {} : { look_template_id: lookTemplateId }),
     options: { default_category: defaultCategory },
   };
 }

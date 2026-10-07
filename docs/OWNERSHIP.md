@@ -3,7 +3,7 @@
 | Feature / area | Path | Owns |
 |----------------|------|------|
 | Upload & slot review | `src/features/upload` | File pick, presign/register flow, slot review UI |
-| Bulk upload | `src/features/bulk`, `src/app/bulk`, `src/app/api/ingest` | Many CAD files at once (files, folders, ZIPs opened in the browser) with a CSV manifest, checked as the API checks them, uploaded straight to storage on signed URLs; the batch page with retries, resumed uploads and cancel ([ADR 0006](adr/0006-bulk-pipeline.md) E3) |
+| Bulk upload | `src/features/bulk`, `src/app/bulk`, `src/app/api/ingest` | Many CAD files at once (files, folders, ZIPs opened in the browser) with a CSV manifest, checked as the API checks them, uploaded straight to storage on signed URLs; the look picker (look templates by slot role, F1); the batch page with retries, resumed uploads and cancel ([ADR 0006](adr/0006-bulk-pipeline.md) E3) |
 | Viewer (3D studio) | `src/features/viewer` | Canvas, model, sidebar, shell, embed; the one studio (`/viewer`) |
 | Scene editing | `src/features/editor` | The studio's Edit tab (`SceneEditPanel`): details and variants, specs, full catalogues and user library, position, camera, layers, batch exports, embed settings. `/model/:id` redirects to `/viewer` |
 | Scene persistence | `src/features/scene` | Scene API client, types re-exports |
@@ -18,8 +18,8 @@
 | CAD import | `src/lib/convert` | Format loaders (GLB, STL, 3DM, OBJ, FBX, PLY, 3MF, STEP, IGES), units, metal/gem segmentation |
 | Design system | `src/components/ui` | Buttons, dialogs, primitives |
 | Backend upload | `backend/app/features/upload` | Register/multipart ingest orchestration; `create_scene_from_glb`, shared with bulk uploads |
-| Backend bulk ingest | `backend/app/features/ingest` | Batches of CAD files: manifests, SKU checks, plan limits, signed uploads, credit holds, convert jobs and the scenes they make ([ADR 0006](adr/0006-bulk-pipeline.md)) |
-| Backend scene | `backend/app/features/scene` | Scene queries and patches |
+| Backend bulk ingest | `backend/app/features/ingest` | Batches of CAD files: manifests, SKU checks, plan limits, signed uploads, credit holds, convert jobs and the scenes they make; look templates by slot role, made of a scene and applied to each design's scene ([ADR 0006](adr/0006-bulk-pipeline.md)) |
+| Backend scene | `backend/app/features/scene` | Scene queries and patches; looks and their checks; slot roles |
 | Backend render | `backend/app/features/render` | Render save and listing |
 | Backend files | `backend/app/features/file_access` | Static file streaming |
 | Core | `backend/app/core` | Storage, model key helpers |

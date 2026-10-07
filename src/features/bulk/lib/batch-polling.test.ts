@@ -13,6 +13,7 @@ function batch(status: IngestBatchStatus, converting: number): IngestBatch {
     total_bytes: 30_000,
     counts: { converting, done: 3 - converting },
     render_plan: null,
+    look_template: null,
     options: {},
     quote: { model_credits: 3, render_credits: 0 },
     held: { model_credits: converting, render_credits: 0 },

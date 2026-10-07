@@ -178,14 +178,15 @@ PayForScene = Callable[[Scene], None]
 
 @dataclass(frozen=True)
 class SceneDetails:
-    """What a new scene is called and filed under, and the slot and scene settings it starts
-    from, as the upload page or a bulk upload's converter gives them."""
+    """What a new scene is called and filed under, and the look it starts from, as the upload
+    page, or a bulk upload's converter and look template, give them."""
 
     name: str | None = None
     sku: str | None = None
     category: str | None = None
     note: str | None = None
     material: str = "original"
+    lighting: str = "studio"
     model_config: dict | None = None
     slot_selections: dict[str, str] | None = None
     scene_settings: dict[str, Any] | None = None
@@ -266,7 +267,7 @@ def create_scene_from_glb(
         sku=details.sku or None,
         category=details.category,
         note=details.note,
-        lighting="studio",
+        lighting=details.lighting,
         model_config=model_config,
         slot_selections=details.slot_selections or dict(model_config.get("defaultMaterials") or {}),
         scene_settings=merge_scene_settings(inferred_scene, details.scene_settings),

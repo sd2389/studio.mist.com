@@ -51,4 +51,16 @@ describe('jewelry material assignment', () => {
     expect(sanitizeSlotSelections(selected)).toEqual(selected);
     expect(sanitizeSlotSelections({'Metal 1':'catalog:test-sapphire'})).toEqual({'Metal 1':'gold-14k-yellow'});
   });
+  it('lets a slot whose name says neither metal nor stone keep a stone, as a bulk look template gives a Pave layer', () => {
+    const selections = {'Pave':'diamond','Metal 1':'diamond','Gem 1':'platinum','Yellow Gold':'gold-18k-yellow'} as const;
+    expect(sanitizeSlotSelections(selections)).toEqual({'Pave':'diamond','Metal 1':'gold-14k-yellow','Gem 1':'diamond','Yellow Gold':'gold-18k-yellow'});
+
+    const root = new THREE.Group();
+    const pave = new THREE.Mesh(new THREE.OctahedronGeometry(),new THREE.MeshPhysicalMaterial());pave.name='Pave';
+    const band = new THREE.Mesh(new THREE.TorusGeometry(),new THREE.MeshPhysicalMaterial());band.name='Metal 1';
+    root.add(pave,band);snapshotOriginalMaterials(root);
+    applyMaterialPresetBySlot(root, {'Pave':'diamond','Metal 1':'platinum'},'original',{'Pave':['pave'],'Metal 1':['metal 1']});
+    expect(pave.material.userData.gemGpuDiamond).toBe('diamond');
+    expect(band.material.metalness).toBe(1);
+  });
 });

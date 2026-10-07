@@ -30,14 +30,16 @@ describe("readConfig", () => {
   });
 
   it("lists every problem at once", () => {
-    expect(() => readConfig({ WORKER_GPU: "amd", WORKER_KINDS: "still,batch_archive", WORKER_SLOTS: "0" }, "linux")).toThrow(
-      /RENDER_API_URL is not set; RENDER_WORKER_TOKEN is not set; WORKER_GPU must be one of nvidia, metal, swiftshader; WORKER_KINDS: this worker does still, angle_set, turntable, spin, campaign_pack, convert, not batch_archive; set HARNESS_BASE_URL .* or WORKER_APP_DIR .*; WORKER_SLOTS must be/,
+    expect(() => readConfig({ WORKER_GPU: "amd", WORKER_KINDS: "still,thumbnail", WORKER_SLOTS: "0" }, "linux")).toThrow(
+      /RENDER_API_URL is not set; RENDER_WORKER_TOKEN is not set; WORKER_GPU must be one of nvidia, metal, swiftshader; WORKER_KINDS: this worker does still, angle_set, turntable, spin, campaign_pack, convert, batch_archive, not thumbnail; set HARNESS_BASE_URL .* or WORKER_APP_DIR .*; WORKER_SLOTS must be/,
     );
   });
 
   it("converts only when told to, from the vendored converter files", () => {
     expect(readConfig(BASE).kinds).not.toContain("convert");
     expect(readConfig({ ...BASE, WORKER_KINDS: "convert" }).kinds).toEqual(["convert"]);
+    expect(readConfig(BASE).kinds).not.toContain("batch_archive");
+    expect(readConfig({ ...BASE, WORKER_KINDS: "convert,batch_archive" }).kinds).toEqual(["convert", "batch_archive"]);
     expect(readConfig({ ...BASE, WORKER_CACHE_DIR: "/var/cache/w" }).vendorDir).toBe("/var/cache/w/vendor");
     expect(readConfig({ ...BASE, WORKER_VENDOR_DIR: "/app/vendor" }).vendorDir).toBe("/app/vendor");
   });

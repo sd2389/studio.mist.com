@@ -1,6 +1,6 @@
 # Render worker
 
-The worker renders server exports ([ADR 0005](../../docs/adr/0005-server-exports.md)). It claims render jobs from the API, renders each in the render harness's export mode (`/render-harness?mode=export`, only in the `BUILD_TARGET=worker` build of the app) in headless Chrome on the host's GPU, uploads the files and completes the job. With `convert` in `WORKER_KINDS` it also converts bulk uploads' designs into GLBs, in the harness's convert mode ([ADR 0006](../../docs/adr/0006-bulk-pipeline.md); see [Conversions](#conversions)). The page never sees a token: the worker's Node process makes every API call and hands the page its job and a loopback sink.
+The worker renders server exports ([ADR 0005](../../docs/adr/0005-server-exports.md)). It claims render jobs from the API, renders each in the render harness's export mode (`/render-harness?mode=export`, only in the `BUILD_TARGET=worker` build of the app) in headless Chrome on the host's GPU, uploads the files and completes the job. With `convert` in `WORKER_KINDS` it also converts bulk uploads' designs into GLBs, in the harness's convert mode ([ADR 0006](../../docs/adr/0006-bulk-pipeline.md); see [Conversions](#conversions)), and with `batch_archive` it zips a finished batch's files into its archive (see [Batch archives](#batch-archives)). The page never sees a token: the worker's Node process makes every API call and hands the page its job and a loopback sink.
 
 | Module | Does |
 |---|---|
@@ -10,12 +10,13 @@ The worker renders server exports ([ADR 0005](../../docs/adr/0005-server-exports
 | `browser.mjs` | Launch profiles and the self-check |
 | `job.mjs` | One job, from payload to complete or fail |
 | `convert.mjs` | What a convert job does differently: its files in, its checks on what the page made |
+| `archive.mjs` | A batch archive: a finished batch's files into ZIP parts, no page |
 | `vendor.mjs` | The converters' files, pinned by hash; `node vendor.mjs <dir>` fetches them |
 | `failure.mjs` | The codes a job fails with, and which another attempt may fix |
 | `sink.mjs` | The loopback server the page writes files, frames, videos and progress to |
 | `outputs.mjs` | What each kind's page hands the sink, and the outputs the worker makes of it |
 | `encode.mjs` | ffmpeg: a turntable's raw frames into an MP4 |
-| `zip.mjs` | Files from disk into one ZIP, streamed through fflate |
+| `zip.mjs` | Files from disk into one ZIP, streamed through fflate, as a list or one at a time |
 | `progress.mjs` | A job's progress and stage, for its heartbeats |
 | `network.mjs` | What a page may reach |
 | `assets.mjs` | The disk cache of catalogue files and decoders |
@@ -37,7 +38,7 @@ The worker image is `Dockerfile.worker`, for linux/amd64 (Chrome for Testing has
 2. Start a worker:
    - CPU, any machine: `docker compose --profile worker-cpu up -d --build`. WebGPU on SwiftShader: slow, but the backend production draws with.
    - NVIDIA GPU: `docker compose --profile worker-gpu up -d --build`, on a host with the NVIDIA driver (535 or later) and the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/). The service reserves one GPU and asks for the driver's `graphics` capability, which mounts the Vulkan driver WebGPU runs on.
-   - Bulk uploads' conversions: `docker compose --profile worker-convert up -d --build`, the CPU pool. It runs the `swiftshader` profile and claims `convert` alone, so the GPU workers keep to renders.
+   - Bulk uploads' conversions and archives: `docker compose --profile worker-convert up -d --build`, the CPU pool. It runs the `swiftshader` profile and claims `convert` and `batch_archive` alone, so the GPU workers keep to renders.
 3. `docker compose logs -f worker-cpu` (or `worker-gpu`, `worker-convert`) shows the adapter the self-check found, then each job.
 4. Queue a still: in the studio, with the `server_exports` flag on in the admin console, or with `docker compose exec backend python -m scripts.seed_smoke_job`.
 
@@ -93,7 +94,7 @@ To convert too, fetch the converters' files once (`node scripts/render-worker/ve
 | `WORKER_APP_DIR` | `/app` in the image | A standalone worker build to start on `127.0.0.1:WORKER_HARNESS_PORT` when `HARNESS_BASE_URL` is unset |
 | `WORKER_HARNESS_PORT` | `3000` | |
 | `WORKER_SLOTS` | `1` | Jobs at once, a browser each: one per GPU, two on 24 GB cards; give each 8 GB of RAM |
-| `WORKER_KINDS` | `still,angle_set,turntable,spin,campaign_pack` | The kinds it claims, any of those and `convert`, which only a worker told to claims (the CPU pool) |
+| `WORKER_KINDS` | `still,angle_set,turntable,spin,campaign_pack` | The kinds it claims, any of those and `convert` and `batch_archive`, which only a worker told to claims (the CPU pool) |
 | `WORKER_FFMPEG` | `ffmpeg` | The ffmpeg turntables encode with, a Campaign Pack's too; it needs libx264. A worker that claims turntables or packs checks it before it claims anything |
 | `WORKER_ID` | the host name | Each slot claims as `<id>-<slot>` |
 | `WORKER_POLL_SECONDS` | `5` | How often an idle slot asks for a job |
@@ -167,5 +168,15 @@ A bulk upload's designs ([ADR 0006](../../docs/adr/0006-bulk-pipeline.md), "Conv
 2. The sink serves them to the page at `/inputs/source` and `/inputs/companions/<n>`. The page, `/render-harness?mode=convert`, gets the spec and limits and nothing else: no storage location, no token.
 3. The page runs the upload page's Save on them, the same functions the upload page calls (`src/lib/upload/`): parse and split metal from stones, settle the unit (`units` for a file that declares none), decimate metal to `max_polygons` (or fail `over_polygon_cap` when the stones alone keep it over, or `decimate` is `"fail"`), list the layers, export the GLB with the upload page's compression (meshopt and Draco) and render the thumbnail (a warning if it fails). It posts `model.glb`, `thumbnail.webp` and `conversion.json` (`ConversionReport` in `backend/app/features/ingest/conversions.py`: the model config, selections, polygon count, units, each slot's role and warnings).
 4. The worker checks what the page made before anything goes up: a GLB 2.0 whose chunks fit and whose JSON has meshes, a WebP of the thumbnail's size, a report of the API's fields within the cap. It uploads them as `convert_spec.py` plans them (the thumbnail 512 × 512, the others with no size) and completes the job; the API checks the model again and makes the scene.
+
+## Batch archives
+
+A finished batch's archive ([ADR 0006](../../docs/adr/0006-bulk-pipeline.md), "Results") is a `batch_archive` job, which the CPU pool claims beside conversions. It opens no page. The payload is the batch's manifest and, for every design in the order dropped, each output and thumbnail: its path in the archive (`<SKU>/stills/front.jpg`, `<SKU>/video/turntable.mp4`, `<SKU>/spin/spin.zip`, `<SKU>/thumbnail.webp`), a signed GET good for the job's run time (an API route with the job's token on local storage), and its stored size when the API has one.
+
+1. The worker writes ZIP parts in order, the manifest first in the first part (deflated; media stored), each file fetched just before it goes in (exactly its stored size, else `input_missing`) and deleted once it is in. A file that would take a part past `part_bytes` (2 GB) starts the next one; a file larger than that goes alone. More parts than the spec's `max_parts` stop the job as `over_limit`.
+2. Each part, `<stem>-part-<n>.zip`, is uploaded as soon as it is written, then deleted, so the job's folder holds about one part and one file at a time.
+3. The worker completes the job with every part, its hash and how many files it holds, and no renderer. The parts are gone from disk, so a refused complete fails the job (`upload_failed`) for another attempt rather than uploading again.
+
+The bar moves as the files go into parts and the parts go up.
 
 The converters' WASM and glue, which the upload page loads from jsDelivr (rhino3dm 8.17.0, occt-import-js 0.0.23) and gstatic (Draco 1.5.5), are vendored rather than cached. `vendor.mjs` pins each file's SHA-256; the image fetches them when it is built and refuses any other bytes, and they sit in its read-only root, where no job can change what the next one's page runs, as a file in a writable cache could be. The page asking for one of those URLs gets the vendored file: a conversion depends on no CDN being up and makes no request to one. A worker that converts claims nothing until every file is there with its hash.

@@ -2,7 +2,8 @@
 /*
  * The render worker (ADR 0005, "The worker"): claims render jobs from the API and renders them
  * in the harness's export mode, in headless Chrome on the host's GPU; with `convert` in
- * `WORKER_KINDS` (ADR 0006, the CPU pool), it converts bulk uploads' designs in the convert mode.
+ * `WORKER_KINDS` (ADR 0006, the CPU pool), it converts bulk uploads' designs in the convert mode,
+ * and with `batch_archive` it zips a finished batch's files into its archive's parts.
  * `WORKER_SLOTS` slots run one job at a time each, with a browser of their own; every job gets a
  * fresh browser context, and a browser is replaced every `WORKER_RECYCLE_JOBS` jobs and after a
  * crash. A browser whose self-check finds another backend than the `WORKER_GPU` profile promises
@@ -12,6 +13,7 @@
  */
 import { fileURLToPath } from "node:url";
 import { createApiClient } from "./api.mjs";
+import { ARCHIVE_KIND, runArchiveJob } from "./archive.mjs";
 import { createAssetCache } from "./assets.mjs";
 import { launchBrowser, selfCheck } from "./browser.mjs";
 import { readConfig, VIDEO_KINDS } from "./config.mjs";
@@ -98,7 +100,9 @@ async function runSlot(slot, { api, config, assets, stopping }) {
     }
     const jobLog = (message) => slot.log(`job ${claim.job_id}: ${message}`);
     jobLog(`claimed (${claim.kind})`);
-    const result = await runJob({ claim, api, browser, config, assets, stopping, log: jobLog });
+    // An archive needs no page: it zips the batch's files in Node (archive.mjs).
+    const run = claim.kind === ARCHIVE_KIND ? runArchiveJob : runJob;
+    const result = await run({ claim, api, browser, config, assets, stopping, log: jobLog });
     await slot.finished(result);
   }
 }

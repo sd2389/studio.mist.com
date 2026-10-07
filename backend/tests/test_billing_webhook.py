@@ -16,16 +16,23 @@ from sqlalchemy import func, select
 
 from app.features.billing.credit_pools import bought_credits
 from app.features.billing.plans import PLAN_LABELS, get_quotas
+from app.features.billing.purchases import record_topup_purchase
 from app.features.billing.quota_service import (
     consume_ai_image_credit,
     get_or_create_billing,
     subscription_allowance_key,
 )
 from app.features.billing.stripe_service import _record_event, handle_webhook
+from app.features.render_jobs import worker
+from app.features.render_jobs.service import create_job
+from app.models import Scene
 from app.models.billing import BillingEvent, CreditPurchase
+from app.schemas.render_job import RenderJobCreate
 
 WEBHOOK_SECRET = "whsec_test"
 SERVICE = "app.features.billing.stripe_service"
+WORKER_SETTINGS = SimpleNamespace(render_job_lease_seconds=120, render_worker_token="secret")
+FOUR_K_STILL = {"camera": {"pose": "pose-default"}, "width": 3840, "height": 2160}  # 2 render credits
 
 # A Grow subscription as the Stripe API returns it (the period lives on the items).
 GROW_SUBSCRIPTION = {
@@ -597,6 +604,36 @@ def test_a_renewal_grants_the_new_periods_allowance_and_keeps_bought_credits(db,
 
     assert _ai_pools(db, billing) == (grow + 30, 30)
     assert billing.period_start == datetime(2026, 10, 21, 14, 13, 20)
+
+
+def test_a_job_held_between_a_renewals_events_refunds_no_plan_credits_on_top_of_the_new_allowance(db, sample_user):
+    """customer.subscription.updated moves the period before invoice.paid grants it. A job held
+    in between spends the old period's last plan credit and a bought one; when it fails after the
+    grant, the bought credit comes back and the plan one, replaced by the grant, doesn't."""
+    billing = _grow_customer_billing(db, sample_user)
+    grow = get_quotas("grow").render_credits
+    with _stripe_test_env(subscription=GROW_SUBSCRIPTION):
+        _send_signed(db, _checkout_event(sample_user.id, "evt_checkout"))
+    billing.render_credits_balance = 1  # the period's last plan credit
+    db.commit()
+    record_topup_purchase(
+        db, billing, kind="render", credits=10, session_id="cs_render", event_id="evt_render",
+        amount_total=None, currency=None,
+    )
+    scene = Scene(user_id=sample_user.id, model_key=f"customers/{sample_user.id}/models/ring.glb", created_at=datetime.utcnow())
+    db.add(scene)
+    db.commit()
+
+    with _stripe_test_env(subscription=GROW_RENEWED):
+        _send_signed(db, _subscription_event("evt_renewed", items=GROW_RENEWED["items"]))
+        job, _ = create_job(db, sample_user, RenderJobCreate(kind="still", scene_id=scene.id, spec=FOUR_K_STILL))
+        assert (job.credits, job.bought_credits) == (2, 1)
+        _send_signed(db, _invoice_paid_event("evt_renewal_invoice"))
+    claimed = worker.claim_job(db, "gpu-a-1", ["still"], WORKER_SETTINGS)
+    worker.fail_job(db, claimed.id, claimed.worker_token, error="lost", code="gpu_lost", retryable=False)
+
+    db.refresh(billing)
+    assert (billing.render_credits_balance, bought_credits(billing, "render")) == (grow + 10, 10)
 
 
 def test_an_upgrade_keeps_bought_credits(db, sample_user):

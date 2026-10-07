@@ -14,6 +14,7 @@ from app.features.billing.plans import get_quotas
 from app.features.billing.purchases import record_topup_purchase
 from app.features.billing.quota_service import (
     adjust_credits,
+    change_plan,
     consume_ai_image_credit,
     consume_model_credit,
     downgrade_to_free,
@@ -305,14 +306,52 @@ def test_a_refund_after_the_period_rolled_over_gives_back_only_the_bought_credit
     assert _pools(db, sample_user, "render") == (GROW.render_credits + 10, 10)
 
 
+def _job_of_one_plan_and_one_bought_credit(db, user, **billing):
+    """A queued job that took the balance's last plan credit and one of 10 bought ones."""
+    scene = _scene(db, user)
+    _set_billing(db, user, render_credits_balance=1, **billing)
+    _buy(db, user, "render", 10, "cs_render")
+    job, _ = create_job(db, user, _still(scene))
+    assert (job.credits, job.bought_credits) == (2, 1)
+    return job
+
+
+def test_a_refund_after_a_free_reset_gives_back_no_plan_credits(db, sample_user):
+    """Free's monthly reset leaves the period as it is; its new allowance replaced the plan credit
+    the job took, so the refund adds the bought one alone."""
+    job = _job_of_one_plan_and_one_bought_credit(db, sample_user)
+    reset_allotments(db, get_or_create_billing(db, sample_user), "free")
+    assert _pools(db, sample_user, "render") == (25 + 9, 9)
+
+    cancel_job(db, sample_user, job.id)
+
+    assert _pools(db, sample_user, "render") == (25 + 10, 10)
+
+
+def test_a_refund_after_the_period_moved_without_a_grant_gives_back_the_plan_credits_too(db, sample_user):
+    """customer.subscription.updated moves the period and grants nothing: the plan credit the job
+    took is still the account's, so the refund gives it back with the bought one."""
+    job = _job_of_one_plan_and_one_bought_credit(db, sample_user, plan_tier="grow", period_start=SEPTEMBER)
+    change_plan(
+        db, get_or_create_billing(db, sample_user), tier="grow",
+        period_start=OCTOBER, period_end=NOVEMBER, stripe_subscription_id="sub_1",
+    )
+
+    cancel_job(db, sample_user, job.id)
+
+    assert _pools(db, sample_user, "render") == (11, 10)
+
+
 def test_a_bulk_hold_shares_its_bought_credits_among_its_jobs(db, sample_user):
     scene = _scene(db, sample_user)
-    _set_billing(db, sample_user, plan_tier="grow", render_credits_balance=3)
+    reset_allotments(db, get_or_create_billing(db, sample_user), "grow")  # allowance generation 1
+    _set_billing(db, sample_user, render_credits_balance=3)
     _buy(db, sample_user, "render", 10, "cs_render")
 
     jobs, _ = create_jobs(db, sample_user, RenderJobBulkCreate(jobs=[_still(scene)] * 3))
 
     assert [(job.credits, job.bought_credits) for job in jobs] == [(2, 0), (2, 1), (2, 2)]
+    assert {job.billing_allowance_generation for job in jobs} == {1}
     assert _pools(db, sample_user, "render") == (7, 7)
     cancel_job(db, sample_user, jobs[2].id)
     assert _pools(db, sample_user, "render") == (9, 9)

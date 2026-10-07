@@ -40,6 +40,9 @@ class UserBilling(Base):
     # "<subscription>|<period start>|<tier>". A paid checkout or invoice.paid grants a period's
     # allowance only when this changes. NULL: none recorded yet.
     allowance_granted_for: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    # Counts each time an allowance replaces the plan credits (a grant or a reset). A hold keeps
+    # the count it was made at; its refund gives plan credits back only while it is unchanged.
+    allowance_generation: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     storage_bytes_used: Mapped[int] = mapped_column(BigInteger, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(

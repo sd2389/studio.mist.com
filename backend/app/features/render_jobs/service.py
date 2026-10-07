@@ -146,6 +146,7 @@ def _queue_jobs(
                 bought_credits=job_bought,
                 credit_state="held",
                 billing_period_start=hold.period_start,
+                billing_allowance_generation=hold.allowance_generation,
                 idempotency_key=key,
                 request_hash=request_hash,
                 status="queued",

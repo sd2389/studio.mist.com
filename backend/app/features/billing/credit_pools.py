@@ -78,12 +78,14 @@ def credit_values(kind: str, *, plan: int | ColumnElement[int] = 0, bought: int 
 
 def allowance_values(tier: PlanTier) -> dict[Any, Any]:
     """SET values that make `tier`'s allowance the account's plan credits: each balance becomes
-    the allowance plus the bought credits it holds, which stay bought."""
+    the allowance plus the bought credits it holds, which stay bought. They count a new allowance
+    generation too, so a refund of a hold made before can tell its plan credits were replaced."""
     quotas = get_quotas(tier)
     allowances = {"model": quotas.model_credits, "ai": quotas.ai_image_credits, "render": quotas.render_credits}
     values: dict[Any, Any] = {
         UserBilling.custom_material_credits_balance: quotas.custom_material_credits,
         UserBilling.custom_asset_credits_balance: quotas.custom_asset_credits,
+        UserBilling.allowance_generation: UserBilling.allowance_generation + 1,
     }
     for kind, allowance in allowances.items():
         values[_BOUGHT[kind]] = bought_left(kind)

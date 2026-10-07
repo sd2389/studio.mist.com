@@ -103,6 +103,12 @@ def public_thumbnail_key(user_id: int, sku: str) -> str:
     return f"{public_published_prefix(user_id, sku)}/thumbnail.webp"
 
 
+def public_media_key(user_id: int, sku: str, job_id: int, filename: str) -> str:
+    """A render job's output published beside the piece's model. The job's id keeps a re-render
+    from hiding behind the year-long cache published files get."""
+    return f"{public_published_prefix(user_id, sku)}/media/{job_id}/{filename}"
+
+
 def reject_unsafe_key(key: str) -> None:
     """Reject path traversal and absolute paths in storage object keys."""
     if not key.strip() or key.startswith("/") or ".." in key or "\\" in key:

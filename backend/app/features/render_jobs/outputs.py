@@ -29,6 +29,7 @@ from app.features.render_jobs.convert_spec import OPTIONAL_OUTPUTS as OPTIONAL_C
 from app.features.render_jobs.convert_spec import convert_outputs
 from app.features.ingest.conversions import complete_conversion
 from app.features.ingest.items import end_item_of_job, lock_design_of
+from app.features.ingest.media import finish_design_render
 from app.models import Render, RenderJob, Scene
 from app.schemas.render_job import (
     RenderJobCompleteRequest,
@@ -203,7 +204,7 @@ def complete_job(db: Session, job_id: int, token: str, body: RenderJobCompleteRe
     Outputs that can't be kept end the job, refunded: 409 when its scene was deleted, 402 when
     the owner's storage is full. A convert job's files make its design's scene instead
     (features/ingest/conversions.py). A batch design's job moves its design on in the same
-    commit.
+    commit; then the design gets what its plan asks of a completed job (features/ingest/media.py).
     """
     job = running_job(db, job_id, token)
     checked = _checked_outputs(job, body.outputs)
@@ -232,4 +233,6 @@ def complete_job(db: Session, job_id: int, token: str, body: RenderJobCompleteRe
     end_item_of_job(db, job, "completed")
     db.commit()
     db.refresh(job)
+    if job.ingest_item_id is not None:
+        finish_design_render(db, job)
     return job

@@ -1,21 +1,11 @@
 "use client";
 
-import { Download, Loader2, RotateCcw, X } from "lucide-react";
+import { Loader2, RotateCcw, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { Badge } from "@/components/ui/badge";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { ChipField } from "@/components/ui/chip";
-import { Progress } from "@/components/ui/progress";
-import { formatStorageGb } from "@/lib/billing/format";
 import { cn } from "@/lib/utils";
-import {
-  JOB_STATUS_LABELS,
-  jobAge,
-  jobCreditsLabel,
-  jobStatusLabel,
-  jobSummary,
-  jobTitle,
-} from "../lib/render-job-labels";
+import { JOB_STATUS_LABELS, jobAge, jobCreditsLabel, jobSummary, jobTitle } from "../lib/render-job-labels";
 import { isJobFinished } from "../lib/render-job-polling";
 import { jobRetryRequest } from "../lib/render-job-requests";
 import {
@@ -23,10 +13,10 @@ import {
   createRenderJob,
   outputDownloadUrl,
   type RenderJob,
-  type RenderJobOutput,
   type RenderJobRequest,
   type RenderJobStatus,
 } from "../lib/render-jobs-api";
+import { RenderJobDownloads, RenderJobProgress, RenderJobStatusBadge } from "./RenderJobParts";
 import { useRenderJob } from "./useRenderJob";
 import { useRenderJobList } from "./useRenderJobList";
 
@@ -36,14 +26,6 @@ const STATUS_FILTERS: readonly { value: StatusFilter; label: string }[] = [
   { value: "all", label: "All" },
   ...(Object.entries(JOB_STATUS_LABELS) as [RenderJobStatus, string][]).map(([value, label]) => ({ value, label })),
 ];
-
-const STATUS_BADGES: Record<RenderJobStatus, "default" | "secondary" | "outline" | "destructive"> = {
-  queued: "outline",
-  running: "secondary",
-  completed: "default",
-  failed: "destructive",
-  canceled: "outline",
-};
 
 type ExportJobsPanelProps = {
   /** One scene's jobs; every job, with a status filter, when left out (the Exports page). */
@@ -205,12 +187,10 @@ function ExportJobRow({ initial, autoDownload = false, onRetried }: ExportJobRow
             {jobSummary(job)}
           </p>
         </div>
-        <Badge variant={STATUS_BADGES[job.status] ?? "outline"} className="shrink-0">
-          {jobStatusLabel(job)}
-        </Badge>
+        <RenderJobStatusBadge job={job} className="shrink-0" />
       </div>
 
-      {job.status === "running" ? <JobProgress progress={job.progress} /> : null}
+      {job.status === "running" ? <RenderJobProgress progress={job.progress} className="mt-3" /> : null}
       {job.status === "failed" ? (
         <p className="mt-2 text-xs text-destructive">{job.error ?? "The render failed."}</p>
       ) : null}
@@ -221,7 +201,7 @@ function ExportJobRow({ initial, autoDownload = false, onRetried }: ExportJobRow
       ) : null}
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        {job.status === "completed" ? <JobDownloads job={job} /> : null}
+        {job.status === "completed" ? <RenderJobDownloads job={job} /> : null}
         {cancelable ? (
           <Button variant="outline" size="sm" onClick={() => void cancel()} disabled={pending !== null}>
             <X aria-hidden />
@@ -238,32 +218,4 @@ function ExportJobRow({ initial, autoDownload = false, onRetried }: ExportJobRow
       </div>
     </li>
   );
-}
-
-function JobProgress({ progress }: { progress: number }) {
-  const percent = Math.round(progress * 100);
-  return (
-    <div className="mt-3 flex items-center gap-3">
-      <Progress value={percent} aria-label="Render progress" className="flex-1" />
-      <span className="text-[10.5px] tabular-nums text-muted-foreground">{percent}%</span>
-    </div>
-  );
-}
-
-/** "Download · 18 MB" for a job's one file; each file by its label when it made several. */
-function JobDownloads({ job }: { job: RenderJob }) {
-  const several = job.outputs.length > 1;
-  return job.outputs.map((output: RenderJobOutput, index) => (
-    <a
-      key={output.id}
-      href={outputDownloadUrl(job.id, output.id)}
-      download={output.filename ?? undefined}
-      title={output.filename ?? undefined}
-      className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
-    >
-      <Download aria-hidden />
-      {several ? (output.label ?? output.filename ?? `File ${index + 1}`) : "Download"}
-      <span className="font-normal text-muted-foreground">· {formatStorageGb(output.bytes)}</span>
-    </a>
-  ));
 }

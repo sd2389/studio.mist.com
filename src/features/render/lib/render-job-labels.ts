@@ -35,6 +35,11 @@ const OUTPUT_NOUNS: Record<string, readonly [one: string, several: string]> = {
   turntable: ["video", "videos"],
 };
 
+/** "Angle set", "Turntable": what a job of `kind` is called. */
+export function jobKindLabel(kind: string): string {
+  return JOB_KIND_LABELS[kind] ?? kind;
+}
+
 /** "1 credit", "4 credits". */
 export function creditsLabel(credits: number): string {
   return `${credits} ${credits === 1 ? "credit" : "credits"}`;
@@ -71,7 +76,7 @@ function specOutputs(spec: Record<string, unknown>): string[] {
 /** "solitaire-4K.png", or "solitaire-front.png + 3 more"; the kind for jobs that name no file. */
 export function jobTitle(job: LabelledJob): string {
   const [first, ...rest] = specOutputs(job.spec);
-  if (!first) return `${JOB_KIND_LABELS[job.kind] ?? job.kind} #${job.id}`;
+  if (!first) return `${jobKindLabel(job.kind)} #${job.id}`;
   return rest.length > 0 ? `${first} + ${rest.length} more` : first;
 }
 
@@ -82,7 +87,7 @@ export function jobSummary(job: LabelledJob): string {
   const files = specOutputs(job.spec).length;
   const format = typeof job.spec.format === "string" ? job.spec.format.toUpperCase() : null;
   return [
-    JOB_KIND_LABELS[job.kind] ?? job.kind,
+    jobKindLabel(job.kind),
     files > 1 ? `${files} files` : null,
     width && height ? `${width} × ${height}` : null,
     format && job.spec.transparent === true ? `${format} cutout` : format,

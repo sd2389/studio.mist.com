@@ -6,6 +6,10 @@ export { ScreenshotBridge } from "./ui/ScreenshotBridge";
 export { TransparentCaptureBridge } from "./ui/TransparentCaptureBridge";
 export { VideoCaptureBridge } from "./ui/VideoCaptureBridge";
 export { CampaignPackDialog, CampaignPackLauncher } from "./campaign-pack";
+/** The pack's pickers and option rows, which a bulk batch's render plan reuses for the same choices. */
+export { PackAnglePicker } from "./campaign-pack/ui/PackSubjectPickers";
+export { PackSection, ToggleRow } from "./campaign-pack/ui/pack-ui";
+export { PACK_STILL_SIZES, TURNTABLE_FORMAT_ORDER, TURNTABLE_FORMATS } from "./campaign-pack/domain/defaults";
 export { prepareCutoutScene, sceneHasStudioSet } from "./lib/stage-visibility";
 export { JpegQualityField } from "./ui/JpegQualityField";
 export { CaptureNotice } from "./ui/CaptureNotice";
@@ -54,7 +58,7 @@ export {
   type VideoQuality,
 } from "./lib/render-jobs-api";
 export { isJobFinished, pollRenderJob } from "./lib/render-job-polling";
-export { outputsLabel } from "./lib/render-job-labels";
+export { creditsLabel, jobKindLabel, outputsLabel } from "./lib/render-job-labels";
 export { useServerExports } from "./ui/useServerExports";
 export { ExportSceneProvider, useExportScene, type ExportScene } from "./ui/export-scene";
 export {
@@ -77,3 +81,4 @@ export { useStartedRenderJobs } from "./ui/useStartedRenderJobs";
 export { RenderJobCost, RenderJobError } from "./ui/RenderJobCost";
 export { RenderJobButton } from "./ui/RenderJobButton";
 export { ExportJobsPanel, StartedExportJobs } from "./ui/ExportJobsPanel";
+export { RenderJobDownloads, RenderJobProgress, RenderJobStatusBadge } from "./ui/RenderJobParts";

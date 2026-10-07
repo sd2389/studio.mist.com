@@ -351,7 +351,7 @@ function readLookItems(raw: unknown): SceneLook {
   return raw as SceneLook;
 }
 
-function readSink(raw: unknown): SinkAddress {
+export function readSink(raw: unknown): SinkAddress {
   if (!isObject(raw) || typeof raw.url !== "string" || typeof raw.token !== "string" || !raw.token) invalid("sink");
   return { url: raw.url, token: raw.token };
 }

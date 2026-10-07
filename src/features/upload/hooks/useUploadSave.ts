@@ -5,10 +5,11 @@ import { useCallback, useRef, useState } from "react";
 import { fetchMe } from "@/lib/auth/client";
 import { isAuthRequiredError } from "@/lib/auth/is-auth-required-error";
 import { viewerIdFromModelKey } from "@/lib/model-key";
-import { syncModelConfigFromLayers, type LayerRow } from "@/lib/upload/layer-state";
+import { convertParsedUpload } from "@/lib/upload/convert-upload";
+import type { LayerRow } from "@/lib/upload/layer-state";
 import { captureClientException, logClientEvent } from "@/lib/observability/sentry";
 import { persistUploadedModel } from "@/lib/upload/persist-model";
-import { overPolyLimitMessage, type ParsedUpload } from "@/features/upload/lib/parsed-upload";
+import { overPolyLimitMessage, type ParsedUpload } from "@/lib/upload/parsed-upload";
 import type { UploadMetadata } from "@/features/upload/ui/UploadMetadataForm";
 import type { PolygonCap } from "@/features/upload/hooks/usePolygonCap";
 
@@ -80,22 +81,15 @@ export function useUploadSave({
     logClientEvent("upload.save.start", { sku: trimmedSku, name: trimmedName });
 
     try {
-      const syncedConfig = syncModelConfigFromLayers(parsed.modelConfig, parsed.preloaded.root, layers);
+      const converted = await convertParsedUpload(parsed, layers);
+      if (converted.warnings.length > 0) logClientEvent("upload.save.warnings", { warnings: converted.warnings });
       setSaveProgress(35);
       setSaveMessage("Uploading model…");
-      const result = await persistUploadedModel({
-        file: parsed.file,
-        preloaded: parsed.preloaded,
-        modelConfig: syncedConfig,
-        slotSelections: parsed.slotSelections,
-        sceneSettings: parsed.sceneSettings,
-        polygonCount: parsed.polyCount,
-        metadata: {
-          name: trimmedName,
-          sku: trimmedSku,
-          category: metadata.category,
-          note: metadata.note.trim(),
-        },
+      const result = await persistUploadedModel(converted, {
+        name: trimmedName,
+        sku: trimmedSku,
+        category: metadata.category,
+        note: metadata.note.trim(),
       });
       setSaveProgress(100);
       setSaveMessage("Opening studio…");

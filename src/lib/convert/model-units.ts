@@ -7,7 +7,19 @@ import * as THREE from "three";
  * decision is recorded on `root.userData.devjewelsUnits` (exported to the GLB as extras).
  */
 
-export type ModelUnitsSource = "declared" | "detected" | "assumed";
+/**
+ * How the unit was decided: the file's own ("declared"), guessed from the piece's size
+ * ("detected"), millimetres taken as they are ("assumed"), or given with the file ("override").
+ */
+export type ModelUnitsSource = "declared" | "detected" | "assumed" | "override";
+
+/**
+ * A unit given with a file that declares none (OBJ, STL, PLY): a bulk upload's `units`
+ * (`Units` in backend/app/features/render_jobs/convert_spec.py, less "auto").
+ */
+export type SourceUnit = "mm" | "cm" | "in" | "m";
+
+export const MM_PER_SOURCE_UNIT: Record<SourceUnit, number> = { mm: 1, cm: 10, in: 25.4, m: 1000 };
 
 export type ModelUnits = {
   /** Millimetres per source-file unit. */
@@ -85,11 +97,20 @@ export function mmPerFbxUnit(unitScaleFactor: unknown): number | null {
   return typeof unitScaleFactor === "number" && unitScaleFactor > 0 ? unitScaleFactor * 10 : null;
 }
 
-/** Scale `root` so one world unit is a millimetre, and record what was decided. */
-export function normalizeModelUnits(root: THREE.Object3D, declaredMmPerUnit: number | null): ModelUnits {
+/**
+ * Scale `root` so one world unit is a millimetre, and record what was decided. A `unit` given
+ * with the file replaces the guess for a file that declares none; a file's own unit wins over it.
+ */
+export function normalizeModelUnits(
+  root: THREE.Object3D,
+  declaredMmPerUnit: number | null,
+  unit: SourceUnit | null = null,
+): ModelUnits {
   root.updateMatrixWorld(true);
   const size = new THREE.Box3().setFromObject(root).getSize(new THREE.Vector3());
-  const { mmPerUnit, source } = resolveMmPerUnit(Math.max(size.x, size.y, size.z), declaredMmPerUnit);
+  const { mmPerUnit, source } = unit && declaredMmPerUnit === null
+    ? { mmPerUnit: MM_PER_SOURCE_UNIT[unit], source: "override" as const }
+    : resolveMmPerUnit(Math.max(size.x, size.y, size.z), declaredMmPerUnit);
   root.scale.multiplyScalar(mmPerUnit);
   root.updateMatrixWorld(true);
   const units: ModelUnits = {

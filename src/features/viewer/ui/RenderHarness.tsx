@@ -27,8 +27,8 @@ function reportReady() {
 
 /**
  * Deterministic render target for golden-image benchmarks (the render harness with no `mode`).
- * Not linked from any UI. `?export=1` with a `.3dm` model instead converts it the way uploads
- * do and downloads the GLB, which is how the golden fixture is made.
+ * Not linked from any UI. A CAD `model` is converted for display first; the golden fixture
+ * itself is made by the convert mode (scripts/golden/export-fixture.mjs).
  */
 export function RenderHarness() {
   const params = useSearchParams();
@@ -38,7 +38,6 @@ export function RenderHarness() {
   const preset = (params.get("preset") ?? "gold-18k-yellow") as MaterialPresetId;
   const size = Number(params.get("size") ?? 512);
   const modelPath = params.get("model") ?? "/test-fixtures/PDR-2413.glb";
-  const exportMode = params.get("export") === "1";
   const isGlb = modelPath.endsWith(".glb") || modelPath.endsWith(".gltf");
 
   const [convertedUrl, setConvertedUrl] = useState<string | null>(null);
@@ -72,15 +71,6 @@ export function RenderHarness() {
       if (cancelled) return;
 
       objectUrl = URL.createObjectURL(converted.glb);
-      if (exportMode) {
-        const a = document.createElement("a");
-        a.href = objectUrl;
-        a.download = converted.glbFilename;
-        a.click();
-        window.__HARNESS_STATE__ = "exported";
-        return;
-      }
-
       setConvertedUrl(objectUrl);
     })().catch((e: unknown) => {
       if (!cancelled) window.__HARNESS_STATE__ = `error:${e instanceof Error ? e.message : String(e)}`;
@@ -89,7 +79,7 @@ export function RenderHarness() {
       cancelled = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [modelPath, isGlb, exportMode]);
+  }, [modelPath, isGlb]);
 
   // The canvas keeps the last frame, so a capture depends on neither load speed nor when the
   // screenshot is taken.

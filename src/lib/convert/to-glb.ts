@@ -7,7 +7,38 @@ import { generateModelThumbnail } from "./thumbnail";
 import { cloneOwnedModel } from "./clone-owned-model";
 import type { ConvertToGlbOptions, ConvertToGlbResult, LoadedModel, ModelLoadOptions } from "./types";
 
+/** Larger GLBs are stored as exported: compressing them in a tab takes too long and too much memory. */
 const COMPRESS_MAX_BYTES = 12 * 1024 * 1024;
+
+const reasonOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
+const megabytes = (bytes: number) => `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+
+/** The thumbnail, or null and a warning: a model saves without one rather than not at all. */
+async function renderThumbnail(root: THREE.Object3D, warnings: string[]): Promise<Blob | null> {
+  try {
+    return await generateModelThumbnail(root);
+  } catch (error) {
+    console.warn("[convert] thumbnail failed, saving without one:", error);
+    warnings.push(`The thumbnail could not be rendered (${reasonOf(error)}), so the piece has none.`);
+    return null;
+  }
+}
+
+/** meshopt and Draco in the browser; the GLB as exported, and a warning, when that can't be done. */
+async function compressInBrowser(glb: ArrayBuffer, warnings: string[]): Promise<ArrayBuffer> {
+  if (glb.byteLength > COMPRESS_MAX_BYTES) {
+    warnings.push(`The GLB is ${megabytes(glb.byteLength)}, more than the ${megabytes(COMPRESS_MAX_BYTES)} compressed in the browser, so it is stored uncompressed.`);
+    return glb;
+  }
+  try {
+    const { compressGlbBuffer } = await import("./compress-glb.client");
+    return await compressGlbBuffer(glb);
+  } catch (err) {
+    console.warn("[convert] compression failed, using uncompressed GLB:", err);
+    warnings.push(`The GLB could not be compressed (${reasonOf(err)}), so it is stored uncompressed.`);
+    return glb;
+  }
+}
 
 function exportSceneToGlb(root: THREE.Object3D): Promise<ArrayBuffer> {
   const exporter = new GLTFExporter();
@@ -66,7 +97,8 @@ export async function convertUploadToGlb(
     materialProps: modelConfig?.materialProps,
   });
 
-  const thumbnail = generateThumbnail ? await generateModelThumbnail(loaded.root) : null;
+  const warnings: string[] = [];
+  const thumbnail = generateThumbnail ? await renderThumbnail(loaded.root, warnings) : null;
 
   const exportRoot = cloneOwnedModel(loaded.root);
   stampSlotMetadata(exportRoot, { slotTokens, materialProps });
@@ -79,18 +111,8 @@ export async function convertUploadToGlb(
     disposeObject3D(exportRoot);
   }
 
-  if (
-    compress &&
-    typeof window !== "undefined" &&
-    glbBuffer.byteLength <= COMPRESS_MAX_BYTES
-  ) {
-    try {
-      const { compressGlbBuffer } = await import("./compress-glb.client");
-      glbBuffer = await compressGlbBuffer(glbBuffer);
-    } catch (err) {
-      console.warn("[convert] compression failed, using uncompressed GLB:", err);
-    }
-  }
+  // Compression only runs in a browser, where the upload page and the render worker convert.
+  if (compress && typeof window !== "undefined") glbBuffer = await compressInBrowser(glbBuffer, warnings);
 
   const glb = new Blob([glbBuffer], { type: "model/gltf-binary" });
 
@@ -100,6 +122,7 @@ export async function convertUploadToGlb(
     thumbnail,
     slotTokens,
     materialProps,
+    warnings,
   };
 }
 

@@ -50,6 +50,16 @@ export function buildLayerRows(
   });
 }
 
+/** The layer rows of a model as its config names them: what the upload page lists for review. */
+export function layerRowsOf(root: THREE.Object3D, modelConfig: PersistedModelConfig): LayerRow[] {
+  return buildLayerRows(
+    root,
+    modelConfig.slotTokens ?? {},
+    modelConfig.slotRenames ?? {},
+    modelConfig.materialProps ?? {},
+  );
+}
+
 export function rebuildSlotTokens(
   root: THREE.Object3D,
   slotRenames: Record<string, string>,

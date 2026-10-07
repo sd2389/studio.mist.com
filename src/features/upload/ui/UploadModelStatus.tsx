@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import type { ModelLoadStatus } from "@/lib/convert/types";
 import { formatPolyCount } from "@/lib/upload/polygon-limits";
-import { formatModelSizeMm, type ParsedUpload } from "@/features/upload/lib/parsed-upload";
+import { formatModelSizeMm, type ParsedUpload } from "@/lib/upload/parsed-upload";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { BuyCreditsLink, outOfCredits } from "@/features/billing/ui/BuyCreditsLink";

@@ -46,6 +46,17 @@ describe("the asset cache", () => {
     expect(await readdir(dir)).toEqual([]);
   });
 
+  it("answers a vendored file from where it is, and never fetches it", async () => {
+    const url = "https://cdn.jsdelivr.net/npm/occt-import-js@0.0.23/dist/occt-import-js.wasm";
+    const vendor = { files: new Map([[url, { path: "/app/vendor/abc", contentType: "application/wasm", bytes: 7 }]]) };
+    const cache = createAssetCache({ dir, fetch: fakeFetch(), vendor });
+
+    expect([...cache.vendored]).toEqual([url]);
+    expect(await cache.get(url)).toEqual({ path: "/app/vendor/abc", contentType: "application/wasm", bytes: 7, cached: true });
+    expect(fetched).toEqual([]);
+    expect(await readdir(dir)).toEqual([]);
+  });
+
   it("drops the least recently used files past its size", async () => {
     const cache = createAssetCache({ dir, maxBytes: 25, fetch: fakeFetch(10) });
     const old = await cache.get("https://assets.example.com/a.hdr");

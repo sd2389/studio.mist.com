@@ -1,8 +1,10 @@
 # The render worker (ADR 0005, "Image and compose"): the worker build of the app, which has the
 # render harness, served on 127.0.0.1 inside the container; Chrome for Testing through Playwright;
-# ffmpeg for videos (B3). Build it for linux/amd64 (Compose does): Playwright's Chrome for Testing
-# has no arm64 Linux build. `docker compose --profile worker-gpu up` (NVIDIA) or
-# `--profile worker-cpu up` (SwiftShader) runs it; see scripts/render-worker/README.md.
+# ffmpeg for videos (B3); the converters' vendored files for bulk uploads' conversions (ADR 0006).
+# Build it for linux/amd64 (Compose does): Playwright's Chrome for Testing has no arm64 Linux
+# build. `docker compose --profile worker-gpu up` (NVIDIA), `--profile worker-cpu up` (SwiftShader)
+# or `--profile worker-convert up` (the CPU pool, conversions only) runs it; see
+# scripts/render-worker/README.md.
 ARG NODE_IMAGE=node:22-bookworm-slim
 
 # ---------- the worker build of the app ----------
@@ -17,6 +19,10 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 # As CI installs them: from the lockfile, with no install scripts.
 RUN npm ci --ignore-scripts --no-audit --no-fund
+# The converters' WASM and glue that conversions load (rhino3dm, occt-import-js, Draco's decoder):
+# fetched from their CDNs here, once, and refused unless each is the file vendor.mjs pins by hash.
+COPY scripts/render-worker/vendor.mjs ./scripts/render-worker/vendor.mjs
+RUN node scripts/render-worker/vendor.mjs /app/vendor
 COPY . .
 RUN BUILD_TARGET=worker npm run build
 
@@ -27,6 +33,7 @@ ENV NODE_ENV=production \
     PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
     WORKER_APP_DIR=/app \
     WORKER_CACHE_DIR=/var/cache/render-worker \
+    WORKER_VENDOR_DIR=/app/vendor \
     XDG_CACHE_HOME=/tmp/.cache
 # ffmpeg encodes videos (B3); the Free mark asks for "Helvetica Neue", Helvetica, Arial, and
 # Liberation Sans is the Arial match; libvulkan1 is the Vulkan loader the NVIDIA driver plugs into.
@@ -48,5 +55,7 @@ COPY --from=builder /app/node_modules/fflate ./node_modules/fflate
 RUN node node_modules/playwright/cli.js install --with-deps --no-shell chromium \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app/scripts/render-worker ./scripts/render-worker
+# Root's, in the read-only root file system: no job can change what the next one's page runs.
+COPY --from=builder /app/vendor ./vendor
 USER node
 CMD ["node", "scripts/render-worker/worker.mjs"]

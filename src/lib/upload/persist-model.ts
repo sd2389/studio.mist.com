@@ -1,23 +1,11 @@
-import type { PersistedModelConfig, SceneSettingsBuckets } from "@/lib/slot-materials/model-config";
-import { convertUploadToGlb } from "@/lib/convert/to-glb";
-import type { LoadedModel } from "@/lib/convert/types";
 import { isSupportedModelFilename } from "@/lib/model-key";
+import type { ConvertedUpload } from "@/lib/upload/convert-upload";
 
 export type PersistModelMetadata = {
   name: string;
   sku: string;
   category: string;
   note: string;
-};
-
-export type PersistModelInput = {
-  file: File;
-  preloaded: LoadedModel;
-  modelConfig: PersistedModelConfig;
-  slotSelections: Record<string, string>;
-  sceneSettings: SceneSettingsBuckets;
-  metadata: PersistModelMetadata;
-  polygonCount: number;
 };
 
 export type PersistModelResult = {
@@ -65,20 +53,12 @@ async function presignAndPut(
   return p;
 }
 
-export async function persistUploadedModel(input: PersistModelInput): Promise<PersistModelResult> {
-  const { file, preloaded, modelConfig, slotSelections, sceneSettings, metadata } = input;
-  const polygonCount = Math.max(0, Math.round(input.polygonCount));
-
-  const converted = await convertUploadToGlb(file, {
-    modelConfig,
-    preloaded,
-  });
-
-  const mergedConfig = {
-    ...modelConfig,
-    slotTokens: converted.slotTokens,
-    materialProps: converted.materialProps,
-  };
+/**
+ * Stores what Save converted (`convertParsedUpload`) as a new scene: the GLB and thumbnail through
+ * presigned PUTs and register, or one multipart upload when presigning fails.
+ */
+export async function persistUploadedModel(converted: ConvertedUpload, metadata: PersistModelMetadata): Promise<PersistModelResult> {
+  const { modelConfig: mergedConfig, slotSelections, sceneSettings, polygonCount } = converted;
 
   try {
     const modelPut = await presignAndPut(

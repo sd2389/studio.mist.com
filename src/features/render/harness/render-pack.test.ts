@@ -94,6 +94,7 @@ function recordingSink(refuse: (name: string) => boolean = () => false): SinkCli
   return {
     calls,
     fetchModel: async () => new Blob(),
+    fetchInput: async () => new Blob(),
     async postFile(name, file) {
       if (refuse(name)) throw new Error(`sink POST /files/${encodeURIComponent(name)}: 413`);
       calls.push({ posted: "file", name, type: file.type, body: await file.text() });

@@ -56,6 +56,7 @@ function recordingSink(): SinkClient & { calls: SinkCall[] } {
   return {
     calls,
     fetchModel: async () => new Blob(),
+    fetchInput: async () => new Blob(),
     postFile: async (name, file) => void calls.push({ posted: "file", name, file }),
     postFrame: async (index, pixels) => void calls.push({ posted: "frame", index, bytes: pixels.length, value: pixels[0]! }),
     startVideo: async () => {

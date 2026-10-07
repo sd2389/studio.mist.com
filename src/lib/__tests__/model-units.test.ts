@@ -69,6 +69,31 @@ describe("normalizeModelUnits", () => {
     expect(root.userData.devjewelsUnits).toEqual(units);
   });
 
+  it("takes the unit a file comes with when the file declares none, and keeps a declared one", () => {
+    const ring = () => new THREE.Group().add(new THREE.Mesh(new THREE.BoxGeometry(2.1, 2.1, 0.6)));
+    // 2.1 units reads as a 2.1 mm "ring" by its size alone.
+    expect(normalizeModelUnits(ring(), null)).toMatchObject({ mmPerUnit: 1, source: "assumed" });
+    const inCentimetres = ring();
+    const units = normalizeModelUnits(inCentimetres, null, "cm");
+    expect(units).toMatchObject({ mmPerUnit: 10, source: "override" });
+    expect(units.sizeMm[0]).toBeCloseTo(21, 5);
+    expect(inCentimetres.scale.x).toBeCloseTo(10, 5);
+    expect(normalizeModelUnits(ring(), null, "in").mmPerUnit).toBe(25.4);
+    // A file's own unit wins over the one it came with.
+    expect(normalizeModelUnits(ring(), 1, "cm")).toMatchObject({ mmPerUnit: 1, source: "declared" });
+  });
+
+  it("sizes an STL in centimetres right only with its unit", async () => {
+    const soup = buildRingFixture(4, 0).soup.clone().scale(0.1, 0.1, 0.1);
+    const file = () => new File([toBinaryStl(soup)], "ring-in-cm.stl");
+    const guessed = await loadModelFromFile(file());
+    expect(guessed.units?.source).toBe("assumed");
+    expect(guessed.units?.sizeMm[0]).toBeCloseTo(2.02, 2);
+    const given = await loadModelFromFile(file(), { unit: "cm" });
+    expect(given.units).toMatchObject({ mmPerUnit: 10, source: "override" });
+    expect(given.units?.sizeMm[0]).toBeCloseTo(20.2, 1);
+  });
+
   it("normalises an STL ring exported in metres end to end", async () => {
     const soup = buildRingFixture(4, 0).soup.clone().scale(0.001, 0.001, 0.001);
     const file = new File([toBinaryStl(soup)], "ring-in-metres.stl");

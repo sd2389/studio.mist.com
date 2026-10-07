@@ -3,6 +3,16 @@
  * browser and keeps the uncompressed GLB, with a warning, if it throws.
  */
 
+/**
+ * Where Draco's Emscripten builds find their WASM. They look next to the script that loaded them,
+ * where the app serves nothing, so in the browser the decoder failed to load, compression threw
+ * and every upload went out uncompressed. webpack emits both files with the app's static assets;
+ * in Node (the tests) the builds find them beside themselves.
+ */
+function dracoWasm(url: () => URL): { locateFile?: () => string } {
+  return typeof window === "undefined" ? {} : { locateFile: () => url().href };
+}
+
 export async function compressGlbBuffer(glb: ArrayBuffer): Promise<ArrayBuffer> {
   const [
     { WebIO },
@@ -25,8 +35,12 @@ export async function compressGlbBuffer(glb: ArrayBuffer): Promise<ArrayBuffer> 
   const io = new WebIO()
     .registerExtensions([KHRDracoMeshCompression, EXTMeshoptCompression])
     .registerDependencies({
-      "draco3d.decoder": await draco3d.createDecoderModule(),
-      "draco3d.encoder": await draco3d.createEncoderModule(),
+      "draco3d.decoder": await draco3d.createDecoderModule(
+        dracoWasm(() => new URL("draco3dgltf/draco_decoder_gltf.wasm", import.meta.url)),
+      ),
+      "draco3d.encoder": await draco3d.createEncoderModule(
+        dracoWasm(() => new URL("draco3dgltf/draco_encoder.wasm", import.meta.url)),
+      ),
       "meshopt.decoder": MeshoptDecoder,
       "meshopt.encoder": MeshoptEncoder,
     });

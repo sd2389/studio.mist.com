@@ -1,7 +1,7 @@
 """look templates: a customer's saved looks by slot role, for bulk uploads
 
 Revision ID: 7c70876cdcf2
-Revises: 09b522567b3b
+Revises: 351e0e870d0a
 Create Date: 2026-10-06 22:00:00.000000
 
 A look template names materials by slot role (metal, gem, accent), with the lighting, finish and
@@ -17,7 +17,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = '7c70876cdcf2'
-down_revision: Union[str, Sequence[str], None] = '09b522567b3b'
+down_revision: Union[str, Sequence[str], None] = '351e0e870d0a'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

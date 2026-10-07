@@ -21,6 +21,8 @@ export function useApiKeys(initial: ApiKeyList) {
 
   /** Makes a key and reveals its secret; false when the API refused. */
   async function create(body: NewApiKey): Promise<boolean> {
+    // The secret showing is its key's only copy: it is put away before another key is made.
+    if (revealed) return false;
     setCreating(true);
     setError(null);
     try {

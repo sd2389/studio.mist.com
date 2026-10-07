@@ -123,6 +123,12 @@ describe("ApiKeysSection", () => {
     expect(keysState.dismissRevealed).toHaveBeenCalled();
   });
 
+  it("makes no other key while a secret shows, so the secret isn't lost before it is saved", () => {
+    keysState = keysOf({ revealed: CREATED });
+    section();
+    expect(drawnButtons.map((button) => button.text)).not.toContain("Create key");
+  });
+
   it("puts the secret away for good once it is done with", () => {
     expect(section()).not.toContain(SECRET);
     expect(drawnButtons.map((button) => button.text)).not.toContain("Copy key");

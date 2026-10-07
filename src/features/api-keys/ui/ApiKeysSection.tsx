@@ -47,8 +47,10 @@ export function ApiKeysSection({ initial, canCreate }: ApiKeysSectionProps) {
             {keys.error}
           </p>
         ) : null}
-        {keys.revealed ? <NewApiKeyReveal created={keys.revealed} onDone={keys.dismissRevealed} /> : null}
-        {canCreate ? (
+        {/* While a secret shows, no other key can be made: a new one would replace it, its only copy. */}
+        {keys.revealed ? (
+          <NewApiKeyReveal created={keys.revealed} onDone={keys.dismissRevealed} />
+        ) : canCreate ? (
           <NewApiKeyForm
             form={form}
             atLimit={active >= keys.maxActive}

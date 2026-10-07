@@ -120,6 +120,25 @@ function coerceByRole(slot: string, preset: SlotMaterialRef): SlotMaterialRef {
   return preset;
 }
 
+/**
+ * Whether the studio's pickers offer a slot gems rather than metals. A slot named for a stone
+ * takes gems and one named for metal takes metals, as `coerceByRole` holds them. A slot of no
+ * known part keeps either, so it takes gems when the role its conversion stored in the model
+ * config, or the material it holds, is a stone: a "Pave" layer's diamond is swapped for a gem.
+ */
+export function isGemPickerSlot(
+  slot: string,
+  modelConfig: PersistedModelConfig | undefined,
+  selections: SlotSelectionMap,
+): boolean {
+  if (isGemSlot(slot)) return true;
+  if (isMetalSlot(slot)) return false;
+  const role = modelConfig?.slots.find((config) => config.slotId === slot)?.role;
+  if (role === "gem" || role === "accent") return true;
+  const selected = selections[slot];
+  return selected !== undefined && selectionKind(selected) === "gem";
+}
+
 export function sanitizeSlotSelections(
   selections: SlotSelectionMap,
   modelConfig?: PersistedModelConfig,

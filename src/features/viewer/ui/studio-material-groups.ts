@@ -1,7 +1,9 @@
 import { Camera, Moon, Sparkles, Sun, SunDim, type LucideIcon } from "lucide-react";
 import { fancyDiamondLabel, parseFancyDiamondId } from "@/lib/gem-gpu/fancy-diamonds";
+import { isGemPresetId } from "@/lib/gem-gpu/gem-configs";
 import type { SlotMaterialRef } from "@/lib/library/custom-material-ref";
-import type { SceneSettingBucketKey } from "@/lib/slot-materials/model-config";
+import { isGemPickerSlot, type SlotSelectionMap } from "@/lib/slot-materials/material-rules";
+import type { PersistedModelConfig, SceneSettingBucketKey } from "@/lib/slot-materials/model-config";
 import {
   mapSourceGemToPreset,
   mapSourceMetalToPreset,
@@ -146,8 +148,20 @@ export function groupOf(id: MaterialPresetId): string {
   return ALL_ENTRIES.find((x) => x.entry.id === id)?.groupTitle ?? "";
 }
 
-export function slotKind(slot: SlotId): "metal" | "gem" {
-  return slot.startsWith("Gem") || slot.startsWith("Accent") ? "gem" : "metal";
+/** The picker a slot's materials come from, gems or metals, as `isGemPickerSlot` decides. */
+export function slotKind(
+  slot: SlotId,
+  modelConfig: PersistedModelConfig | undefined,
+  selections: SlotSelectionMap,
+): "metal" | "gem" {
+  return isGemPickerSlot(slot, modelConfig, selections) ? "gem" : "metal";
+}
+
+/** The groups' presets of one kind, gems or metals; a group with none of them is left out. */
+export function filterGroupsByKind(groups: MaterialGroup[], kind: "metal" | "gem"): MaterialGroup[] {
+  return groups
+    .map((group) => ({ ...group, items: group.items.filter((item) => isGemPresetId(item.id) === (kind === "gem")) }))
+    .filter((group) => group.items.length > 0);
 }
 
 export function isGenericGemToken(token: string): boolean {
@@ -172,6 +186,6 @@ export function buildSlotBadge(slot: string, groupedCount: number): string {
   return groupedCount > 1 ? `#${number} × ${groupedCount}` : `#${number}`;
 }
 
-export function mapCatalogItemToPreset(item: SourceCatalogItem, slot: SlotId): MaterialPresetId {
-  return slotKind(slot) === "gem" ? mapSourceGemToPreset(item) : mapSourceMetalToPreset(item);
+export function mapCatalogItemToPreset(item: SourceCatalogItem, kind: "metal" | "gem"): MaterialPresetId {
+  return kind === "gem" ? mapSourceGemToPreset(item) : mapSourceMetalToPreset(item);
 }

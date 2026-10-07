@@ -1,4 +1,5 @@
 import type { SlotMaterialRef } from "@/lib/library/custom-material-ref";
+import type { SlotSelectionMap } from "@/lib/slot-materials/material-rules";
 import { isCustomMaterialRef, parseCustomMaterialId } from "@/lib/library/custom-material-ref";
 import { getPresetSwatchColor, isTransmissive } from "@/lib/material-swatch";
 import { userMaterialPreviewColor } from "@/features/editor/ui/UserMaterialGrid";
@@ -59,9 +60,12 @@ export function buildSlotAliasMap(
   return logicalMap;
 }
 
+/** The slots the metal picker or the gem picker lists. */
 export function filterSlotsByKind(
   slotIds: string[],
   kind: "metal" | "gem",
+  modelConfig: PersistedModelConfig,
+  selections: SlotSelectionMap,
 ): SlotId[] {
-  return slotIds.filter((slot) => slotKind(slot) === kind);
+  return slotIds.filter((slot) => slotKind(slot, modelConfig, selections) === kind);
 }

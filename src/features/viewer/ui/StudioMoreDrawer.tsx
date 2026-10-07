@@ -16,9 +16,9 @@ import {
 } from "@/lib/source-catalog";
 import { useMaterialPresetStore } from "@/stores/material-preset-store";
 import {
+  filterGroupsByKind,
   MATERIAL_GROUPS,
   SCENE_BUCKET_ORDER,
-  slotKind,
   type SlotId,
 } from "@/features/viewer/ui/studio-material-groups";
 import { resolveSelectionSwatchColor } from "@/features/viewer/ui/studio-selection-utils";
@@ -54,6 +54,7 @@ export function StudioMoreDrawer({
     slotAliasMap,
     slotIds,
     resolvedActiveSlot,
+    activeSlotKind,
     activePhysicalSlots,
     safeSlotSelections,
     selectedPresetForActiveSlot,
@@ -85,28 +86,33 @@ export function StudioMoreDrawer({
   }, []);
 
   const trimmedQuery = query.trim().toLowerCase();
+  // Before or without the catalogue: the built-in presets of the active slot's kind.
   const filteredGroups = useMemo(() => {
-    if (!trimmedQuery) return MATERIAL_GROUPS;
-    return MATERIAL_GROUPS.map((g) => ({
+    const groups = filterGroupsByKind(MATERIAL_GROUPS, activeSlotKind);
+    if (!trimmedQuery) return groups;
+    return groups.map((g) => ({
       ...g,
       items: g.items.filter((it) => it.label.toLowerCase().includes(trimmedQuery)),
     })).filter((g) => g.items.length > 0);
-  }, [trimmedQuery]);
+  }, [trimmedQuery, activeSlotKind]);
 
   const slotCatalogItems = useMemo(() => {
     if (!catalog) return [] as SourceCatalogItem[];
-    const source = slotKind(resolvedActiveSlot) === "gem" ? catalog.gems : catalog.metals;
+    const source = activeSlotKind === "gem" ? catalog.gems : catalog.metals;
     if (!trimmedQuery) return source;
     return source.filter((item) => item.name.toLowerCase().includes(trimmedQuery));
-  }, [catalog, resolvedActiveSlot, trimmedQuery]);
+  }, [catalog, activeSlotKind, trimmedQuery]);
 
+  // The slot's stored options of its picker's kind: a Pave layer's are metals, and it may hold a stone.
   const slotOptionOverrides = useMemo(() => {
     for (const slot of activePhysicalSlots) {
-      const options = modelConfig.materialOptionsBySlot[slot];
+      const options = modelConfig.materialOptionsBySlot[slot]?.filter(
+        (option) => isGemPresetId(option.id) === (activeSlotKind === "gem"),
+      );
       if (options?.length) return options;
     }
     return [];
-  }, [modelConfig.materialOptionsBySlot, activePhysicalSlots]);
+  }, [modelConfig.materialOptionsBySlot, activePhysicalSlots, activeSlotKind]);
 
   const envOptions = useMemo<Record<SceneSettingBucketKey, SourceCatalogItem[]>>(() => {
     if (!catalog?.scenes) {
@@ -148,6 +154,7 @@ export function StudioMoreDrawer({
         resolvedActiveSlot={resolvedActiveSlot}
         onActiveSlotChange={onActiveSlotChange}
         safeSlotSelections={safeSlotSelections}
+        modelConfig={modelConfig}
         catalog={catalog}
         catalogError={catalogError}
         finishApplies={finishApplies}
@@ -159,6 +166,7 @@ export function StudioMoreDrawer({
       <MoreCatalogGrid
         query={query}
         resolvedActiveSlot={resolvedActiveSlot}
+        activeSlotKind={activeSlotKind}
         activePhysicalSlots={activePhysicalSlots}
         safeSlotSelections={safeSlotSelections}
         preset={preset}

@@ -11,13 +11,14 @@ import type { MaterialPresetId } from "@/stores/material-preset-store";
 import {
   mapCatalogItemToPreset,
   prettyName,
-  slotKind,
   type MaterialGroup,
 } from "@/features/viewer/ui/studio-material-groups";
 
 export type MoreCatalogGridProps = {
   query: string;
   resolvedActiveSlot: string;
+  /** The picker the active slot's materials come from. */
+  activeSlotKind: "metal" | "gem";
   activePhysicalSlots: string[];
   safeSlotSelections: SlotSelectionMap;
   preset: MaterialPresetId;
@@ -33,6 +34,7 @@ export type MoreCatalogGridProps = {
 export function MoreCatalogGrid({
   query,
   resolvedActiveSlot,
+  activeSlotKind,
   activePhysicalSlots,
   safeSlotSelections,
   preset,
@@ -44,6 +46,14 @@ export function MoreCatalogGrid({
   onApplyPreset,
   onSetGlobalPreset,
 }: MoreCatalogGridProps) {
+  const isSlotTargeted = activePhysicalSlots.length > 0;
+  /** Whether every targeted slot has the material. */
+  const isOnActiveSlots = (id: MaterialPresetId) =>
+    isSlotTargeted &&
+    activePhysicalSlots.every(
+      (slot) => resolvePresetForSlot(slot, safeSlotSelections, preset, modelConfig.slotTokens) === id,
+    );
+
   if (slotOptionOverrides.length > 0) {
     return (
       <section>
@@ -65,14 +75,8 @@ export function MoreCatalogGrid({
           <div className="grid grid-cols-2 gap-1.5">
             {slotOptionOverrides.map((option) => {
               const swatchColor = getPresetSwatchColor(option.id);
-              const selected =
-                activePhysicalSlots.length > 0 &&
-                activePhysicalSlots.every(
-                  (slot) =>
-                    resolvePresetForSlot(slot, safeSlotSelections, preset, modelConfig.slotTokens) ===
-                    option.id,
-                );
-              const diamond = slotKind(resolvedActiveSlot) === "gem";
+              const selected = isOnActiveSlots(option.id);
+              const diamond = activeSlotKind === "gem";
               return (
                 <button
                   key={option.id}
@@ -134,16 +138,10 @@ export function MoreCatalogGrid({
           </div>
           <div className="grid grid-cols-2 gap-1.5">
             {slotCatalogItems.map((item) => {
-              const mappedPreset = mapCatalogItemToPreset(item, resolvedActiveSlot);
+              const mappedPreset = mapCatalogItemToPreset(item, activeSlotKind);
               const swatchColor = getPresetSwatchColor(mappedPreset);
-              const selected =
-                activePhysicalSlots.length > 0 &&
-                activePhysicalSlots.every(
-                  (slot) =>
-                    resolvePresetForSlot(slot, safeSlotSelections, preset, modelConfig.slotTokens) ===
-                    mappedPreset,
-                );
-              const diamond = slotKind(resolvedActiveSlot) === "gem";
+              const selected = isOnActiveSlots(mappedPreset);
+              const diamond = activeSlotKind === "gem";
               return (
                 <button
                   key={item._id}
@@ -213,8 +211,8 @@ export function MoreCatalogGrid({
                   key={item.id}
                   id={item.id}
                   label={item.label}
-                  selected={preset === item.id}
-                  onClick={() => onSetGlobalPreset(item.id)}
+                  selected={isSlotTargeted ? isOnActiveSlots(item.id) : preset === item.id}
+                  onClick={() => (isSlotTargeted ? onApplyPreset(item.id) : onSetGlobalPreset(item.id))}
                 />
               ))}
             </div>

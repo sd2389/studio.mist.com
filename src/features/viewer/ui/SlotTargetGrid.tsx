@@ -2,6 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import type { SlotSelectionMap } from "@/lib/slot-materials/material-rules";
+import type { PersistedModelConfig } from "@/lib/slot-materials/model-config";
 import {
   resolveGroupedPreset,
   slotKind,
@@ -17,6 +18,7 @@ type SlotTargetGridProps = {
   slotAliasMap: Record<string, string[]>;
   resolvedActiveSlot: string;
   safeSlotSelections: SlotSelectionMap;
+  modelConfig: PersistedModelConfig;
   onActiveSlotChange: (slot: SlotId) => void;
   className?: string;
 };
@@ -26,6 +28,7 @@ export function SlotTargetGrid({
   slotAliasMap,
   resolvedActiveSlot,
   safeSlotSelections,
+  modelConfig,
   onActiveSlotChange,
   className,
 }: SlotTargetGridProps) {
@@ -37,7 +40,7 @@ export function SlotTargetGrid({
         const selectedPreset = resolveGroupedPreset(logicalSlots, safeSlotSelections);
         const isSelectedGem = selectedPreset
           ? resolveSelectionIsGem(selectedPreset)
-          : slotKind(slot) === "gem";
+          : slotKind(slot, modelConfig, safeSlotSelections) === "gem";
         const swatchColor = selectedPreset
           ? resolveSelectionSwatchColor(selectedPreset)
           : "#6b7280";

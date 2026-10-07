@@ -16,7 +16,7 @@ function dracoWasm(url: () => URL): { locateFile?: () => string } {
 export async function compressGlbBuffer(glb: ArrayBuffer): Promise<ArrayBuffer> {
   const [
     { WebIO },
-    { KHRDracoMeshCompression, EXTMeshoptCompression },
+    { KHRDracoMeshCompression, EXTMeshoptCompression, KHRMeshQuantization },
     { draco, meshopt },
     { MeshoptDecoder, MeshoptEncoder },
     draco3d,
@@ -31,9 +31,12 @@ export async function compressGlbBuffer(glb: ArrayBuffer): Promise<ArrayBuffer> 
   await Promise.all([MeshoptEncoder.ready, MeshoptDecoder.ready]);
 
   // Every codec the two extensions use. Without "meshopt.encoder", writing the meshopt
-  // buffers throws, and every upload went out uncompressed.
+  // buffers throws, and every upload went out uncompressed. KHR_mesh_quantization has no codec:
+  // meshopt() adds it to the document when it quantizes an attribute, and the writer leaves out
+  // (with only a console warning) any extension the IO doesn't register, so the 16-bit positions
+  // and normals went out undeclared.
   const io = new WebIO()
-    .registerExtensions([KHRDracoMeshCompression, EXTMeshoptCompression])
+    .registerExtensions([KHRDracoMeshCompression, EXTMeshoptCompression, KHRMeshQuantization])
     .registerDependencies({
       "draco3d.decoder": await draco3d.createDecoderModule(
         dracoWasm(() => new URL("draco3dgltf/draco_decoder_gltf.wasm", import.meta.url)),

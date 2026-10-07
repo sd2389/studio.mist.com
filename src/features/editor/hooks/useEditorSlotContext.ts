@@ -7,7 +7,7 @@ import {
   type SlotMaterialRef,
 } from "@/lib/library/custom-material-ref";
 import {
-  isGemSlot,
+  isGemPickerSlot,
   resolvePresetForSlot,
   sanitizeSlotSelections,
 } from "@/lib/slot-materials/material-rules";
@@ -108,7 +108,9 @@ export function useEditorSlotContext({ activeSlot, modelConfig }: UseEditorSlotC
     safeSlotSelections,
   ]);
 
-  const activeSlotIsGem = resolvedActiveSlot ? isGemSlot(resolvedActiveSlot) : false;
+  const activeSlotIsGem = resolvedActiveSlot
+    ? isGemPickerSlot(resolvedActiveSlot, modelConfig, safeSlotSelections)
+    : false;
   const activeSlotIsMetal = resolvedActiveSlot ? !activeSlotIsGem : false;
 
   const applyPresetToActiveSlots = (nextPreset: SlotMaterialRef, finish?: FinishId) => {

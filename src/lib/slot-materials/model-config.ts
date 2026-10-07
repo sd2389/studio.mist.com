@@ -11,7 +11,10 @@ export type RenderQualityMode = "standard" | "photometric";
 
 export type SlotKind = "metal" | "gem" | "accent" | "default";
 
-/** What a slot is, which bulk uploads' look templates go by (ADR 0006); the studio goes by `kind`. */
+/**
+ * What a slot is, which bulk uploads' look templates go by (ADR 0006). The studio goes by `kind`,
+ * and by the role only for a slot of kind `default`, to pick its materials (`isGemPickerSlot`).
+ */
 export type SlotRole = "metal" | "gem" | "accent";
 
 export type SlotMaterialOption = {

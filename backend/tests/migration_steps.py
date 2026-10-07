@@ -18,7 +18,7 @@ import app.config
 from app.models import Base
 
 ALEMBIC_DIR = Path(__file__).resolve().parent.parent / "alembic"
-TABLES = ("render_jobs", "renders", "ingest_batches", "ingest_items")
+TABLES = ("render_jobs", "renders", "ingest_batches", "ingest_items", "look_templates")
 
 
 def point_alembic_at(url: str, monkeypatch) -> None:

@@ -7,6 +7,7 @@ from app.models.catalog import (
     CatalogScenePreset,
 )
 from app.models.ingest import IngestBatch, IngestItem
+from app.models.look_template import LookTemplate
 from app.models.project import Project
 from app.models.rate_limit import RateLimitCounter
 from app.models.render import Render
@@ -43,4 +44,5 @@ __all__ = [
     "RateLimitCounter",
     "IngestBatch",
     "IngestItem",
+    "LookTemplate",
 ]

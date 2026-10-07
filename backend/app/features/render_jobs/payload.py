@@ -22,11 +22,14 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.core import storage
 from app.core.model_keys import viewer_id_from_model_key
+from app.features.ingest.archive import archive_input_key, archive_payload
+from app.features.render_jobs.archive_spec import ARCHIVE_KIND
 from app.features.render_jobs.job_files import longest_edge
 from app.features.render_jobs.worker import discard_outputs, end_attempt, max_runtime_seconds, running_job
 from app.features.scene.look import background_image_key, scene_look
 from app.models import RenderJob, Scene
 from app.schemas.render_job import (
+    ArchiveJobPayload,
     ConvertJobPayload,
     ModelPath,
     ModelURL,
@@ -103,15 +106,22 @@ def _convert_payload(job: RenderJob) -> ConvertJobPayload:
     )
 
 
-def job_payload(db: Session, job_id: int, token: str) -> RenderJobPayload | ConvertJobPayload:
+def job_payload(db: Session, job_id: int, token: str) -> RenderJobPayload | ConvertJobPayload | ArchiveJobPayload:
     """The running job's payload. A job whose scene or background image has gone since it was
     created can't render: it ends failed (input_missing) and refunded, and this is 409. A
-    convert job's is its design's files (ADR 0006)."""
+    convert job's is its design's files, a batch_archive job's its batch's manifest and files
+    (ADR 0006); one whose batch is gone ends the same way."""
     job = running_job(db, job_id, token)
     if job.kind == "convert":
         payload = _convert_payload(job)
         db.commit()  # ends the read and its row lock
         return payload
+    if job.kind == ARCHIVE_KIND:
+        archive = archive_payload(db, job)
+        if archive is None:
+            raise _missing_input(db, job, "The job's batch was deleted.")
+        db.commit()
+        return archive
     scene = _job_scene(db, job)
     if scene is None:
         raise _missing_input(db, job, "The job's scene was deleted.")
@@ -165,3 +175,15 @@ def convert_companion_file(db: Session, job_id: int, token: str, index: int) -> 
     job = running_job(db, job_id, token, lock=False)
     companions = job.spec["companions"] if job.kind == "convert" else []
     return _local_file(companions[index]["key"] if 0 <= index < len(companions) else None)
+
+
+def archive_render_file(db: Session, job_id: int, token: str, render_id: int) -> FileResponse:
+    """An output a batch_archive job's batch made (local storage only)."""
+    job = running_job(db, job_id, token, lock=False)
+    return _local_file(archive_input_key(db, job, render_id=render_id))
+
+
+def archive_thumbnail_file(db: Session, job_id: int, token: str, scene_id: int) -> FileResponse:
+    """The thumbnail of a scene a batch_archive job's batch made (local storage only)."""
+    job = running_job(db, job_id, token, lock=False)
+    return _local_file(archive_input_key(db, job, scene_id=scene_id))

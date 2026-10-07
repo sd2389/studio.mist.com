@@ -17,6 +17,7 @@ from app.features.render_jobs import service as render_job_service
 from app.features.render_jobs import worker as render_job_worker
 from app.models.user import User
 from app.schemas.render_job import (
+    ArchiveJobPayload,
     ConvertJobPayload,
     RenderJobBulkCreate,
     RenderJobBulkOut,
@@ -207,13 +208,14 @@ def claim_render_job(
     )
 
 
-@router.get("/{job_id}/payload", response_model=RenderJobPayload | ConvertJobPayload)
+@router.get("/{job_id}/payload", response_model=RenderJobPayload | ConvertJobPayload | ArchiveJobPayload)
 def get_job_payload(
     job_id: int,
     token: str = Depends(_job_token),
     db: Session = Depends(get_db),
-) -> RenderJobPayload | ConvertJobPayload:
-    """What the harness renders the job from; for a convert job, the design's CAD files."""
+) -> RenderJobPayload | ConvertJobPayload | ArchiveJobPayload:
+    """What the harness renders the job from; for a convert job, the design's CAD files; for a
+    batch_archive job, its batch's manifest and files."""
     return render_job_payload.job_payload(db, job_id, token)
 
 
@@ -239,6 +241,18 @@ def get_job_source(job_id: int, token: str = Depends(_job_token), db: Session = 
 def get_job_companion(job_id: int, index: int, token: str = Depends(_job_token), db: Session = Depends(get_db)):
     """One of a convert job's companion files, by its place in the spec, streamed (local storage only)."""
     return render_job_payload.convert_companion_file(db, job_id, token, index)
+
+
+@router.get("/{job_id}/inputs/renders/{render_id}", response_class=FileResponse)
+def get_archive_render(job_id: int, render_id: int, token: str = Depends(_job_token), db: Session = Depends(get_db)):
+    """An output a batch_archive job's batch made, streamed (local storage only)."""
+    return render_job_payload.archive_render_file(db, job_id, token, render_id)
+
+
+@router.get("/{job_id}/inputs/thumbnails/{scene_id}", response_class=FileResponse)
+def get_archive_thumbnail(job_id: int, scene_id: int, token: str = Depends(_job_token), db: Session = Depends(get_db)):
+    """The thumbnail of a scene a batch_archive job's batch made, streamed (local storage only)."""
+    return render_job_payload.archive_thumbnail_file(db, job_id, token, scene_id)
 
 
 @router.post("/{job_id}/heartbeat", response_model=RenderJobHeartbeatOut)

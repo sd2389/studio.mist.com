@@ -50,12 +50,19 @@ class IngestBatch(Base):
     render_credits_per_design: Mapped[int] = mapped_column(Integer, default=0)
     idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
     request_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)  # SHA-256 of the request
-    archive_keys: Mapped[list | None] = mapped_column(JSON, nullable=True)  # ZIP parts, when made (F3)
+    # The ZIP parts of its archive, when one is made (F3): [{name, key, bytes, files, sha256}], in
+    # order, the job that made them, and when they are deleted. The parts count toward the owner's
+    # storage until then; the job's id tells one archive from the next that replaces it.
+    archive_keys: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    archive_job_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    archive_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # raw CAD and archives go
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # its raw CAD files go
+    # When the retention sweep deleted its raw CAD files: its designs can't convert again.
+    sources_deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class IngestItem(Base):

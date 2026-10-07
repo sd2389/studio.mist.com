@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from app.core import storage_keys as keys
 from app.features.billing.plans import GB, PLAN_LABELS, BatchLimits, PlanTier, get_batch_limits, normalize_tier
 from app.features.billing.quota_service import get_or_create_billing
+from app.features.ingest.archive import archive_views
 from app.features.ingest.designs import Design, known_category, name_problem, plan_designs, sku_problems
 from app.features.ingest.items import lock_owner_batches
 from app.features.ingest.progress import DesignRenders, batch_job_credits, design_renders
@@ -292,6 +293,7 @@ def batch_views(db: Session, batches: list[IngestBatch]) -> list[IngestBatchOut]
             counts[batch_id][status] = count
             designs[batch_id] = [total + (part or 0) for total, part in zip(designs[batch_id], sums, strict=True)]
     jobs = batch_job_credits(db, [batch.id for batch in batches])
+    archives = archive_views(db, batches)
     return [
         IngestBatchOut(
             id=batch.id,
@@ -319,6 +321,8 @@ def batch_views(db: Session, batches: list[IngestBatch]) -> list[IngestBatchOut]
             submitted_at=batch.submitted_at,
             finished_at=batch.finished_at,
             expires_at=batch.expires_at,
+            sources_deleted_at=batch.sources_deleted_at,
+            archive=archives[batch.id],
         )
         for batch in batches
     ]

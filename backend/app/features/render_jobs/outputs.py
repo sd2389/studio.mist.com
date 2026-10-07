@@ -24,9 +24,11 @@ from app.core import storage_keys as keys
 from app.core.storage.local import LocalBackend
 from app.features.billing.quota_service import charge_render_job, count_storage_bytes
 from app.features.render_jobs.job_files import PlannedOutput, planned_outputs
-from app.features.render_jobs.worker import discard_outputs, end_attempt, running_job
+from app.features.render_jobs.worker import discard_outputs, end_attempt, mark_completed, running_job
+from app.features.render_jobs.archive_spec import ARCHIVE_KIND, archive_outputs, archive_part_names
 from app.features.render_jobs.convert_spec import OPTIONAL_OUTPUTS as OPTIONAL_CONVERT_OUTPUTS
 from app.features.render_jobs.convert_spec import convert_outputs
+from app.features.ingest.archive import ArchiveRefused, complete_archive, delete_parts
 from app.features.ingest.conversions import complete_conversion
 from app.features.ingest.items import end_item_of_job, lock_design_of
 from app.features.ingest.media import finish_design_render
@@ -42,13 +44,22 @@ UPLOAD_URL_SECONDS = 900
 
 
 def _planned(job: RenderJob) -> dict[str, PlannedOutput]:
-    outputs = convert_outputs(job.spec) if job.kind == "convert" else planned_outputs(job.kind, job.spec)
+    if job.kind == "convert":
+        outputs = convert_outputs(job.spec)
+    elif job.kind == ARCHIVE_KIND:
+        outputs = archive_outputs(job.spec)
+    else:
+        outputs = planned_outputs(job.kind, job.spec)
     return {output.name: output for output in outputs}
 
 
 def _optional(job: RenderJob) -> frozenset[str]:
-    """The files a job may leave out: a convert job's thumbnail."""
-    return OPTIONAL_CONVERT_OUTPUTS if job.kind == "convert" else frozenset()
+    """The files a job may leave out: a convert job's thumbnail, an archive's parts after its first."""
+    if job.kind == "convert":
+        return OPTIONAL_CONVERT_OUTPUTS
+    if job.kind == ARCHIVE_KIND:
+        return frozenset(archive_part_names(job.spec)[1:])
+    return frozenset()
 
 
 def _check_type_and_size(field: str, output: PlannedOutput, content_type: str, size: int) -> None:
@@ -208,6 +219,10 @@ def complete_job(db: Session, job_id: int, token: str, body: RenderJobCompleteRe
     """
     job = running_job(db, job_id, token)
     checked = _checked_outputs(job, body.outputs)
+    if job.kind == ARCHIVE_KIND:
+        return _complete_archive_job(db, job, checked, body)
+    if body.renderer is None:
+        raise HTTPException(status_code=400, detail="renderer: what drew the job is required")
     if job.kind == "convert":
         return complete_conversion(db, job, token, {plan.name: output for plan, output in checked}, body.renderer)
     scene = db.get(Scene, job.scene_id) if job.scene_id is not None else None
@@ -222,17 +237,26 @@ def complete_job(db: Session, job_id: int, token: str, body: RenderJobCompleteRe
     now = datetime.utcnow()
     db.add_all(_render_row(job, scene, plan, output, now) for plan, output in checked)
     charge_render_job(db, job)
-    job.status = "completed"
-    job.progress = 1.0
-    job.stage = None
-    job.error = None
-    job.error_code = None
-    job.renderer = body.renderer.model_dump(mode="json")
-    job.finished_at = now
-    job.updated_at = now
+    mark_completed(job, body.renderer, now)
     end_item_of_job(db, job, "completed")
     db.commit()
     db.refresh(job)
     if job.ingest_item_id is not None:
         finish_design_render(db, job)
+    return job
+
+
+def _complete_archive_job(
+    db: Session, job: RenderJob, checked: list[tuple[PlannedOutput, RenderJobOutputReport]], body: RenderJobCompleteRequest
+) -> RenderJob:
+    """A batch_archive job's parts become its batch's archive (features/ingest/archive.py), and
+    the parts of the one they replace are deleted once that is committed. A batch that is gone
+    (409) or storage that is full (402) ends the job instead, its parts deleted."""
+    try:
+        replaced_job_id, replaced = complete_archive(db, job, checked, body.renderer)
+    except ArchiveRefused as refused:
+        raise _ended_without_outputs(db, job, refused.code, refused.message, refused.status_code) from refused
+    db.commit()
+    delete_parts(job.user_id, replaced_job_id, replaced)
+    db.refresh(job)
     return job

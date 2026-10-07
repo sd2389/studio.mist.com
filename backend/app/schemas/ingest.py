@@ -137,6 +137,26 @@ class IngestItemOut(BaseModel):
     updated_at: UTCDateTime
 
 
+class IngestArchivePart(BaseModel):
+    """One ZIP part of a batch's archive; its download is a short-lived signed link."""
+
+    part: int  # from 1
+    name: str
+    bytes: int
+    files: int | None  # how many files it holds, the first part's manifest included
+    download_url: str  # /ingest/batches/{id}/archive/{part}
+
+
+class IngestArchiveOut(BaseModel):
+    """A batch's archive: the newest job that builds it, with its status and progress, and the
+    parts the last one to complete made, until they expire."""
+
+    job: IngestItemJob | None
+    parts: list[IngestArchivePart]
+    made_at: UTCDateTime | None
+    expires_at: UTCDateTime | None
+
+
 class IngestBatchOut(BaseModel):
     """A batch, with how many of its designs are at each status."""
 
@@ -163,7 +183,11 @@ class IngestBatchOut(BaseModel):
     updated_at: UTCDateTime
     submitted_at: UTCDateTime | None
     finished_at: UTCDateTime | None
+    # When its raw CAD files are deleted, 30 days after it finished, and when they were.
     expires_at: UTCDateTime | None
+    sources_deleted_at: UTCDateTime | None = None
+    # Its ZIP archive, once one was asked for.
+    archive: IngestArchiveOut | None = None
 
 
 class IngestBatchCreated(IngestBatchOut):

@@ -72,6 +72,7 @@ Reuse these instead of rebuilding them per page:
 | A marketing page in the house look (header, footer, film grain, viewfinder corners) | `SiteShell`, with `PageIntro`, `Stat`, `Kicker`, `Reveal` and the class recipes in `site-styles.ts` (`src/components/site/`) |
 | Light or dark look, site-wide | Tokens in `globals.css` (`--mist-*`; `.dark` on `<html>`, set before paint by `FILM_THEME_SCRIPT`), `ThemeToggle` (`src/components/site/`), `useFilmTheme` / `setFilmTheme` (`src/components/scroll-film/film-theme.ts`); 3D previews pick their set with `siteLighting` (`src/lib/viewer-lighting.ts`) |
 | A scroll-driven film page (chapters, eased scroll, kinetic type, preloader) | `src/components/scroll-film/` — `useStoryDriver`, `story`, `Chapter`, `Line`, `Readout`, `FilmChrome`, `useFilmTheme`, `scroll-film.css`; used by the home page (`src/components/home/`) |
+| A route of the customer API (`/v1`): the caller's API key, the owner it acts as, a scope and the key's limits | `Depends(api_principal("<scope>"))` (`backend/app/features/api_keys/principal.py`) on `backend/app/routers/v1.py`; only API keys reach it, and `get_current_user` refuses them everywhere else. Keys are made, listed and revoked in `ApiKeysSection` (`@/features/api-keys`, on the profile page) ([ADR 0006](adr/0006-bulk-pipeline.md) G1) |
 
 ## Decisions
 

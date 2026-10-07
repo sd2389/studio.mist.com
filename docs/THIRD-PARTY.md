@@ -20,7 +20,7 @@ The five HDRs are Poly Haven's 2k `.hdr` files; their MD5s match Poly Haven's fi
 | Asset | Fetched from | Licence | Used by |
 |---|---|---|---|
 | Catalogue HDRIs: the 92 in `backend/app/features/catalog/seed/polyhaven_hdris.json` (72 metal, 20 gem) | `api.polyhaven.com` (1k `.hdr`) and `cdn.polyhaven.com` (preview), copied into storage by `backend/scripts/fetch_cc0_hdris.py` | CC0, like every Poly Haven asset; all 92 ids are Poly Haven HDRIs | Catalogue environments in the studio |
-| rhino3dm 8.17.0 (JS and WASM) | `cdn.jsdelivr.net/npm/rhino3dm@8.17.0/` | MIT (Robert McNeel & Associates) | 3DM import: `src/lib/convert/loaders/rhino.ts`, `src/lib/slot-materials/detect-upload-slots.ts` |
+| rhino3dm 8.17.0 (JS and WASM) | `cdn.jsdelivr.net/npm/rhino3dm@8.17.0/` | MIT (Robert McNeel & Associates) | 3DM import: `src/lib/convert/loaders/rhino.ts` |
 | occt-import-js 0.0.23 (JS and WASM, a build of Open CASCADE Technology) | `cdn.jsdelivr.net/npm/occt-import-js@0.0.23/dist/`; not in `package.json` | LGPL-2.1: the `license` in its `package.json`; its `LICENSE.md`, `dist/license.occt-import-js.txt` and `dist/license.occt.txt` are the LGPL 2.1 text. Loaded unmodified into a worker, never bundled | STEP and IGES import: `src/lib/convert/loaders/occt-worker.ts` |
 | Draco decoder 1.5.5 | `www.gstatic.com/draco/versioned/decoders/1.5.5/` | Apache-2.0 ([google/draco](https://github.com/google/draco)) | Draco-compressed glTF: `src/lib/convert/loaders/gltf.ts` and drei's `useGLTF` default |
 

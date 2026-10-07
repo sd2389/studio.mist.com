@@ -13,6 +13,7 @@ import { canRetryFailed, countOf, finishedCount, isBatchOpen, PIPELINE_NOTE } fr
 import { BatchStatusBadge } from "./BatchBadges";
 import { BatchCounts } from "./BatchCounts";
 import { BatchItemList } from "./BatchItemList";
+import { BatchResults } from "./BatchResults";
 import { CancelBatchDialog } from "./CancelBatchDialog";
 import { ResumeUploadPanel } from "./ResumeUploadPanel";
 import { useBatchView, type BatchViewState } from "./useBatchView";
@@ -82,7 +83,8 @@ function BatchActions({ state, bulkEnabled }: { state: BatchViewState; bulkEnabl
 /**
  * `/bulk/<id>`: a batch's designs counted by status and listed 50 a page, filtered by status,
  * each with why it stopped; retry what failed, cancel what hasn't finished, and finish the
- * uploads a left page paused. Followed while it processes.
+ * uploads a left page paused; download its manifest and build and download its ZIP. Followed
+ * while it processes or its ZIP builds.
  */
 export function BatchShell({ initial, bulkEnabled, userEmail, isAdmin }: BatchShellProps) {
   const state = useBatchView(initial);
@@ -133,6 +135,14 @@ export function BatchShell({ initial, bulkEnabled, userEmail, isAdmin }: BatchSh
               </p>
             ) : null}
             <BatchActions state={state} bulkEnabled={bulkEnabled} />
+            {batch.status !== "draft" ? (
+              <BatchResults
+                batch={batch}
+                canBuild={bulkEnabled}
+                starting={state.pending === "archive"}
+                onBuild={() => void state.buildArchive()}
+              />
+            ) : null}
             {state.pollError ? (
               <p className="text-xs text-destructive" role="alert">
                 {state.pollError}{" "}

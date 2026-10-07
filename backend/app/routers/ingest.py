@@ -2,19 +2,23 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, Query, Response
+from fastapi import APIRouter, Depends, Header, Path, Query, Response
+from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.core.deps import get_current_user, require_feature
 from app.core.rate_limit import rate_limit_dependency
 from app.database import get_db
+from app.features.ingest import archive as ingest_archive
 from app.features.ingest import lifecycle as ingest_lifecycle
+from app.features.ingest import manifest as ingest_manifest
 from app.features.ingest import saved_templates
 from app.features.ingest import service as ingest_service
 from app.features.ingest import uploads as ingest_uploads
 from app.models.user import User
 from app.schemas.ingest import (
+    IngestArchiveOut,
     IngestBatchCreate,
     IngestBatchCreated,
     IngestBatchOut,
@@ -210,3 +214,49 @@ def cancel_batch(
 ) -> IngestBatchOut:
     """Cancels what hasn't finished and gives its credits back."""
     return ingest_service.batch_view(db, ingest_lifecycle.cancel_batch(db, user, batch_id))
+
+
+@router.get("/batches/{batch_id}/manifest.csv", response_class=Response)
+def batch_manifest(
+    batch_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> Response:
+    """The batch's manifest as it is now: a CSV row per design, with its links. 404 for another's batch."""
+    batch = ingest_service.owned_batch(db, user, batch_id)
+    filename = ingest_manifest.manifest_filename(batch)
+    return Response(
+        content=ingest_manifest.manifest_csv(db, batch),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"', "Cache-Control": "private, no-store"},
+    )
+
+
+@router.post("/batches/{batch_id}/archive", status_code=201, response_model=IngestArchiveOut, dependencies=_adds_work)
+def build_archive(
+    batch_id: int,
+    response: Response,
+    idempotency_key: Annotated[str | None, Header()] = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    _rate: Annotated[None, Depends(_batch_call)] = None,
+) -> IngestArchiveOut:
+    """201 with the job that builds the finished batch's archive, or 200 with the one building
+    already or that a repeated Idempotency-Key made; 409 for a batch that hasn't finished."""
+    batch = ingest_service.owned_batch(db, user, batch_id)
+    _, created = ingest_archive.start_archive(db, user, batch, idempotency_key)
+    if not created:
+        response.status_code = 200
+    return ingest_archive.archive_views(db, [ingest_service.owned_batch(db, user, batch_id)])[batch_id]
+
+
+@router.get("/batches/{batch_id}/archive/{part}", response_model=None)
+def download_archive_part(
+    batch_id: int,
+    part: Annotated[int, Path(ge=1)],
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> FileResponse | RedirectResponse:
+    """302 to a signed URL for one of the batch's archive parts (300 s); 404 for another's batch
+    or a part it hasn't."""
+    return ingest_archive.download_part(ingest_service.owned_batch(db, user, batch_id), part)

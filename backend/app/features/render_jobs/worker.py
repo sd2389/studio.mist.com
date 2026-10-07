@@ -24,8 +24,9 @@ from app.core import storage_keys as keys
 from app.features.billing.quota_service import refund_render_job
 from app.features.ingest.items import end_item_of_job, lock_design_of
 from app.features.ingest.renders import resume_converted_designs
+from app.features.render_jobs.archive_spec import ARCHIVE_KIND, archive_part_names
 from app.models.render_job import RenderJob
-from app.schemas.render_job import RenderJobHeartbeatOut
+from app.schemas.render_job import RendererInfo, RenderJobHeartbeatOut
 
 HEARTBEAT_SECONDS = 20
 # How long one attempt may run, by kind. Past it, heartbeats answer cancel and no longer extend
@@ -119,9 +120,23 @@ def _past_runtime(job: RenderJob, now: datetime) -> bool:
 
 
 def discard_outputs(job: RenderJob) -> None:
-    """Delete what a job that won't complete uploaded; nothing will ever list those files."""
-    for name in job.spec.get("output_names") or []:
+    """Delete what a job that won't complete uploaded; nothing will ever list those files. A
+    batch_archive job may have uploaded any of the parts its spec allows."""
+    names = archive_part_names(job.spec) if job.kind == ARCHIVE_KIND else job.spec.get("output_names") or []
+    for name in names:
         storage.delete_quietly(keys.render_job_output_key(job.user_id, job.id, name))
+
+
+def mark_completed(job: RenderJob, renderer: RendererInfo | None, now: datetime) -> None:
+    """The job completed, with what drew it (none for an archive). Not committed."""
+    job.status = "completed"
+    job.progress = 1.0
+    job.stage = None
+    job.error = None
+    job.error_code = None
+    job.renderer = renderer.model_dump(mode="json") if renderer is not None else None
+    job.finished_at = now
+    job.updated_at = now
 
 
 def _end_job(db: Session, job: RenderJob, now: datetime, status: str) -> None:

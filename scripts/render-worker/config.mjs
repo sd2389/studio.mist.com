@@ -1,5 +1,6 @@
 import os from "node:os";
 import path from "node:path";
+import { ARCHIVE_KIND } from "./archive.mjs";
 import { PROFILES } from "./browser.mjs";
 import { CONVERT_KIND } from "./convert.mjs";
 import { assetPrefix, DEFAULT_ASSET_PREFIXES } from "./network.mjs";
@@ -52,11 +53,12 @@ function profileFrom(env, platform) {
 }
 
 /**
- * The kinds a worker claims: the render kinds unless WORKER_KINDS says otherwise. Conversions
- * (ADR 0006) go to a CPU pool that names `convert`; no worker converts unless told to.
+ * The kinds a worker claims: the render kinds unless WORKER_KINDS says otherwise. Conversions and
+ * batch archives (ADR 0006) go to a CPU pool that names `convert` and `batch_archive`; no worker
+ * does either unless told to.
  */
 function kindsFrom(env) {
-  const known = [...RENDERABLE_KINDS, CONVERT_KIND];
+  const known = [...RENDERABLE_KINDS, CONVERT_KIND, ARCHIVE_KIND];
   const kinds = [...new Set(list(env.WORKER_KINDS || RENDERABLE_KINDS.join(",")))];
   const unknown = kinds.filter((kind) => !known.includes(kind));
   if (unknown.length) throw new Error(`WORKER_KINDS: this worker does ${known.join(", ")}, not ${unknown.join(", ")}`);

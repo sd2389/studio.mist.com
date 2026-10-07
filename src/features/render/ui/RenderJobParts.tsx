@@ -47,13 +47,22 @@ export function RenderJobProgress({ progress, className }: { progress: number; c
   );
 }
 
-/** "Download · 18 MB" for a job's one file; each file by its label when it made several. */
-export function RenderJobDownloads({ job }: { job: Pick<RenderJob, "id"> & { outputs: RenderJobOutput[] } }) {
+/**
+ * "Download · 18 MB" for a job's one file; each file by its label when it made several. Files a
+ * job keeps somewhere else than its outputs (a batch archive's parts) say where with `hrefOf`.
+ */
+export function RenderJobDownloads({
+  job,
+  hrefOf = (output) => outputDownloadUrl(job.id, output.id),
+}: {
+  job: Pick<RenderJob, "id"> & { outputs: RenderJobOutput[] };
+  hrefOf?: (output: RenderJobOutput) => string;
+}) {
   const several = job.outputs.length > 1;
   return job.outputs.map((output, index) => (
     <a
       key={output.id}
-      href={outputDownloadUrl(job.id, output.id)}
+      href={hrefOf(output)}
       download={output.filename ?? undefined}
       title={output.filename ?? undefined}
       className={cn(buttonVariants({ variant: "outline", size: "sm" }))}

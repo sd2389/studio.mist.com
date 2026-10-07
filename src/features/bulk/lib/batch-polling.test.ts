@@ -81,6 +81,26 @@ describe("pollBatch", () => {
     expect(batchRequests(fetch)).toBe(4);
   });
 
+  it("keeps polling a finished batch while its ZIP builds, until the ZIP is ready", async () => {
+    const archive = (status: "queued" | "running" | "completed") => ({
+      job: { id: 5120, kind: "batch_archive", status, progress: status === "completed" ? 1 : 0.5, stage: null, attempts: 1, max_attempts: 3, error: null, error_code: null, credits: 0, credit_state: "none" as const, cancel_requested_at: null, outputs: [] },
+      parts: [],
+      made_at: null,
+      expires_at: null,
+    });
+    const fetch = apiAnswers(
+      () => Response.json({ ...batch("completed", 0), archive: archive("queued") }),
+      () => Response.json({ ...batch("completed", 0), archive: archive("running") }),
+      () => Response.json({ ...batch("completed", 0), archive: archive("completed") }),
+    );
+    const done = pollBatch(31, { status: null, page: 1 }, { signal: new AbortController().signal, onView: () => {} });
+
+    await vi.advanceTimersByTimeAsync(1000 + 1500 + 2250);
+    await expect(done).resolves.toMatchObject({ batch: { archive: { job: { status: "completed" } } } });
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(batchRequests(fetch)).toBe(3);
+  });
+
   it("keeps polling through a failed poll, and stops once the API refuses the batch", async () => {
     apiAnswers(
       () => Response.json(batch("processing", 3)),

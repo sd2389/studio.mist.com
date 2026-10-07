@@ -201,6 +201,29 @@ export type IngestItem = {
   updated_at: string;
 };
 
+/** One ZIP part of a batch's archive (`IngestArchivePart`); the browser downloads it through `archivePartUrl`. */
+export type IngestArchivePart = {
+  /** From 1. */
+  part: number;
+  name: string;
+  bytes: number;
+  /** The files it holds, the first part's manifest included. */
+  files: number | null;
+  /** The API's own path. */
+  download_url: string;
+};
+
+/**
+ * A batch's archive (`IngestArchiveOut`): the newest job that builds it, and the parts the last
+ * one to complete made, kept 14 days (`expires_at`).
+ */
+export type IngestArchive = {
+  job: IngestItemJob | null;
+  parts: IngestArchivePart[];
+  made_at: string | null;
+  expires_at: string | null;
+};
+
 export type IngestBatch = {
   id: number;
   name: string;
@@ -226,7 +249,11 @@ export type IngestBatch = {
   updated_at: string;
   submitted_at: string | null;
   finished_at: string | null;
+  /** When its raw CAD files are deleted, 30 days after it finished; and when they were. */
   expires_at: string | null;
+  sources_deleted_at?: string | null;
+  /** Its ZIP archive, once one was asked for. */
+  archive?: IngestArchive | null;
 };
 
 export type IngestBatchCreated = IngestBatch & { items: IngestItem[] };
@@ -375,6 +402,24 @@ export function retryItem(batchId: number, itemId: number): Promise<IngestItem> 
 /** Cancels what hasn't finished and gives its credits back; works with the flag off too. */
 export function cancelBatch(batchId: number): Promise<IngestBatch> {
   return apiPost<IngestBatch>(batchPath(batchId, "/cancel"), {});
+}
+
+/** Where the browser downloads the batch's manifest: a CSV of its designs as they are now, with their links. */
+export function batchManifestUrl(batchId: number): string {
+  return batchPath(batchId, "/manifest.csv");
+}
+
+/**
+ * Starts building a finished batch's ZIP archive (free), or answers the one building already;
+ * 409 while the batch is still processing.
+ */
+export function buildBatchArchive(batchId: number): Promise<IngestArchive> {
+  return apiPost<IngestArchive>(batchPath(batchId, "/archive"), {});
+}
+
+/** Where the browser downloads one part of a batch's archive: the proxy redirects to a short-lived signed link. */
+export function archivePartUrl(batchId: number, part: number): string {
+  return batchPath(batchId, `/archive/${part}`);
 }
 
 /**

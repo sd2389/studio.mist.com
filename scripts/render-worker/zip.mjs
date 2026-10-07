@@ -23,7 +23,10 @@ export class ZipTooLarge extends Error {
   }
 }
 
-/** The archive's bytes, from fflate, as each entry's chunks are read from disk and pushed through. */
+/**
+ * The archive's bytes, from fflate, as each entry's chunks are read from disk and pushed through.
+ * The entries may come one at a time (an async iterable): the next is asked for once the last is in.
+ */
 async function* archiveChunks(entries, { modifiedAt, onAdded }) {
   let ready = [];
   let failure = null;
@@ -37,7 +40,9 @@ async function* archiveChunks(entries, { modifiedAt, onAdded }) {
     ready = [];
     return chunks;
   };
-  for (const [index, entry] of entries.entries()) {
+  let added = 0;
+  for await (const entry of entries) {
+    if (added >= MAX_ENTRIES) throw new ZipTooLarge(`a ZIP holds at most ${MAX_ENTRIES} files`);
     const file = entry.compress ? new ZipDeflate(entry.name, { level: DEFLATE_LEVEL }) : new ZipPassThrough(entry.name);
     // One time for every header, local and central (fflate reads the clock for each otherwise).
     file.mtime = modifiedAt;
@@ -48,7 +53,8 @@ async function* archiveChunks(entries, { modifiedAt, onAdded }) {
     }
     file.push(new Uint8Array(0), true);
     yield* take();
-    await onAdded?.(entry, index + 1);
+    added += 1;
+    await onAdded?.(entry, added);
   }
   zip.end();
   yield* take();
@@ -59,7 +65,7 @@ async function* archiveChunks(entries, { modifiedAt, onAdded }) {
  * (text; images are compressed already). Reading waits on writing, so at most a few chunks are in
  * memory. Past `maxBytes` it stops with ZipTooLarge; on any failure the partial file goes.
  *
- * @param {{ name: string, path: string, compress?: boolean }[]} entries
+ * @param {Iterable<{ name: string, path: string, compress?: boolean }> | AsyncIterable<{ name: string, path: string, compress?: boolean }>} entries
  * @param {string} outPath
  * @param {object} options
  * @param {number} options.maxBytes
@@ -68,7 +74,7 @@ async function* archiveChunks(entries, { modifiedAt, onAdded }) {
  * @returns {Promise<{ bytes: number, sha256: string }>}
  */
 export async function writeZip(entries, outPath, { maxBytes, signal, onAdded }) {
-  if (entries.length > MAX_ENTRIES) throw new ZipTooLarge(`a ZIP holds at most ${MAX_ENTRIES} files, not ${entries.length}`);
+  if (Array.isArray(entries) && entries.length > MAX_ENTRIES) throw new ZipTooLarge(`a ZIP holds at most ${MAX_ENTRIES} files, not ${entries.length}`);
   const hash = createHash("sha256");
   let bytes = 0;
   const meter = new Transform({

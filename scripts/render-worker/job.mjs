@@ -56,7 +56,7 @@ const aborted = (signal) =>
  * says of its progress; a cancel or a lost job aborts it. One heartbeat at a time: a change
  * during one goes right after.
  */
-function startHeartbeats(job, { seconds, report, controller, log }) {
+export function startHeartbeats(job, { seconds, report, controller, log }) {
   let busy = false;
   let again = false;
   let stopped = false;
@@ -183,7 +183,7 @@ async function renderOnPage(context, { harnessUrl, mode, signal, log }) {
 }
 
 /** PUTs every output where the API says, asking for new URLs when they near expiry or storage refuses one. */
-async function uploadOutputs(job, outputs, { signal, log }) {
+export async function uploadOutputs(job, outputs, { signal, log }) {
   const ask = async () => {
     try {
       const { files } = await job.uploads(outputs.map(({ name, content_type, bytes }) => ({ name, content_type, bytes })), signal);
@@ -228,12 +228,13 @@ function rendererReport(renderer) {
   };
 }
 
-function completeBody(outputs, renderer) {
+/** What `complete` is sent: each output with its hash (an archive part's with its file count) and what drew the job, if anything did. */
+export function completeBody(outputs, renderer) {
   return {
-    outputs: outputs.map(({ name, key, content_type, bytes, width, height, label, sha256 }) => ({
-      name, key, content_type, bytes, width, height, label, meta: { sha256 },
+    outputs: outputs.map(({ name, key, content_type, bytes, width, height, label, sha256, files }) => ({
+      name, key, content_type, bytes, width, height, label, meta: files ? { sha256, files } : { sha256 },
     })),
-    renderer: rendererReport(renderer),
+    renderer: renderer ? rendererReport(renderer) : null,
   };
 }
 
@@ -257,7 +258,7 @@ async function completeJob(job, outputs, renderer, { signal, log }) {
 }
 
 /** Reports a failure, unless the API already took the job back. */
-async function settleFailure(job, error, log) {
+export async function settleFailure(job, error, log) {
   if (error instanceof JobLostError) {
     log(`the API took the job back (${error.message}); dropped`);
     return { outcome: "lost", recycleBrowser: false };

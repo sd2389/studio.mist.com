@@ -9,7 +9,7 @@
 # RENDER_WORKER_TOKEN in .env, then start a render worker with its profile:
 #   docker compose --profile worker-cpu up -d    # SwiftShader, any machine
 #   docker compose --profile worker-gpu up -d    # an NVIDIA GPU (NVIDIA Container Toolkit)
-#   docker compose --profile worker-convert up -d    # bulk uploads' conversions, on the CPU
+#   docker compose --profile worker-convert up -d    # bulk uploads' conversions and archives, on the CPU
 # Plain `docker compose up` starts no worker. See scripts/render-worker/README.md.
 
 # What both render workers share (ADR 0005, "Isolation"): a non-root user, a read-only root
@@ -161,16 +161,17 @@ services:
       <<: *render-worker-env
       WORKER_GPU: swiftshader
 
-  # The CPU pool for bulk uploads (ADR 0006): it converts designs and nothing else, so GPU workers
-  # stay free for renders. A conversion needs no GPU beyond its 512 px thumbnail, and loads its
-  # converters from the image's vendored files only.
+  # The CPU pool for bulk uploads (ADR 0006): it converts designs and zips finished batches'
+  # archives, and nothing else, so GPU workers stay free for renders. A conversion needs no GPU
+  # beyond its 512 px thumbnail, and loads its converters from the image's vendored files only;
+  # an archive needs no browser at all, and holds about one 2 GB part at a time in /tmp.
   worker-convert:
     <<: *render-worker
     profiles: ["worker-convert"]
     environment:
       <<: *render-worker-env
       WORKER_GPU: swiftshader
-      WORKER_KINDS: convert
+      WORKER_KINDS: convert,batch_archive
 
 volumes:
   studio_pg:

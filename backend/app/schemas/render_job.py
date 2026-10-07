@@ -226,6 +226,34 @@ class ConvertJobPayload(BaseModel):
     limits: PayloadLimits  # max_edge is the thumbnail's size
 
 
+class ArchiveFile(BaseModel):
+    """One file a batch_archive job puts in its parts: where it goes in the archive, where to
+    fetch it, and its size when it is known (an output's; a thumbnail's isn't recorded), else the
+    most it may be."""
+
+    path: str  # <SKU>/stills/front.jpg, <SKU>/video/turntable.mp4, <SKU>/spin/spin.zip, <SKU>/thumbnail.webp
+    source: ModelURL | ModelPath
+    bytes: int | None
+    max_bytes: int
+
+
+class ArchiveLimits(BaseModel):
+    max_runtime_seconds: int  # how long one attempt may run
+
+
+class ArchiveJobPayload(BaseModel):
+    """What a batch_archive job zips (docs/adr/0006-bulk-pipeline.md, "Results"): the batch's
+    manifest, as GET /ingest/batches/{id}/manifest.csv answers it now, which goes first in the
+    first part, then every file each design made, in the order dropped."""
+
+    kind: Literal["batch_archive"]
+    spec: dict[str, Any]  # batch_id, stem, part_bytes, max_parts
+    manifest_name: str
+    manifest: str
+    files: list[ArchiveFile]
+    limits: ArchiveLimits
+
+
 class RenderJobHeartbeat(WorkerRequest):
     progress: float | None = Field(default=None, ge=0, le=1)
     stage: RenderStage | None = None
@@ -263,6 +291,7 @@ class RenderJobUploads(BaseModel):
 
 class RenderOutputMeta(WorkerRequest):
     sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    files: int | None = Field(default=None, ge=1, le=65535)  # the entries of an archive's part
 
 
 class RenderJobOutputReport(WorkerRequest):
@@ -295,7 +324,9 @@ class RendererInfo(WorkerRequest):
 
 class RenderJobCompleteRequest(WorkerRequest):
     outputs: list[RenderJobOutputReport] = Field(min_length=1, max_length=100)
-    renderer: RendererInfo
+    # What drew the job; none for a batch_archive job, which draws nothing (complete_job refuses
+    # any other job without one).
+    renderer: RendererInfo | None = None
 
 
 class RenderJobFailRequest(WorkerRequest):

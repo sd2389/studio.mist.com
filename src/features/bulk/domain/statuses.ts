@@ -34,6 +34,22 @@ export function isBatchActive(batch: Pick<IngestBatch, "status">): boolean {
   return batch.status === "processing";
 }
 
+/** Its archive is queued or being built. */
+export function isArchiveBuilding(batch: Pick<IngestBatch, "archive">): boolean {
+  const status = batch.archive?.job?.status;
+  return status === "queued" || status === "running";
+}
+
+/** Something on the page moves on by itself: its designs, or its archive. */
+export function isBatchFollowed(batch: Pick<IngestBatch, "status" | "archive">): boolean {
+  return isBatchActive(batch) || isArchiveBuilding(batch);
+}
+
+/** Finished: its archive can be built (once a design has made something). */
+export function isBatchFinished(batch: Pick<IngestBatch, "status">): boolean {
+  return batch.status === "completed" || batch.status === "completed_with_errors" || batch.status === "canceled";
+}
+
 /** Failed designs can be converted again only once the batch is submitted. */
 export function canRetryFailed(batch: Pick<IngestBatch, "status" | "counts">): boolean {
   return (batch.status === "processing" || batch.status === "completed_with_errors") && (batch.counts.failed ?? 0) > 0;

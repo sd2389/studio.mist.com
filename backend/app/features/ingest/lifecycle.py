@@ -21,15 +21,18 @@ from app.features.billing.credit_pools import split_bought
 from app.features.billing.plans import get_batch_limits
 from app.features.billing.quota_service import hold_batch_credits, refund_render_job
 from app.features.ingest.conversions import queue_conversions
+from app.features.render_jobs.archive_spec import ARCHIVE_KIND
 from app.features.ingest.items import RETENTION_DAYS, lock_owner_batches, locked_items, release_held_credits
 from app.features.ingest.render_plans import checked_plan
 from app.features.ingest.renders import queue_design_renders, renders_to_run
+from app.features.ingest.retention import sources_gone
 from app.features.ingest.service import assert_batch_fits_plan, assert_open_batch_room, owned_batch, owner_tier
 from app.features.scene.skus import SKU_RESERVED, SKU_TAKEN, sku_holders
 from app.models import IngestBatch, IngestItem, RenderJob, Scene, User
 from app.models.ingest import OPEN_BATCH_STATUSES, UNFINISHED_ITEM_STATUSES
 from app.schemas.ingest import IngestRefusal
 
+SOURCE_DELETED = "its CAD file is kept 30 days after the batch finishes and has gone; upload it in a new batch."
 # A design to hold credits for: (the design, its model credits, its render credits).
 DesignHold = tuple[IngestItem, int, int]
 
@@ -85,10 +88,13 @@ def submit_batch(db: Session, user: User, batch_id: int) -> IngestBatch:
     return batch
 
 
-def _refusals(db: Session, items: list[IngestItem], asked: bool) -> tuple[list[IngestItem], list[IngestRefusal]]:
+def _refusals(
+    db: Session, batch: IngestBatch, items: list[IngestItem], asked: bool
+) -> tuple[list[IngestItem], list[IngestRefusal]]:
     """The designs that can run again, and why the others can't: not failed (when asked for by
-    id), or, for one to convert again, its SKU since taken by a scene or reserved by another
-    design. One whose scene was made renders again, under the SKU its scene holds."""
+    id), or, for one to convert again, its CAD file deleted (or due to be) 30 days after the
+    batch finished, or its SKU since taken by a scene or reserved by another design. One whose
+    scene was made renders again, under the SKU its scene holds."""
     refused = [
         IngestRefusal(item_id=item.id, code="not_failed", message=f"Item {item.id} is {item.status}, not failed.")
         for item in items
@@ -96,8 +102,13 @@ def _refusals(db: Session, items: list[IngestItem], asked: bool) -> tuple[list[I
     ]
     failed = [item for item in items if item.status == "failed"]
     converting = [item for item in failed if item.scene_id is None]
-    holders = sku_holders(db, [item.sku for item in converting], except_item_ids=[item.id for item in converting])
     blocked = set()
+    if converting and sources_gone(batch):
+        for item in converting:
+            refused.append(IngestRefusal(item_id=item.id, code="source_deleted", message=f"{item.sku}: {SOURCE_DELETED}"))
+            blocked.add(item.id)
+        converting = []
+    holders = sku_holders(db, [item.sku for item in converting], except_item_ids=[item.id for item in converting])
     for item in converting:
         if holder := holders.get(item.sku):
             message = SKU_TAKEN if holder == "taken" else SKU_RESERVED
@@ -136,7 +147,7 @@ def retry_items(
     items = locked_items(db, *conditions)
     if item_ids is not None and (unknown := set(item_ids) - {item.id for item in items}):
         raise HTTPException(status_code=404, detail=f"Item {min(unknown)} not found")
-    retry, refused = _refusals(db, items, asked=item_ids is not None)
+    retry, refused = _refusals(db, batch, items, asked=item_ids is not None)
     if not retry:
         db.commit()
         return batch, [], refused
@@ -180,17 +191,18 @@ def retry_item(db: Session, user: User, batch_id: int, item_id: int) -> IngestIt
 def _stop_jobs(db: Session, batch_id: int, now: datetime) -> list[int]:
     """The batch's queued jobs end canceled; its running ones are asked to stop, as a user's
     cancel does (render_jobs.service.cancel_job), and end canceled and refunded when their
-    workers stop. Returns the canceled ones, which the caller refunds. Not committed."""
+    workers stop. An archive of what it made before goes on. Returns the canceled ones, which
+    the caller refunds. Not committed."""
     canceled = db.execute(
         update(RenderJob)
-        .where(RenderJob.batch_id == batch_id, RenderJob.status == "queued")
+        .where(RenderJob.batch_id == batch_id, RenderJob.kind != ARCHIVE_KIND, RenderJob.status == "queued")
         .values(status="canceled", finished_at=now, updated_at=now)
         .returning(RenderJob.id)
         .execution_options(synchronize_session=False)
     ).scalars().all()
     db.execute(
         update(RenderJob)
-        .where(RenderJob.batch_id == batch_id, RenderJob.status == "running")
+        .where(RenderJob.batch_id == batch_id, RenderJob.kind != ARCHIVE_KIND, RenderJob.status == "running")
         .values(cancel_requested_at=func.coalesce(RenderJob.cancel_requested_at, now), updated_at=now)
         .execution_options(synchronize_session=False)
     )

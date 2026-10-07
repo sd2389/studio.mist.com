@@ -37,3 +37,15 @@ export function jobProgress(kind, { stage, rendered = 0, encoded = 0 }) {
   const progress = shares.rendering * share(rendered) + shares.encoding * share(encoded);
   return { progress: Math.round(progress * 1000) / 1000, stage };
 }
+
+/**
+ * A batch archive's progress: no page renders it, and its parts upload as it goes, so the bar is
+ * the share of its entries zipped and uploaded (`archived`, 0 to 1), whatever the stage; `complete`
+ * sets it to 1.
+ *
+ * @param {{ stage: string, archived?: number }} done
+ * @returns {{ progress: number, stage: string }}
+ */
+export function archiveProgress({ stage, archived = 0 }) {
+  return { progress: Math.round(UPLOADING_AT * share(archived) * 1000) / 1000, stage };
+}

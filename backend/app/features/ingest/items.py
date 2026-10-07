@@ -19,6 +19,7 @@ from sqlalchemy import case, exists, func, select, update
 from sqlalchemy.orm import Session
 
 from app.features.billing.quota_service import return_held_credits
+from app.features.render_jobs.archive_spec import ARCHIVE_KIND
 from app.models.ingest import UNFINISHED_ITEM_STATUSES, IngestBatch, IngestItem
 from app.models.render_job import RenderJob
 
@@ -108,7 +109,12 @@ def settle_batch(db: Session, batch_id: int | None) -> None:
     if uses_row_locks(db):
         db.execute(select(IngestBatch.id).where(IngestBatch.id == batch_id).with_for_update())
     unfinished = exists().where(IngestItem.batch_id == IngestBatch.id, IngestItem.status.in_(UNFINISHED_ITEM_STATUSES))
-    running = exists().where(RenderJob.batch_id == IngestBatch.id, RenderJob.status.in_(UNFINISHED_JOB_STATUSES))
+    # An archive of what it made before doesn't hold it open.
+    running = exists().where(
+        RenderJob.batch_id == IngestBatch.id,
+        RenderJob.kind != ARCHIVE_KIND,
+        RenderJob.status.in_(UNFINISHED_JOB_STATUSES),
+    )
     not_done = exists().where(IngestItem.batch_id == IngestBatch.id, IngestItem.status != "done")
     now = datetime.utcnow()
     db.execute(

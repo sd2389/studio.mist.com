@@ -54,6 +54,7 @@ Reuse these instead of rebuilding them per page:
 | The look an export renders | `lookSnapshot` (`@/features/viewer`), the same look the studio autosaves |
 | A scene's thumbnail from the live view ("Set as thumbnail") | `setThumbnailFromView` (`@/features/render`): a capture of at most 1024 px, free and unmarked, to `PUT /scenes/{id}/thumbnail` |
 | An upgrade prompt for a locked option or feature | `UpgradePrompt`, `UpgradeButton` (`src/components/billing/UpgradePrompt.tsx`) |
+| How many of a credit balance were bought, which renewals keep ("Includes 5 bought credits, kept at renewal.") | `BoughtCreditsNote` (`src/components/billing/BoughtCreditsNote.tsx`), fed by the billing snapshot's `bought_balances`; `boughtCreditsLeft` (`src/lib/billing/format.ts`) after spends since the snapshot |
 | An option pill, or a labelled row of them; an option the plan locks | `Chip`, `ChipField` (`locked`) (`src/components/ui/chip.tsx`); `PlanLock`, the lock a locked option shows (`src/components/ui/plan-lock.tsx`) |
 | A price for a design | `quoteDesign` (`src/lib/pricing/quote.ts`) |
 | An embed link, iframe snippet or copy button | `useEmbedCode`, `useCopyFeedback`, `EmbedKeyNotice` (`src/components/embed/embed-code.tsx`) |

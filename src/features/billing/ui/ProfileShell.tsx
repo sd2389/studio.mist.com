@@ -4,6 +4,7 @@ import { CreditCard, Loader2, LogOut } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { BoughtCreditsNote } from "@/components/billing/BoughtCreditsNote";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -13,7 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { formatCredits, formatStorageGb, storagePercent } from "@/lib/billing/format";
 import { openBillingPortal, startSubscriptionCheckout } from "@/lib/billing/client";
-import type { PlanFeatures, QuotaBalances, UserBillingSnapshot } from "@/lib/billing/types";
+import type { BoughtBalances, PlanFeatures, QuotaBalances, UserBillingSnapshot } from "@/lib/billing/types";
 import { BuyCreditsCard } from "./BuyCreditsCard";
 import { logOut } from "@/lib/auth/client";
 import type { AuthUser } from "@/lib/auth/types";
@@ -139,7 +140,7 @@ export function ProfileShell({ initialUser, initialBilling }: ProfileShellProps)
             onManageBilling={handlePortal}
           />
 
-          <CreditBalancesCard balances={balances} allotments={allotments} />
+          <CreditBalancesCard balances={balances} allotments={allotments} bought={billing.bought_balances} />
 
           <BuyCreditsCard />
 
@@ -269,7 +270,13 @@ function PlanDetailsCard({ email, billing, busy, onUpgrade, onManageBilling }: P
   );
 }
 
-function CreditBalancesCard({ balances, allotments }: { balances: QuotaBalances; allotments: QuotaBalances }) {
+type CreditBalancesCardProps = {
+  balances: QuotaBalances;
+  allotments: QuotaBalances;
+  bought?: BoughtBalances;
+};
+
+function CreditBalancesCard({ balances, allotments, bought }: CreditBalancesCardProps) {
   const storagePct = storagePercent(balances.storage_bytes_used, balances.storage_bytes_limit);
   return (
     <Card>
@@ -282,21 +289,25 @@ function CreditBalancesCard({ balances, allotments }: { balances: QuotaBalances;
             label: "Model credits",
             remaining: balances.model_credits,
             total: allotments.model_credits,
+            bought: bought?.model_credits ?? 0,
           },
           {
             label: "AI image credits",
             remaining: balances.ai_image_credits,
             total: allotments.ai_image_credits,
+            bought: bought?.ai_image_credits ?? 0,
           },
           {
             label: "Custom materials",
             remaining: balances.custom_material_credits,
             total: allotments.custom_material_credits,
+            bought: 0,
           },
           {
             label: "Custom assets",
             remaining: balances.custom_asset_credits,
             total: allotments.custom_asset_credits,
+            bought: 0,
           },
         ].map((item) => (
           <div key={item.label} className="space-y-2">
@@ -312,6 +323,7 @@ function CreditBalancesCard({ balances, allotments }: { balances: QuotaBalances;
                 ),
               )}
             />
+            <BoughtCreditsNote bought={item.bought} />
           </div>
         ))}
         <div className="space-y-2 sm:col-span-2">

@@ -84,11 +84,32 @@ def republish_if_changed(db: Session, scene: Scene, before: PublishedInputs) -> 
         publish_scene(db, scene)
 
 
-def delete_published_copies(user_id: int, sku: str) -> None:
-    """Remove the public model and thumbnail published under `sku`. Best effort: a copy that
-    can't be deleted is logged and left."""
+def publish_job_media(scene: Scene, job_id: int, outputs: list[tuple[str, str]]) -> dict[str, str]:
+    """Copy a render job's outputs, each (file name, private key), to the public bucket beside
+    the scene's published model: published/<user>/<sku>/media/<job>/<file>. Returns the public
+    key of each file copied; one that can't be is logged and left out. Nothing for a scene
+    without a SKU, which publishes nothing."""
+    sku = (scene.sku or "").strip()
+    if not sku:
+        return {}
+    backend = storage.get_public_storage() or storage.get_storage()
+    copied: dict[str, str] = {}
+    for filename, key in outputs:
+        dest = keys.public_media_key(scene.user_id, sku, job_id, filename)
+        try:
+            backend.copy_object(key, dest)
+        except Exception as exc:  # noqa: BLE001 - best effort, as publishing the model is
+            log_event(_logger, "publish.media_failed", scene_id=scene.id, job_id=job_id, key=dest, error=str(exc))
+            continue
+        copied[filename] = dest
+    return copied
+
+
+def delete_public_files(user_id: int, sku: str, public_keys: list[str]) -> None:
+    """Remove files from the public bucket. Best effort: a copy that can't be deleted is logged
+    and left."""
     public_backend = storage.get_public_storage()
-    for key in (keys.public_model_key(user_id, sku), keys.public_thumbnail_key(user_id, sku)):
+    for key in public_keys:
         try:
             if public_backend is not None:
                 public_backend.delete_public(key)
@@ -96,6 +117,12 @@ def delete_published_copies(user_id: int, sku: str) -> None:
                 storage.delete(key)
         except Exception as exc:  # noqa: BLE001 - the scene is gone; a leftover copy is only logged
             log_event(_logger, "publish.delete_failed", user_id=user_id, sku=sku, key=key, error=str(exc))
+
+
+def delete_published_copies(user_id: int, sku: str) -> None:
+    """Remove the public model and thumbnail published under `sku`. Best effort: a copy that
+    can't be deleted is logged and left."""
+    delete_public_files(user_id, sku, [keys.public_model_key(user_id, sku), keys.public_thumbnail_key(user_id, sku)])
 
 
 def published_copies_exist(scene: Scene) -> bool:

@@ -37,7 +37,7 @@ def _scene_model_url(scene: Scene) -> str | None:
     return public_file_url(scene.model_key) if scene.model_key else None
 
 
-def _scene_thumbnail_url(scene: Scene) -> str | None:
+def scene_thumbnail_url(scene: Scene) -> str | None:
     if scene.sku and scene.published_at is not None and scene.thumbnail_key:
         return published_scene_thumbnail_url(scene.user_id, scene.sku)
     return public_file_url(scene.thumbnail_key) if scene.thumbnail_key else None
@@ -60,7 +60,7 @@ def to_list_item(scene: Scene, render_count: int) -> SceneListItem:
         product_specs=scene.product_specs or {},
         model_url=_scene_model_url(scene),
         thumbnail_key=scene.thumbnail_key,
-        thumbnail_url=_scene_thumbnail_url(scene),
+        thumbnail_url=scene_thumbnail_url(scene),
         created_at=scene.created_at,
         updated_at=scene.updated_at,
         render_count=render_count,
@@ -84,7 +84,7 @@ def to_detail(scene: Scene, renders: list[Render], look: SceneLook) -> SceneDeta
         product_specs=scene.product_specs or {},
         model_url=_scene_model_url(scene),
         thumbnail_key=scene.thumbnail_key,
-        thumbnail_url=_scene_thumbnail_url(scene),
+        thumbnail_url=scene_thumbnail_url(scene),
         created_at=scene.created_at,
         updated_at=scene.updated_at,
         renders=[

@@ -4,6 +4,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.render_job import RenderJobOutput
 from app.schemas.scene import SceneLook
 from app.schemas.utc import UTCDateTime
 
@@ -53,7 +54,8 @@ class IngestBatchCreate(IngestRequest):
     items: list[IngestItemIn] = Field(min_length=1, max_length=MAX_REQUEST_DESIGNS)
     # The CSV manifest, UTF-8, at most 1 MB: file,sku,name,category,note,units; only file is required.
     manifest: str | None = Field(default=None, max_length=1024 * 1024)
-    # The stills each design gets once converted; checked by render_plans.py (400 naming the field).
+    # What each design is rendered as once converted: stills, a turntable, a spin; checked by
+    # render_plans.py (400 naming the field, 402 past the plan's caps). None renders nothing.
     render_plan: dict[str, Any] | None = None
     # One of the owner's look templates (404 for any other), which each design's scene takes; the
     # batch keeps a copy, checked again. None: the studio's default look.
@@ -82,6 +84,27 @@ class IngestCompanionOut(BaseModel):
     bytes: int
 
 
+class IngestItemJob(BaseModel):
+    """One of a design's render jobs, as its batch's page follows it: the newest of each kind,
+    with what it made. GET /render-jobs/{id} has the rest of it."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    kind: str
+    status: str
+    progress: float
+    stage: str | None
+    attempts: int
+    max_attempts: int
+    error: str | None
+    error_code: str | None
+    credits: int
+    credit_state: str
+    cancel_requested_at: UTCDateTime | None
+    outputs: list[RenderJobOutput] = Field(default_factory=list)
+
+
 class IngestItemOut(BaseModel):
     id: int
     batch_id: int
@@ -105,6 +128,11 @@ class IngestItemOut(BaseModel):
     polygon_count: int | None
     size_mm: float | None
     warnings: list[str]
+    # The piece's embed link once its scene holds its SKU, and the scene's thumbnail.
+    embed_url: str | None = None
+    thumbnail_url: str | None = None
+    # Its render jobs, the newest of each kind, once its scene is made.
+    jobs: list[IngestItemJob] = Field(default_factory=list)
     created_at: UTCDateTime
     updated_at: UTCDateTime
 
@@ -125,8 +153,12 @@ class IngestBatchOut(BaseModel):
     options: dict[str, Any]
     # What the whole batch costs: a model credit and the render plan's credits for each design.
     quote: IngestCredits
-    # What its designs hold now, not yet spent or given back.
+    # What its designs and their render jobs hold now, not yet spent or given back.
     held: IngestCredits
+    # Spent: a model credit a scene made, and what its completed render jobs charged.
+    charged: IngestCredits
+    # Given back: what its designs got back when they failed or were canceled, and its jobs' refunds.
+    refunded: IngestCredits
     created_at: UTCDateTime
     updated_at: UTCDateTime
     submitted_at: UTCDateTime | None
@@ -204,6 +236,25 @@ class IngestSkuCheckOut(BaseModel):
 
     taken: list[str]
     reserved: list[str]
+
+
+class IngestRenderPlanQuoteIn(IngestRequest):
+    render_plan: dict[str, Any]
+
+
+class IngestPlannedJob(BaseModel):
+    """One job a render plan makes for each design: its kind, its price and how many files it makes."""
+
+    kind: str
+    credits: int
+    files: int
+
+
+class IngestRenderPlanQuote(BaseModel):
+    """What a render plan costs each design, priced as a batch with it will be held and charged."""
+
+    render_credits: int
+    jobs: list[IngestPlannedJob]
 
 
 class LookTemplateOut(BaseModel):

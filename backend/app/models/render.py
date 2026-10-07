@@ -37,6 +37,9 @@ class Render(Base):
     label: Mapped[str | None] = mapped_column(String(128), nullable=True)  # e.g. front, 18k-yellow-gold
     meta: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # frames, fps, duration, SHA-256
     expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # pack ZIPs and archives
+    # Its copy in the public bucket, published/<user>/<sku>/media/<job>/<file>, when the batch it
+    # was rendered for publishes its media (docs/adr/0006-bulk-pipeline.md, "Render plans").
+    public_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     scene: Mapped["Scene"] = relationship("Scene", back_populates="renders")

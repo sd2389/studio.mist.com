@@ -1,5 +1,5 @@
 import { Progress } from "@/components/ui/progress";
-import type { IngestBatch } from "@/lib/api/ingest";
+import type { IngestBatch, IngestCredits } from "@/lib/api/ingest";
 import { countOf, finishedCount, ITEM_STATUS_LABELS, statusesPresent } from "../domain/statuses";
 import { panelLabel } from "./BatchPlanPanel";
 
@@ -7,9 +7,25 @@ function credits(count: number, kind: string): string {
   return `${count} ${kind} credit${count === 1 ? "" : "s"}`;
 }
 
+function both(amount: IngestCredits): string {
+  return `${credits(amount.model_credits, "model")} and ${credits(amount.render_credits, "render")}`;
+}
+
+/** "Charged 3 model credits and 21 render credits · given back 0 …", once anything was. */
+function SettledCredits({ batch }: { batch: IngestBatch }) {
+  const { charged, refunded } = batch;
+  if (!charged || !refunded) return null;
+  return (
+    <p className="text-xs text-muted-foreground">
+      Charged {both(charged)} · given back {both(refunded)}
+    </p>
+  );
+}
+
 /**
  * A batch's designs counted by status (the API's GROUP BY, never counters that drift), how many
- * have finished, and its credits: the price, and what its designs hold now.
+ * have finished, and its credits: the price, what its designs and their renders hold now, what
+ * was charged and what was given back.
  */
 export function BatchCounts({ batch }: { batch: IngestBatch }) {
   const finished = finishedCount(batch);
@@ -35,9 +51,9 @@ export function BatchCounts({ batch }: { batch: IngestBatch }) {
       <div className="space-y-1">
         <p className={panelLabel}>Credits</p>
         <p className="text-xs text-muted-foreground">
-          Price {credits(batch.quote.model_credits, "model")} and {credits(batch.quote.render_credits, "render")} · held now{" "}
-          {credits(batch.held.model_credits, "model")} and {credits(batch.held.render_credits, "render")}
+          Price {both(batch.quote)} · held now {both(batch.held)}
         </p>
+        <SettledCredits batch={batch} />
       </div>
     </section>
   );

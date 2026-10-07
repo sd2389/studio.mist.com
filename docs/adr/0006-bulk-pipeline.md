@@ -251,6 +251,19 @@ When a design's scene is created, the plan becomes ADR 0005 export jobs with `ba
 - With `publish_media`, each output of a design with a SKU is also copied to the public bucket at `published/<user>/<sku>/media/<job>/<file>`. The job id in the path keeps a re-render from being hidden behind the year-long cache that published files get (ADR 0004 notes the problem for GLBs).
 - An item is `done` when its jobs have completed, `failed` when its conversion or any job failed for good; the outputs that did finish stay.
 
+As built in F2:
+
+- **Fan-out.** The conversion's completion queues the design's jobs in its own commit (`ingest/renders.py`), on `validate_look(saved_look(scene))`: the look the scene was saved with, a look template's included. Each job is an ADR 0005 job (priority 10, the owner's running cap and watermark, 3 attempts) for the scene, the batch and the design. A design moves `converting → rendering` in that commit, so `converted` is only ever seen inside it; a conversion completed twice is a 409 and queues nothing again. A look that no longer validates fails the design (`invalid_spec`), its render credits refunded and its scene kept. A design a conversion left `converted` before F2 ran (its credits held, no job) is started by the sweep every worker claim makes (`resume_converted_designs`, found by the partial index `ix_ingest_items_converted`), through the same fan-out and so once, its held credits moving onto its jobs as they would have.
+- **Credits.** The design's held render credits move onto its jobs (`share_held`: each job its own price, which adds up to the hold unless prices changed since the batch was priced), each with its share of the bought ones and the allowance generation of the hold, so the jobs charge and refund as every job does and a batch charges exactly its quote. `GET /ingest/batches/{id}` gives credits `held` (by designs and jobs), `charged` (a model credit per scene made, the render credits jobs charged) and `refunded` (what designs were given back, `ingest_items.*_refunded`, and refunded jobs).
+- **Statuses.** A design is `done` once the newest job of each kind has completed and `failed` as soon as one ends failed or canceled (a render its owner cancels too); its other jobs run on and keep what they make. A batch settles only once none of its designs is unfinished and none of its jobs is queued or running.
+- **Retries.** A job's own retries are ADR 0005's. Retrying a failed design whose scene was made queues new jobs only for the parts whose newest job ended failed or canceled, and holds their price alone; a part still queued or running is left to finish, so no part is rendered or charged twice. The newest job of a kind stands for it. One without a scene converts again, as in E1.
+- **Cancel.** Queued jobs end canceled and refunded at once, running ones are asked to stop through the heartbeat, and designs give back what they still hold; a second pass after the commit stops jobs a conversion queued while the cancel ran. Every change locks jobs, then designs, then the billing row, then the batch; lapsed leases are taken back one job a transaction to keep that order.
+- **Checks and price.** The plan is checked again at submit and at retry against the owner's current caps (402). `POST /ingest/render-plan/quote` prices a plan for `/bulk/new` as creating a batch would (400, 402).
+- **The turntable** goes once round the piece from the three-quarter angle (35° round, 24° up, framed for that view): a turntable job's path can't take the pack's orbit (20° up, fitted at every azimuth).
+- **`publish_media` is off by default**: outputs stay private and download through the API unless the plan asks. `renders.public_key` keeps each public copy, which deleting the scene removes.
+- **The embed link**, `APP_PUBLIC_URL/embed/<SKU>` as the studio builds it, is kept on the design (`ingest_items.embed_url`) when its scene is made; a design that is done has its scene published again if its publish had failed.
+- **The pages.** `/bulk/new` picks the plan with the Campaign Pack's pickers, the ADR's default plan to start (four 2000 px stills and a 6 s 1080² turntable, 7 credits a design), and shows the API's price; `/bulk/<id>` shows each design's jobs (the shared `RenderJobStatusBadge`, `RenderJobProgress` and `RenderJobDownloads`), its thumbnail and its embed link.
+
 ### Credits for a batch
 
 Submitting holds everything the batch can spend, in one transaction, with ADR 0005's atomic hold:
@@ -408,7 +421,7 @@ Work can start on these defaults.
 | Largest batch | Studio 500 designs and 20 GB, Grow 100 and 5 GB; no bulk on Free; 3 unfinished batches per user |
 | Largest file | 100 MB, as the direct upload today (STEP files of complex pieces may need 250 MB) |
 | Paying for bulk | 1 model credit and the plan's render credits per design (7 for the default plan). Add top-ups: 100 model credits and 1,000 render credits, priced by the owner |
-| Public media links in the manifest | On by default for designs with a SKU (they are product images; the embed is public already) |
+| Public media links in the manifest | Off by default, as decided for F2: outputs stay private until a plan sets `publish_media`, which publishes them for designs with a SKU |
 | SKUs across the platform | Keep them platform-wide; conflicts are reported before upload. Per-account embed paths are a separate decision |
 | Retention | Raw CAD 30 days after the batch finishes; archives 14 days; manifests and scenes until deleted |
 | API access | Studio only at first |

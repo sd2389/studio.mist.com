@@ -42,6 +42,7 @@ def _hold_credits(db: Session, user_id: int, batch: IngestBatch, items: list[Ing
         item.render_credits_held = per_design
         item.bought_render_credits_held = render_bought
         item.credits_period_start = hold.period_start
+        item.credits_allowance_generation = hold.allowance_generation
         item.updated_at = now
 
 

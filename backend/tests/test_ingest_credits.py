@@ -34,6 +34,7 @@ from sqlalchemy.orm import sessionmaker
 from app.features.billing.credit_pools import bought_credits
 from app.features.billing.purchases import record_topup_purchase
 from app.features.billing.quota_service import (
+    change_plan,
     get_or_create_billing,
     hold_batch_credits,
     reset_allotments,
@@ -90,6 +91,7 @@ def test_submitting_holds_every_designs_credits_once(client, db, owner, cloud):
     assert balances(db, user) == (STUDIO[0] - 3, STUDIO[1] - 12)
     assert _held(db, batch) == [(1, 4)] * 3
     assert {row.credits_period_start for row in db.query(IngestItem)} == {period}
+    assert {row.credits_allowance_generation for row in db.query(IngestItem)} == {1}  # sign_in's reset
     jobs = _jobs(db)
     assert [(job.kind, job.status, job.priority, job.credits, job.credit_state, job.watermark, job.max_running) for job in jobs] == [
         ("convert", "queued", 10, 0, "none", False, 4)
@@ -377,6 +379,70 @@ def test_a_refund_after_the_period_rolled_over_gives_back_only_the_bought_credit
     client.post(f"/ingest/batches/{batch['id']}/cancel", headers=headers)
 
     assert (balances(db, user), _bought(db, user)) == ((STUDIO[0] + 1, STUDIO[1] + 4), (1, 4))
+
+
+OCTOBER, NOVEMBER = datetime(2026, 10, 1), datetime(2026, 11, 1)
+
+
+def _one_bought_model_credit_and_two_of_four_render_credits_bought(db, user) -> None:
+    """The balances a design of STILLS_PLAN then holds: 1 model credit, bought, and 4 render
+    credits, 2 of them the plan's and 2 bought."""
+    _set_billing(db, user, model_credits_balance=0, render_credits_balance=2)
+    _buy(db, user, "model", 1)
+    _buy(db, user, "render", 2)
+
+
+def _move_period_without_a_grant(db, user) -> None:
+    """What customer.subscription.updated does: the plan's period moves, no credits change."""
+    change_plan(
+        db, get_or_create_billing(db, user), tier="studio",
+        period_start=OCTOBER, period_end=NOVEMBER, stripe_subscription_id="sub_1",
+    )
+
+
+def test_a_design_held_between_a_renewals_events_refunds_no_plan_credits_on_top_of_the_new_allowance(
+    client, db, owner, cloud
+):
+    """The period moves, the batch is submitted, then invoice.paid grants the new allowance: when
+    the design fails, its bought credits come back and its plan ones, replaced, don't."""
+    user, headers = owner
+    _one_bought_model_credit_and_two_of_four_render_credits_bought(db, user)
+    _move_period_without_a_grant(db, user)
+    batch = submitted_batch(client, headers, cloud, batch_body(render_plan=STILLS_PLAN))
+    assert _held_bought(db, batch) == [(1, 2)]
+    set_subscription_period(
+        db, get_or_create_billing(db, user), tier="studio",
+        period_start=OCTOBER, period_end=NOVEMBER, stripe_subscription_id="sub_1",
+    )
+
+    fail(db, claim(db), "model_unreadable")
+
+    assert (balances(db, user), _bought(db, user)) == ((STUDIO[0] + 1, STUDIO[1] + 2), (1, 2))
+
+
+def test_a_design_refunded_after_a_reset_gives_back_no_plan_credits(client, db, owner, cloud):
+    """An admin's reset, reset_allotments as Free's monthly one, leaves the period as it is."""
+    user, headers = owner
+    _one_bought_model_credit_and_two_of_four_render_credits_bought(db, user)
+    batch = submitted_batch(client, headers, cloud, batch_body(render_plan=STILLS_PLAN))
+    reset_allotments(db, get_or_create_billing(db, user), "studio")
+
+    client.post(f"/ingest/batches/{batch['id']}/cancel", headers=headers)
+
+    assert (balances(db, user), _bought(db, user)) == ((STUDIO[0] + 1, STUDIO[1] + 2), (1, 2))
+
+
+def test_a_design_refunded_after_the_period_moved_without_a_grant_gives_back_its_plan_credits(
+    client, db, owner, cloud
+):
+    user, headers = owner
+    _one_bought_model_credit_and_two_of_four_render_credits_bought(db, user)
+    batch = submitted_batch(client, headers, cloud, batch_body(render_plan=STILLS_PLAN))
+    _move_period_without_a_grant(db, user)
+
+    client.post(f"/ingest/batches/{batch['id']}/cancel", headers=headers)
+
+    assert (balances(db, user), _bought(db, user)) == ((1, 4), (1, 2))
 
 
 def test_a_refund_after_the_period_rolled_over_adds_nothing(client, db, owner, cloud):

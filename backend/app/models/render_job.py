@@ -70,6 +70,9 @@ class RenderJob(Base):
     bought_credits: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     credit_state: Mapped[str] = mapped_column(String(12), default="none")  # held | charged | refunded | none
     billing_period_start: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # when it was held
+    # The owner's allowance_generation when the credits were held: the refund gives back their
+    # plan part only while it is the same, as no allowance has replaced those plan credits yet.
+    billing_allowance_generation: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
     request_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)  # SHA-256 of the request
     error: Mapped[str | None] = mapped_column(String(1024), nullable=True)

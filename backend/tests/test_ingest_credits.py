@@ -15,6 +15,8 @@ from ingest_samples import (  # noqa: F401 - fixtures
     claim,
     client,
     cloud,
+    complete,
+    converted_files,
     create,
     design,
     designs,
@@ -29,7 +31,15 @@ from ingest_samples import (  # noqa: F401 - fixtures
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.features.billing.quota_service import get_or_create_billing, hold_batch_credits, set_subscription_period
+from app.features.billing.credit_pools import bought_credits
+from app.features.billing.purchases import record_topup_purchase
+from app.features.billing.quota_service import (
+    change_plan,
+    get_or_create_billing,
+    hold_batch_credits,
+    reset_allotments,
+    set_subscription_period,
+)
 from app.features.ingest import lifecycle
 from app.models import Base, IngestItem, RenderJob, Scene, User
 
@@ -81,6 +91,7 @@ def test_submitting_holds_every_designs_credits_once(client, db, owner, cloud):
     assert balances(db, user) == (STUDIO[0] - 3, STUDIO[1] - 12)
     assert _held(db, batch) == [(1, 4)] * 3
     assert {row.credits_period_start for row in db.query(IngestItem)} == {period}
+    assert {row.credits_allowance_generation for row in db.query(IngestItem)} == {1}  # sign_in's reset
     jobs = _jobs(db)
     assert [(job.kind, job.status, job.priority, job.credits, job.credit_state, job.watermark, job.max_running) for job in jobs] == [
         ("convert", "queued", 10, 0, "none", False, 4)
@@ -121,7 +132,6 @@ def test_a_batch_the_credits_cant_cover_is_402_and_holds_nothing(client, db, own
 def test_two_submits_at_once_cant_overspend(tmp_path):
     """Two batches whose designs the balance covers one at a time; only the first holds. The
     second session read the balance before the first committed, as a second API process would."""
-    from app.features.billing.quota_service import reset_allotments
     from app.features.ingest.service import create_batch
     from app.schemas.ingest import IngestBatchCreate
 
@@ -277,6 +287,162 @@ def test_canceling_again_answers_the_batch_and_a_finished_one_is_409(client, db,
 
     assert (again.status_code, again.json()["status"]) == (200, "canceled")
     assert (submit.status_code, finished.status_code) == (409, 409)
+
+
+def _buy(db, user: User, kind: str, credits: int) -> None:
+    """A paid top-up, as the Stripe webhook records it."""
+    record_topup_purchase(
+        db, get_or_create_billing(db, user), kind=kind, credits=credits,
+        session_id=f"cs_{kind}", event_id=f"evt_{kind}", amount_total=None, currency=None,
+    )
+
+
+def _bought(db, user: User) -> tuple[int, int]:
+    """(model credits, render credits) bought, of those left."""
+    billing = get_or_create_billing(db, user)
+    db.refresh(billing)
+    return bought_credits(billing, "model"), bought_credits(billing, "render")
+
+
+def _held_bought(db, batch: dict) -> list[tuple[int, int]]:
+    db.expire_all()
+    rows = db.query(IngestItem).filter(IngestItem.batch_id == batch["id"]).order_by(IngestItem.position).all()
+    return [(row.bought_model_credit_held, row.bought_render_credits_held) for row in rows]
+
+
+def test_canceling_gives_the_bought_credits_a_batch_held_back_as_bought(client, db, owner, cloud):
+    """1 plan model credit and 5 bought; 4 plan render credits and 20 bought. Three designs hold
+    3 model and 12 render credits, plan credits first; canceling gives each pool back what it lost,
+    so the next reset keeps every bought credit."""
+    user, headers = owner
+    _set_billing(db, user, model_credits_balance=1, render_credits_balance=4)
+    _buy(db, user, "model", 5)
+    _buy(db, user, "render", 20)
+    batch = create(client, headers, batch_body(*designs(3), render_plan=STILLS_PLAN)).json()
+    upload_all(client, headers, cloud, batch)
+
+    _submit(client, headers, batch)
+
+    assert _held(db, batch) == [(1, 4)] * 3
+    assert _held_bought(db, batch) == [(0, 0), (1, 4), (1, 4)]
+    assert (balances(db, user), _bought(db, user)) == ((3, 12), (3, 12))
+    client.post(f"/ingest/batches/{batch['id']}/cancel", headers=headers)
+    assert (balances(db, user), _bought(db, user)) == ((6, 24), (5, 20))
+    assert _held_bought(db, batch) == [(0, 0)] * 3
+    reset_allotments(db, get_or_create_billing(db, user), "studio")
+    assert (balances(db, user), _bought(db, user)) == ((STUDIO[0] + 5, STUDIO[1] + 20), (5, 20))
+
+
+def test_a_failed_design_gives_back_its_own_bought_credits(client, db, owner, cloud):
+    user, headers = owner
+    _set_billing(db, user, model_credits_balance=0, render_credits_balance=0)
+    _buy(db, user, "model", 2)
+    _buy(db, user, "render", 8)
+    batch = submitted_batch(client, headers, cloud, batch_body(*designs(2), render_plan=STILLS_PLAN))
+    assert _held_bought(db, batch) == [(1, 4), (1, 4)]
+
+    fail(db, claim(db), "model_unreadable")
+
+    assert _held_bought(db, batch) == [(0, 0), (1, 4)]
+    assert (balances(db, user), _bought(db, user)) == ((1, 4), (1, 4))
+
+
+def test_a_converted_design_spends_its_bought_model_credit_and_keeps_its_render_credits_held(client, db, owner, cloud):
+    user, headers = owner
+    _set_billing(db, user, model_credits_balance=0, render_credits_balance=0)
+    _buy(db, user, "model", 1)
+    _buy(db, user, "render", 4)
+    batch = submitted_batch(client, headers, cloud, batch_body(render_plan=STILLS_PLAN))
+    job = claim(db)
+
+    complete(db, job, converted_files(cloud, job))
+
+    assert _held_bought(db, batch) == [(0, 4)]
+    client.post(f"/ingest/batches/{batch['id']}/cancel", headers=headers)
+    assert (balances(db, user), _bought(db, user)) == ((0, 4), (0, 4))
+
+
+def test_a_refund_after_the_period_rolled_over_gives_back_only_the_bought_credits(client, db, owner, cloud):
+    """The new period's allowance replaced the plan credits the designs held; their bought ones are
+    still the customer's."""
+    user, headers = owner
+    _set_billing(db, user, period_start=datetime(2026, 9, 1), model_credits_balance=1, render_credits_balance=4)
+    _buy(db, user, "model", 1)
+    _buy(db, user, "render", 4)
+    batch = submitted_batch(client, headers, cloud, batch_body(*designs(2), render_plan=STILLS_PLAN))
+    assert _held_bought(db, batch) == [(0, 0), (1, 4)]
+    set_subscription_period(
+        db, get_or_create_billing(db, user), tier="studio",
+        period_start=datetime(2026, 10, 1), period_end=datetime(2026, 11, 1), stripe_subscription_id="sub_1",
+    )
+
+    client.post(f"/ingest/batches/{batch['id']}/cancel", headers=headers)
+
+    assert (balances(db, user), _bought(db, user)) == ((STUDIO[0] + 1, STUDIO[1] + 4), (1, 4))
+
+
+OCTOBER, NOVEMBER = datetime(2026, 10, 1), datetime(2026, 11, 1)
+
+
+def _one_bought_model_credit_and_two_of_four_render_credits_bought(db, user) -> None:
+    """The balances a design of STILLS_PLAN then holds: 1 model credit, bought, and 4 render
+    credits, 2 of them the plan's and 2 bought."""
+    _set_billing(db, user, model_credits_balance=0, render_credits_balance=2)
+    _buy(db, user, "model", 1)
+    _buy(db, user, "render", 2)
+
+
+def _move_period_without_a_grant(db, user) -> None:
+    """What customer.subscription.updated does: the plan's period moves, no credits change."""
+    change_plan(
+        db, get_or_create_billing(db, user), tier="studio",
+        period_start=OCTOBER, period_end=NOVEMBER, stripe_subscription_id="sub_1",
+    )
+
+
+def test_a_design_held_between_a_renewals_events_refunds_no_plan_credits_on_top_of_the_new_allowance(
+    client, db, owner, cloud
+):
+    """The period moves, the batch is submitted, then invoice.paid grants the new allowance: when
+    the design fails, its bought credits come back and its plan ones, replaced, don't."""
+    user, headers = owner
+    _one_bought_model_credit_and_two_of_four_render_credits_bought(db, user)
+    _move_period_without_a_grant(db, user)
+    batch = submitted_batch(client, headers, cloud, batch_body(render_plan=STILLS_PLAN))
+    assert _held_bought(db, batch) == [(1, 2)]
+    set_subscription_period(
+        db, get_or_create_billing(db, user), tier="studio",
+        period_start=OCTOBER, period_end=NOVEMBER, stripe_subscription_id="sub_1",
+    )
+
+    fail(db, claim(db), "model_unreadable")
+
+    assert (balances(db, user), _bought(db, user)) == ((STUDIO[0] + 1, STUDIO[1] + 2), (1, 2))
+
+
+def test_a_design_refunded_after_a_reset_gives_back_no_plan_credits(client, db, owner, cloud):
+    """An admin's reset, reset_allotments as Free's monthly one, leaves the period as it is."""
+    user, headers = owner
+    _one_bought_model_credit_and_two_of_four_render_credits_bought(db, user)
+    batch = submitted_batch(client, headers, cloud, batch_body(render_plan=STILLS_PLAN))
+    reset_allotments(db, get_or_create_billing(db, user), "studio")
+
+    client.post(f"/ingest/batches/{batch['id']}/cancel", headers=headers)
+
+    assert (balances(db, user), _bought(db, user)) == ((STUDIO[0] + 1, STUDIO[1] + 2), (1, 2))
+
+
+def test_a_design_refunded_after_the_period_moved_without_a_grant_gives_back_its_plan_credits(
+    client, db, owner, cloud
+):
+    user, headers = owner
+    _one_bought_model_credit_and_two_of_four_render_credits_bought(db, user)
+    batch = submitted_batch(client, headers, cloud, batch_body(render_plan=STILLS_PLAN))
+    _move_period_without_a_grant(db, user)
+
+    client.post(f"/ingest/batches/{batch['id']}/cancel", headers=headers)
+
+    assert (balances(db, user), _bought(db, user)) == ((1, 4), (1, 2))
 
 
 def test_a_refund_after_the_period_rolled_over_adds_nothing(client, db, owner, cloud):

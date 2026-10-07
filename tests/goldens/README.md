@@ -41,8 +41,9 @@ version in `package.json` — SwiftShader output can shift between Chromium
 builds. After any playwright bump, regenerate and re-approve the goldens.
 
 The model fixture is `public/test-fixtures/PDR-2413.glb`, regenerated from
-`samples/PDR-2413.3dm` (not in git) via `npm run golden:fixture` (dev server
-required). Regenerating the fixture also requires regenerating the goldens,
+`samples/PDR-2413.3dm` (not in git) via `npm run golden:fixture`, which runs the
+harness's convert mode, the upload page's Save, on the worker's app at
+`HARNESS_BASE_URL`. Regenerating the fixture also requires regenerating the goldens,
 since they are pinned to the exact fixture bytes. The export goldens' jobs are
 `fixtures/export-still.json` and `fixtures/export-turntable.json`, in the shape of the API's job
 payload (`src/features/render/harness/job-payload.ts`); unit tests keep them readable by the

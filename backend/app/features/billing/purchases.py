@@ -8,26 +8,20 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.features.billing.credit_pools import BOUGHT_KINDS, credit_values
 from app.models.billing import CreditPurchase, UserBilling
 
 
-# The balance each kind of top-up adds to.
-_TOPUP_BALANCES = {
-    "model": UserBilling.model_credits_balance,
-    "ai": UserBilling.ai_image_credits_balance,
-}
-
-
 def _add_topup_credits(db: Session, billing: UserBilling, *, kind: str, amount: int) -> None:
-    """Adds in the database (`balance = balance + amount`), so two purchases committing at
-    once both count; a total worked out here could overwrite the other's."""
-    balance = _TOPUP_BALANCES.get(kind)
-    if balance is None:
+    """Adds bought credits in the database (`balance = balance + amount`), so two purchases
+    committing at once both count; a total worked out here could overwrite the other's. Bought
+    credits are spent last and kept when the plan's credits are reset."""
+    if kind not in BOUGHT_KINDS:
         raise ValueError(f"Unknown top-up kind: {kind}")
     db.execute(
         update(UserBilling)
         .where(UserBilling.id == billing.id)
-        .values({balance: balance + amount, UserBilling.updated_at: datetime.utcnow()})
+        .values({**credit_values(kind, bought=amount), UserBilling.updated_at: datetime.utcnow()})
         .execution_options(synchronize_session=False)
     )
 

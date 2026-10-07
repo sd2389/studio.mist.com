@@ -45,6 +45,17 @@ describe("routeFor", () => {
     expect(routeFor("https://assets.example.com/upload", "POST", policy)).toBe("abort");
   });
 
+  it("serves the converters' vendored files, exactly those, with no asset host allowed", () => {
+    const rhino = "https://cdn.jsdelivr.net/npm/rhino3dm@8.17.0/rhino3dm.wasm";
+    const converting = pagePolicy({ harnessOrigin: HARNESS, sinkOrigin: SINK, jobId: 12, assetPrefixes: [], vendoredUrls: [rhino] });
+    expect(routeFor(rhino, "GET", converting)).toBe("asset");
+    expect(routeFor("https://cdn.jsdelivr.net/npm/rhino3dm@8.17.1/rhino3dm.wasm", "GET", converting)).toBe("abort");
+    expect(routeFor("https://cdn.jsdelivr.net/npm/evil@1.0.0/x.js", "GET", converting)).toBe("abort");
+    expect(routeFor("https://www.gstatic.com/draco/versioned/decoders/1.5.5/draco_decoder.wasm", "GET", converting)).toBe("abort");
+    expect(routeFor(rhino, "POST", converting)).toBe("abort");
+    expect(routeFor(rhino, "GET", policy)).toBe("abort");
+  });
+
   it("aborts everything else, loopback included", () => {
     for (const url of [
       "https://example.com/",

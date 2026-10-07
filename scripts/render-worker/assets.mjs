@@ -33,11 +33,13 @@ function sizeCap(limit, label) {
  * and grounds on the asset origin, and the decoders models need (Draco's WASM, from gstatic).
  * The worker fetches each URL once and serves it from disk through `context.route` after that,
  * so a warm worker renders without waiting on, or depending on, those hosts. Keyed by the whole
- * URL; past `maxBytes` the least recently used files go.
+ * URL; past `maxBytes` the least recently used files go. The converters' vendored files
+ * (`loadVendor` in vendor.mjs) are answered from where they are and never fetched.
  *
- * @param {{ dir: string, maxBytes?: number, fetch?: typeof fetch, log?: (message: string) => void }} options
+ * @param {{ dir: string, maxBytes?: number, fetch?: typeof fetch, log?: (message: string) => void,
+ *   vendor?: { files: Map<string, { path: string, contentType: string, bytes: number }> } | null }} options
  */
-export function createAssetCache({ dir, maxBytes = 2 * 1024 ** 3, fetch = globalThis.fetch, log = () => {} }) {
+export function createAssetCache({ dir, maxBytes = 2 * 1024 ** 3, fetch = globalThis.fetch, log = () => {}, vendor = null }) {
   const downloading = new Map();
   let ready = null;
   const fileOf = (url) => path.join(dir, createHash("sha256").update(url).digest("hex"));
@@ -95,10 +97,15 @@ export function createAssetCache({ dir, maxBytes = 2 * 1024 ** 3, fetch = global
     return { path: file, contentType, bytes: meter.bytes, cached: false };
   }
 
+  const vendored = vendor?.files ?? new Map();
   return {
     dir,
+    /** The URLs answered from the vendored files: a page may load these, whatever its allowlist. */
+    vendored: new Set(vendored.keys()),
     /** The file for `url`, fetched first if the cache doesn't have it; one fetch per URL at a time. */
     async get(url) {
+      const pinned = vendored.get(url);
+      if (pinned) return { ...pinned, cached: true };
       ready ??= mkdir(dir, { recursive: true });
       await ready;
       const hit = await stored(url);

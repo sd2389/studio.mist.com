@@ -1,4 +1,6 @@
 declare module "draco3dgltf" {
-  export function createDecoderModule(): Promise<unknown>;
-  export function createEncoderModule(): Promise<unknown>;
+  /** The Emscripten module's options: `locateFile` says where its WASM is. */
+  type DracoModuleOptions = { locateFile?: (path: string, prefix: string) => string };
+  export function createDecoderModule(options?: DracoModuleOptions): Promise<unknown>;
+  export function createEncoderModule(options?: DracoModuleOptions): Promise<unknown>;
 }

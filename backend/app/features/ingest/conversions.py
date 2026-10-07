@@ -196,6 +196,7 @@ def _record_conversion(
             status="converted" if renders_next else "done",
             scene_id=scene.id,
             model_credit_held=0,
+            bought_model_credit_held=0,
             polygon_count=triangles,
             size_mm=max(report.units.size_mm),
             warnings=warnings,

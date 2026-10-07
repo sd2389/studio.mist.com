@@ -13,6 +13,14 @@ class QuotaBalances(BaseModel):
     storage_bytes_limit: int
 
 
+class BoughtBalances(BaseModel):
+    """Of each balance, the credits the customer bought: spent last, kept at renewal."""
+
+    model_credits: int = 0
+    ai_image_credits: int = 0
+    render_credits: int = 0
+
+
 class BulkUploadLimits(BaseModel):
     """What one bulk upload may hold on the plan (BATCH_LIMITS, docs/adr/0006-bulk-pipeline.md),
     so the upload page can say so before anything uploads."""
@@ -45,7 +53,8 @@ class UserBillingSnapshot(BaseModel):
     plan_label: str
     period_start: datetime | None
     period_end: datetime | None
-    balances: QuotaBalances
+    balances: QuotaBalances  # what can be spent: plan and bought credits together
+    bought_balances: BoughtBalances = Field(default_factory=BoughtBalances)
     allotments: QuotaBalances
     features: PlanFeatures
     stripe_customer_id: str | None = None

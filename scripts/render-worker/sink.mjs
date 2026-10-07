@@ -125,15 +125,15 @@ function readClip(body) {
   return { width, height, fps, frames };
 }
 
-async function serveModel(model, response) {
-  if (Buffer.isBuffer(model)) {
-    response.writeHead(200, { "Content-Type": "model/gltf-binary", "Content-Length": model.length });
-    response.end(model);
+async function serveFile(file, contentType, response) {
+  if (Buffer.isBuffer(file)) {
+    response.writeHead(200, { "Content-Type": contentType, "Content-Length": file.length });
+    response.end(file);
     return;
   }
-  const { size } = await stat(model);
-  response.writeHead(200, { "Content-Type": "model/gltf-binary", "Content-Length": size });
-  await pipeline(createReadStream(model), response);
+  const { size } = await stat(file);
+  response.writeHead(200, { "Content-Type": contentType, "Content-Length": size });
+  await pipeline(createReadStream(file), response);
 }
 
 /**
@@ -141,6 +141,7 @@ async function serveModel(model, response) {
  * job's random token in `X-Sink-Token`, and only the harness origin may call it from a page.
  *
  * - `GET /inputs/model.glb`: the job's model, as the worker downloaded it.
+ * - `GET /inputs/<path>`: one of `inputs`, a convert job's files (`/inputs/source`, `/inputs/companions/<n>`).
  * - `POST /files/<name>`: one encoded file, streamed to `outDir/<name>`. Only the names in
  *   `names` (the spec's `output_names`), each once; 409 for one already in. With `paths` (a
  *   Campaign Pack), a name is the file's path in the pack's ZIP (`isEntryPath`), and the file
@@ -165,7 +166,8 @@ async function serveModel(model, response) {
  *
  * @param {object} options
  * @param {string} options.origin The harness origin, the one page origin allowed to call.
- * @param {string | Buffer} options.model The model: a file path, or its bytes.
+ * @param {string | Buffer | null} [options.model] The model: a file path, or its bytes.
+ * @param {Map<string, string> | null} [options.inputs] Path (`/inputs/…`) → the file served there.
  * @param {string} options.outDir Where files go.
  * @param {string[] | null} [options.names] The only file names taken; any well-formed one when null.
  * @param {boolean} [options.paths] Names are paths in a ZIP.
@@ -183,7 +185,8 @@ async function serveModel(model, response) {
  */
 export async function startSink({
   origin,
-  model,
+  model = null,
+  inputs = null,
   outDir,
   names = null,
   paths = false,
@@ -322,8 +325,15 @@ export async function startSink({
     onProgress?.(entry);
   };
 
+  const serveInput = (pathname, response) => {
+    if (pathname === "/inputs/model.glb" && model) return serveFile(model, "model/gltf-binary", response);
+    const file = inputs?.get(pathname);
+    if (!file) throw new SinkError(404, "not found");
+    return serveFile(file, "application/octet-stream", response);
+  };
+
   const route = async (request, response, { pathname, searchParams }) => {
-    if (request.method === "GET" && pathname === "/inputs/model.glb") return serveModel(model, response);
+    if (request.method === "GET" && pathname.startsWith("/inputs/")) return serveInput(pathname, response);
     if (request.method !== "POST") throw new SinkError(404, "not found");
     if (pathname.startsWith("/videos/")) return takeVideo(request, response, pathname.slice("/videos/".length));
     if (pathname.startsWith("/files/")) await takeFile(request, pathname.slice("/files/".length));

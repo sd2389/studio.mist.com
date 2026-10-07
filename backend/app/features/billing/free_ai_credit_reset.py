@@ -3,6 +3,11 @@
 Free accounts used to get 150 AI image credits; plans.py holds today's allowance. A Free
 account above it keeps the allowance plus every AI credit it paid for (the purchase ledger
 and Stripe Checkout) or an admin granted it, and never ends up above its current balance.
+
+Only plan credits are lowered: bought credits (credit_pools.py) never are. Paid credits the
+balance still holds are kept as bought credits, so a later reset or plan change leaves them;
+that includes top-ups only Stripe knows of, which the purchase ledger's backfill counted as plan
+credits. Plan credits are spent first, so the paid ones are the last to have gone.
 """
 
 from __future__ import annotations
@@ -14,6 +19,7 @@ import stripe
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.features.billing.credit_pools import bought_credits
 from app.features.billing.plans import get_quotas, normalize_tier
 from app.features.billing.quota_service import record_admin_action
 from app.features.billing.stripe_service import list_paid_topup_sessions
@@ -27,7 +33,8 @@ AUDIT_KIND = "free_ai_allowance_reset"
 
 @dataclass(frozen=True)
 class AiCreditReset:
-    """A Free account above the allowance: its AI image credits now and after the reset."""
+    """A Free account above the allowance: its AI image credits now and after the reset, and how
+    many of those after are bought credits."""
 
     user_id: int
     plan_tier: str
@@ -35,6 +42,7 @@ class AiCreditReset:
     paid: int
     granted: int
     new: int
+    bought: int
 
 
 def free_ai_allowance() -> int:
@@ -51,6 +59,14 @@ def require_admin(db: Session, user_id: int) -> User:
     return user
 
 
+def _kept_credits(current: int, bought_now: int, *, paid: int, kept_above_allowance: int) -> tuple[int, int]:
+    """The balance an account keeps and how many of it are bought credits: at most the allowance
+    plus what it keeps above it, never more than it holds, never less than its bought credits;
+    of those, bought are the ones bought already or every paid credit still in the balance."""
+    new = max(bought_now, min(current, free_ai_allowance() + kept_above_allowance))
+    return new, min(new, max(bought_now, min(current, paid)))
+
+
 def plan_free_ai_reset(
     db: Session, stripe_client: stripe.StripeClient | None
 ) -> list[AiCreditReset]:
@@ -58,8 +74,7 @@ def plan_free_ai_reset(
 
     Without a Stripe client, paid credits come from the purchase ledger alone.
     """
-    allowance = free_ai_allowance()
-    billings = _free_billings_above(db, allowance)
+    billings = _free_billings_above(db, free_ai_allowance())
     user_ids = [billing.user_id for billing in billings]
     ledger = _ledger_ai_purchases(db, user_ids)
     grants = _admin_ai_grants(db, user_ids)
@@ -68,6 +83,9 @@ def plan_free_ai_reset(
         current = billing.ai_image_credits_balance
         paid = _paid_ai_credits(billing, ledger.get(billing.user_id, {}), stripe_client)
         granted = grants.get(billing.user_id, 0)
+        new, bought = _kept_credits(
+            current, bought_credits(billing, AI_KIND), paid=paid, kept_above_allowance=paid + granted
+        )
         resets.append(
             AiCreditReset(
                 user_id=billing.user_id,
@@ -75,7 +93,8 @@ def plan_free_ai_reset(
                 current=current,
                 paid=paid,
                 granted=granted,
-                new=min(current, allowance + paid + granted),
+                new=new,
+                bought=bought,
             )
         )
     return resets
@@ -84,27 +103,31 @@ def plan_free_ai_reset(
 def apply_free_ai_reset(
     db: Session, resets: list[AiCreditReset], *, admin_user_id: int
 ) -> list[AiCreditReset]:
-    """Lower the planned balances, with one credit_adjustments row each, in one commit.
+    """Lower the planned balances and keep their paid credits as bought ones, with one
+    credit_adjustments row each, in one commit.
 
     Each balance is read again under a row lock: credits spent since the plan stay spent,
     credits added since (a purchase, a grant) are kept on top of what the plan kept, and an
-    account that has left Free or is now within its limit is left alone.
+    account that has left Free, or has nothing left to lower or keep, is left alone.
     Returns what was written.
     """
     require_admin(db, admin_user_id)
-    allowance = free_ai_allowance()
-    reason = f"Free AI allowance moved to {allowance}"
+    reason = f"Free AI allowance moved to {free_ai_allowance()}"
     applied = []
     for reset in resets:
         billing = _lock_billing(db, reset.user_id)
         if billing is None or normalize_tier(billing.plan_tier) != "free":
             continue
         current = billing.ai_image_credits_balance
+        bought_now = bought_credits(billing, AI_KIND)
         arrived_since_plan = max(0, current - reset.current)
-        new = min(current, allowance + reset.paid + reset.granted + arrived_since_plan)
-        if new == current:
+        new, bought = _kept_credits(
+            current, bought_now, paid=reset.paid, kept_above_allowance=reset.paid + reset.granted + arrived_since_plan
+        )
+        if new == current and bought == bought_now:
             continue
         billing.ai_image_credits_balance = new
+        billing.bought_ai_image_credits = bought
         billing.updated_at = datetime.utcnow()
         record_admin_action(
             db,
@@ -114,7 +137,7 @@ def apply_free_ai_reset(
             delta=new - current,
             reason=reason,
         )
-        applied.append(replace(reset, current=current, new=new))
+        applied.append(replace(reset, current=current, new=new, bought=bought))
     db.commit()
     return applied
 

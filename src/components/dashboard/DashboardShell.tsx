@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { BoughtCreditsNote } from "@/components/billing/BoughtCreditsNote";
 import { DashboardClient } from "@/components/dashboard/DashboardClient";
 import type { UserBillingSnapshot } from "@/lib/billing/types";
 import type { DashboardFilterResult, DashboardFilters } from "@/lib/dashboard/filters";
@@ -39,6 +40,7 @@ export function DashboardShell({
   const modelTotal = initialBilling?.allotments.model_credits ?? 0;
   const aiCredits = initialBilling?.balances.ai_image_credits ?? 0;
   const aiTotal = initialBilling?.allotments.ai_image_credits ?? 0;
+  const bought = initialBilling?.bought_balances;
   const addObjectLink = (
     <Link
       href="/upload-model"
@@ -85,9 +87,11 @@ export function DashboardShell({
               {modelCredits}/{modelTotal}
             </p>
             <p className="mt-1 text-xs">Model credits available</p>
+            <BoughtCreditsNote bought={bought?.model_credits ?? 0} className="mt-1" />
             <p className="mt-5 font-mono text-[10px] uppercase tracking-[0.24em] text-foreground/60">
               AI images {aiCredits}/{aiTotal}
             </p>
+            <BoughtCreditsNote bought={bought?.ai_image_credits ?? 0} className="mt-1" />
           </div>
         </aside>
         <section className="ice-panel min-w-0 overflow-hidden p-5 sm:p-8">

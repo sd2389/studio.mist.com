@@ -1,6 +1,6 @@
 # Render worker
 
-The worker renders server exports ([ADR 0005](../../docs/adr/0005-server-exports.md)). It claims render jobs from the API, renders each in the render harness's export mode (`/render-harness?mode=export`, only in the `BUILD_TARGET=worker` build of the app) in headless Chrome on the host's GPU, uploads the files and completes the job. The page never sees a token: the worker's Node process makes every API call and hands the page its job and a loopback sink.
+The worker renders server exports ([ADR 0005](../../docs/adr/0005-server-exports.md)). It claims render jobs from the API, renders each in the render harness's export mode (`/render-harness?mode=export`, only in the `BUILD_TARGET=worker` build of the app) in headless Chrome on the host's GPU, uploads the files and completes the job. With `convert` in `WORKER_KINDS` it also converts bulk uploads' designs into GLBs, in the harness's convert mode ([ADR 0006](../../docs/adr/0006-bulk-pipeline.md); see [Conversions](#conversions)). The page never sees a token: the worker's Node process makes every API call and hands the page its job and a loopback sink.
 
 | Module | Does |
 |---|---|
@@ -9,6 +9,8 @@ The worker renders server exports ([ADR 0005](../../docs/adr/0005-server-exports
 | `api.mjs` | The API: claim, payload, inputs, heartbeat, uploads, complete, fail, with retries |
 | `browser.mjs` | Launch profiles and the self-check |
 | `job.mjs` | One job, from payload to complete or fail |
+| `convert.mjs` | What a convert job does differently: its files in, its checks on what the page made |
+| `vendor.mjs` | The converters' files, pinned by hash; `node vendor.mjs <dir>` fetches them |
 | `failure.mjs` | The codes a job fails with, and which another attempt may fix |
 | `sink.mjs` | The loopback server the page writes files, frames, videos and progress to |
 | `outputs.mjs` | What each kind's page hands the sink, and the outputs the worker makes of it |
@@ -19,6 +21,8 @@ The worker renders server exports ([ADR 0005](../../docs/adr/0005-server-exports
 | `assets.mjs` | The disk cache of catalogue files and decoders |
 | `harness.mjs` | Starts the worker build's server on 127.0.0.1 (in the container) |
 | `smoke.mjs`, `smoke-outputs.mjs` | `npm run worker:smoke` |
+| `smoke-convert.mjs` | `npm run worker:smoke-convert` |
+| `smoke-stack.mjs` | What the smokes start and stop: the API, the worker app, workers |
 | `fake-ffmpeg.mjs` | A stand-in ffmpeg for the tests |
 
 It renders every kind the export mode does: stills and angle sets, whose images the page encodes; turntables, whose raw frames go through ffmpeg into an MP4; spins, whose frames and viewer page go into one ZIP; and Campaign Packs, whose files and turntables (through ffmpeg) go into one ZIP (see [Encoders](#encoders)).
@@ -33,7 +37,8 @@ The worker image is `Dockerfile.worker`, for linux/amd64 (Chrome for Testing has
 2. Start a worker:
    - CPU, any machine: `docker compose --profile worker-cpu up -d --build`. WebGPU on SwiftShader: slow, but the backend production draws with.
    - NVIDIA GPU: `docker compose --profile worker-gpu up -d --build`, on a host with the NVIDIA driver (535 or later) and the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/). The service reserves one GPU and asks for the driver's `graphics` capability, which mounts the Vulkan driver WebGPU runs on.
-3. `docker compose logs -f worker-cpu` (or `worker-gpu`) shows the adapter the self-check found, then each job.
+   - Bulk uploads' conversions: `docker compose --profile worker-convert up -d --build`, the CPU pool. It runs the `swiftshader` profile and claims `convert` alone, so the GPU workers keep to renders.
+3. `docker compose logs -f worker-cpu` (or `worker-gpu`, `worker-convert`) shows the adapter the self-check found, then each job.
 4. Queue a still: in the studio, with the `server_exports` flag on in the admin console, or with `docker compose exec backend python -m scripts.seed_smoke_job`.
 
 The worker container runs as `node` with a read-only root file system, its jobs in a tmpfs at `/tmp` and the asset cache in a volume. Chrome's sandbox stays on; under Docker's default seccomp profile its user namespace needs `cap_add: SYS_ADMIN`, which the compose services set. In Compose, catalogue files are served by the API, under `http://localhost:8765/files/` as the browser sees it; `WORKER_ASSET_ORIGINS` maps that to `http://backend:8765/files/` for the worker.
@@ -51,6 +56,8 @@ RENDER_API_URL=http://localhost:8765 RENDER_WORKER_TOKEN=<the backend's> \
 
 The harness must be on loopback: WebGPU and WebCodecs exist only in a secure context, which plain HTTP is only on loopback.
 
+To convert too, fetch the converters' files once (`node scripts/render-worker/vendor.mjs <dir>`, about 11 MB from jsDelivr and gstatic, each checked against its pinned hash) and add `WORKER_KINDS=convert WORKER_VENDOR_DIR=<dir>`.
+
 ### Smoke test
 
 `npm run worker:smoke` runs a still, a turntable, a spin and a small Campaign Pack end to end on this machine and stops everything it starts. It needs a worker build (`BUILD_TARGET=worker npm run build`, in `.next` or `NEXT_BUILD_DIR`), Playwright's Chromium, ffmpeg with libx264 and ffprobe, and the backend's virtualenv (`backend/.venv`, or `WORKER_SMOKE_PYTHON`).
@@ -65,6 +72,15 @@ The harness must be on loopback: WebGPU and WebCodecs exist only in a secure con
 
 `npm run worker:smoke -- --kill` runs the still alone, kills the worker and its browser mid-job, and checks a second worker completes the job as its second attempt once the lease (60 s there) has lapsed. `WORKER_SMOKE_KEEP=1` keeps the scratch folder with every process's log and the outputs (under `uploads/`).
 
+`npm run worker:smoke-convert` converts a bulk upload end to end the same way. It needs the same, but ffmpeg, and fetches the converters' files into `WORKER_VENDOR_DIR` (default: the OS's temp folder, kept between runs) unless they are there with their hashes.
+
+1. The API, seeded by `backend/scripts/seed_convert_smoke.py` with a Studio user, and the worker app, as above.
+2. The user creates a batch over HTTP of the fixtures in `tests/convert/` (a STEP, a 3DM, an OBJ with its MTL, an STL in centimetres given `units: "cm"`) and the demo ring's GLB, with three more that mustn't convert as they are: the OBJ again under a cap of 300 triangles, which its metal must be decimated to fit; under 40, which its stone (46) alone passes; and the OBJ's bytes named `.3dm`. Local storage can't sign uploads (the API answers 503), so the seed script puts each file where its signed PUT would have; the user confirms the uploads and submits the batch, and the seed script lowers the two jobs' caps (the fixtures are far below any plan's).
+3. A worker on the `swiftshader` profile with `WORKER_KINDS=convert` converts every design.
+4. Each of the five must be a scene with its SKU, `Metal 1` and `Gem 1` in the metal and gem roles, a 512 px WebP thumbnail and a GLB compressed with meshopt and Draco; the design's polygon count and its length in millimetres must be the fixture's (24.5 mm for the ring, the STL in centimetres included; the demo GLB's 1.8 mm, as the upload page sizes it too); the capped one must fit 300 and say it was decimated. The other two must have failed with `over_polygon_cap` and `model_unreadable`, their model credits given back, and the batch must be `completed_with_errors`.
+5. The worker must have loaded every vendored file, and logged nothing blocked and nothing fetched: no page reached a CDN.
+6. The upload page, run in the same browser on the STEP, the 3DM, the OBJ and the GLB (its sign-in and storage calls answered by the smoke), must store the very GLB the worker made of each, byte for byte: a 3DM's but for the random ids three.js gives the materials the Rhino loader makes, which the model's root carries in its extras.
+
 ## Settings
 
 | Variable | Default | Meaning |
@@ -77,7 +93,7 @@ The harness must be on loopback: WebGPU and WebCodecs exist only in a secure con
 | `WORKER_APP_DIR` | `/app` in the image | A standalone worker build to start on `127.0.0.1:WORKER_HARNESS_PORT` when `HARNESS_BASE_URL` is unset |
 | `WORKER_HARNESS_PORT` | `3000` | |
 | `WORKER_SLOTS` | `1` | Jobs at once, a browser each: one per GPU, two on 24 GB cards; give each 8 GB of RAM |
-| `WORKER_KINDS` | `still,angle_set,turntable,spin,campaign_pack` | The kinds it claims, any of those |
+| `WORKER_KINDS` | `still,angle_set,turntable,spin,campaign_pack` | The kinds it claims, any of those and `convert`, which only a worker told to claims (the CPU pool) |
 | `WORKER_FFMPEG` | `ffmpeg` | The ffmpeg turntables encode with, a Campaign Pack's too; it needs libx264. A worker that claims turntables or packs checks it before it claims anything |
 | `WORKER_ID` | the host name | Each slot claims as `<id>-<slot>` |
 | `WORKER_POLL_SECONDS` | `5` | How often an idle slot asks for a job |
@@ -85,6 +101,7 @@ The harness must be on loopback: WebGPU and WebCodecs exist only in a secure con
 | `WORKER_ASSET_ORIGINS` | | Comma-separated URL prefixes the page may load catalogue files from, through the cache; `<prefix>=<from>` fetches them from elsewhere |
 | `WORKER_CACHE_DIR` | `<tmp>/render-worker-cache` | The asset cache |
 | `WORKER_CACHE_MAX_MB` | `2048` | Its size; the least recently used files go first |
+| `WORKER_VENDOR_DIR` | `/app/vendor` in the image, else `<WORKER_CACHE_DIR>/vendor` | The converters' vendored files (`vendor.mjs`). A worker that converts claims nothing until all of them are there with their hashes |
 | `WORKER_TMP_DIR` | the OS's | Where each job's folder goes |
 | `WORKER_CHROMIUM_SANDBOX` | `1` | `0` turns Chrome's sandbox off, for a host that can't give it a user namespace. Don't, for customers' jobs |
 
@@ -137,6 +154,18 @@ Each job gets a fresh browser context, with service workers blocked. Its page ma
 - the harness origin, except the API's job routes there: `/render-jobs/<this job>/inputs/<name>` (the look's background on local storage) is fetched by the worker, with the job's token, and handed to the page;
 - its own sink;
 - the job's signed inputs (a background image on cloud storage), fetched by the worker;
-- `WORKER_ASSET_ORIGINS` and Draco's decoder (`https://www.gstatic.com/draco/`), from the asset cache.
+- `WORKER_ASSET_ORIGINS` and Draco's decoder (`https://www.gstatic.com/draco/`), from the asset cache;
+- the converters' vendored files (`vendor.mjs`), from `WORKER_VENDOR_DIR`, never fetched.
 
-Everything else is aborted, other loopback ports and the cloud metadata address included, and logged without its query string. The browser gets the worker's environment without anything that looks like a credential.
+A convert job's page may reach no asset origin at all: only the harness, its sink and the vendored files. Everything else is aborted, other loopback ports and the cloud metadata address included, and logged without its query string. The browser gets the worker's environment without anything that looks like a credential.
+
+## Conversions
+
+A bulk upload's designs ([ADR 0006](../../docs/adr/0006-bulk-pipeline.md), "Conversion jobs") are converted by workers that claim `convert`: the CPU pool, `worker-convert` in Compose (the `swiftshader` profile, `WORKER_KINDS=convert`). A conversion needs no GPU beyond its 512 px thumbnail, so GPU workers never claim one unless told to.
+
+1. The worker downloads the design's source and companions (an OBJ's MTL and textures, a glTF's `.bin`) with the job's token, from the API's job routes on local storage or their signed GETs, each exactly the bytes it was uploaded with, else `input_missing`. The source must start as its format's files do (`glTF`, `ISO-10303-21`, the Rhino and FBX headers, a ZIP for 3MF, …) before any parser sees it, else `model_unreadable`.
+2. The sink serves them to the page at `/inputs/source` and `/inputs/companions/<n>`. The page, `/render-harness?mode=convert`, gets the spec and limits and nothing else: no storage location, no token.
+3. The page runs the upload page's Save on them, the same functions the upload page calls (`src/lib/upload/`): parse and split metal from stones, settle the unit (`units` for a file that declares none), decimate metal to `max_polygons` (or fail `over_polygon_cap` when the stones alone keep it over, or `decimate` is `"fail"`), list the layers, export the GLB with the upload page's compression (meshopt and Draco) and render the thumbnail (a warning if it fails). It posts `model.glb`, `thumbnail.webp` and `conversion.json` (`ConversionReport` in `backend/app/features/ingest/conversions.py`: the model config, selections, polygon count, units, each slot's role and warnings).
+4. The worker checks what the page made before anything goes up: a GLB 2.0 whose chunks fit and whose JSON has meshes, a WebP of the thumbnail's size, a report of the API's fields within the cap. It uploads them as `convert_spec.py` plans them (the thumbnail 512 × 512, the others with no size) and completes the job; the API checks the model again and makes the scene.
+
+The converters' WASM and glue, which the upload page loads from jsDelivr (rhino3dm 8.17.0, occt-import-js 0.0.23) and gstatic (Draco 1.5.5), are vendored rather than cached. `vendor.mjs` pins each file's SHA-256; the image fetches them when it is built and refuses any other bytes, and they sit in its read-only root, where no job can change what the next one's page runs, as a file in a writable cache could be. The page asking for one of those URLs gets the vendored file: a conversion depends on no CDN being up and makes no request to one. A worker that converts claims nothing until every file is there with its hash.

@@ -1,7 +1,7 @@
 import type { Object3D } from "three";
 import type { PersistedModelConfig } from "@/lib/slot-materials/model-config";
 import type { CompanionFiles } from "./companion-files";
-import type { ModelUnits } from "./model-units";
+import type { ModelUnits, SourceUnit } from "./model-units";
 
 export type ConvertToGlbOptions = {
   modelConfig?: PersistedModelConfig;
@@ -12,9 +12,12 @@ export type ConvertToGlbOptions = {
 export type ConvertToGlbResult = {
   glb: Blob;
   glbFilename: string;
+  /** Null when it wasn't asked for or couldn't be rendered (then `warnings` says why). */
   thumbnail: Blob | null;
   slotTokens: Record<string, string[]>;
   materialProps: Record<string, { visible: boolean }>;
+  /** What went less well than asked and didn't stop the GLB: no thumbnail, no compression. */
+  warnings: string[];
 };
 
 export type LoadedModel = {
@@ -34,6 +37,8 @@ export type ModelLoadStatus = {
 export type ModelLoadOptions = {
   /** Files picked alongside the model: .mtl, textures, a .gltf's .bin. */
   companions?: File[];
+  /** The unit of a file that declares none, instead of guessing it from the size. */
+  unit?: SourceUnit | null;
   onStatus?: (status: ModelLoadStatus) => void;
 };
 

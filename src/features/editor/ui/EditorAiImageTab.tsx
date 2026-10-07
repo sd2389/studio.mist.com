@@ -2,6 +2,7 @@
 
 import { Loader2, Sparkles } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { BoughtCreditsNote } from "@/components/billing/BoughtCreditsNote";
 import { Button } from "@/components/ui/button";
 import {
   AiBackgroundPanel,
@@ -15,6 +16,7 @@ import {
 import { AiVisualsResult } from "@/features/editor/ui/ai-visuals/AiVisualsResult";
 import { aiImageStatusLabel, requestAiImage } from "@/lib/ai-image-api";
 import { fetchBillingAccount } from "@/lib/billing/client";
+import { boughtCreditsLeft } from "@/lib/billing/format";
 import { formatAiCredits } from "@/lib/ai-image-credits";
 import {
   AI_SHOOT_PRESETS,
@@ -40,6 +42,8 @@ export function EditorAiImageTab({ viewerId }: EditorAiImageTabProps) {
   const remaining = useAiImageCreditsStore((s) => s.remaining);
   const total = useAiImageCreditsStore((s) => s.total);
   const hydrateFromServer = useAiImageCreditsStore((s) => s.hydrateFromServer);
+  // Bought credits in the balance last read; spending takes the plan's first (boughtCreditsLeft).
+  const [bought, setBought] = useState(0);
   useEffect(() => {
     fetchBillingAccount()
       .then((account) => {
@@ -47,6 +51,7 @@ export function EditorAiImageTab({ viewerId }: EditorAiImageTabProps) {
           account.balances.ai_image_credits,
           account.allotments.ai_image_credits,
         );
+        setBought(account.bought_balances?.ai_image_credits ?? 0);
       })
       .catch(() => {});
   }, [hydrateFromServer]);
@@ -108,12 +113,13 @@ export function EditorAiImageTab({ viewerId }: EditorAiImageTabProps) {
       setError(message);
       if (message.toLowerCase().includes("credit")) {
         fetchBillingAccount()
-          .then((account) =>
+          .then((account) => {
             hydrateFromServer(
               account.balances.ai_image_credits,
               account.allotments.ai_image_credits,
-            ),
-          )
+            );
+            setBought(account.bought_balances?.ai_image_credits ?? 0);
+          })
           .catch(() => {});
       }
     } finally {
@@ -154,6 +160,7 @@ export function EditorAiImageTab({ viewerId }: EditorAiImageTabProps) {
             <p className="text-sm font-semibold tabular-nums text-foreground">{creditsLabel}</p>
           </div>
         </div>
+        <BoughtCreditsNote bought={boughtCreditsLeft(bought, remaining)} className="text-right" />
       </div>
 
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">

@@ -2,16 +2,15 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { DEFAULT_JEWELRY_CATEGORY } from "@/lib/upload/categories";
-import { decimateModelRoot } from "@/lib/upload/decimate-model";
 import {
   applyLayerRename,
   applyLayerVisibility,
-  buildLayerRows,
+  layerRowsOf,
   type LayerRow,
 } from "@/lib/upload/layer-state";
 import { skuFromFilename, stemFromFilename } from "@/lib/upload/metadata-from-filename";
 import { captureClientException } from "@/lib/observability/sentry";
-import { overPolyLimitMessage, type ParsedUpload } from "@/features/upload/lib/parsed-upload";
+import { decimateParsedUpload, overPolyLimitMessage, type ParsedUpload } from "@/lib/upload/parsed-upload";
 import type { UploadMetadata } from "@/features/upload/ui/UploadMetadataForm";
 import { useModelIngest } from "@/features/upload/hooks/useModelIngest";
 import { usePolygonCap } from "@/features/upload/hooks/usePolygonCap";
@@ -79,14 +78,7 @@ export function useUploadModelFlow() {
 
   const acceptParsed = useCallback((next: ParsedUpload) => {
     setParsed(next);
-    setLayers(
-      buildLayerRows(
-        next.preloaded.root,
-        next.modelConfig.slotTokens ?? {},
-        next.modelConfig.slotRenames ?? {},
-        next.modelConfig.materialProps ?? {},
-      ),
-    );
+    setLayers(layerRowsOf(next.preloaded.root, next.modelConfig));
     setMetadata({
       name: stemFromFilename(next.file.name),
       sku: skuFromFilename(next.file.name),
@@ -112,14 +104,7 @@ export function useUploadModelFlow() {
       if (!parsed) return;
       const nextConfig = applyLayerRename(parsed.modelConfig, parsed.preloaded.root, rawName, nextSlotId);
       setParsed({ ...parsed, modelConfig: nextConfig });
-      setLayers(
-        buildLayerRows(
-          parsed.preloaded.root,
-          nextConfig.slotTokens ?? {},
-          nextConfig.slotRenames ?? {},
-          nextConfig.materialProps ?? {},
-        ),
-      );
+      setLayers(layerRowsOf(parsed.preloaded.root, nextConfig));
     },
     [parsed],
   );
@@ -140,10 +125,10 @@ export function useUploadModelFlow() {
     if (!parsed || decimating) return;
     setDecimating(true);
     try {
-      const nextCount = await decimateModelRoot(parsed.preloaded.root, maxPolygons);
-      setParsed({ ...parsed, polyCount: nextCount });
+      const decimated = await decimateParsedUpload(parsed, maxPolygons);
+      setParsed(decimated);
       setPreviewRevision((revision) => revision + 1);
-      setError(nextCount > maxPolygons ? overPolyLimitMessage(planLabel, maxPolygons) : null);
+      setError(decimated.polyCount > maxPolygons ? overPolyLimitMessage(planLabel, maxPolygons) : null);
     } catch (err) {
       captureClientException(err, { stage: "upload.decimate" });
       setError(err instanceof Error ? err.message : "Decimation failed");

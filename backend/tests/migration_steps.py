@@ -48,10 +48,10 @@ def columns(engine: Engine, table: str) -> set[str]:
     return {column["name"] for column in inspect(engine).get_columns(table)}
 
 
-def model_diffs(engine: Engine) -> list:
-    """How the render job and ingest tables differ from what the models describe."""
+def model_diffs(engine: Engine, tables: tuple[str, ...] = TABLES) -> list:
+    """How these tables (the render job and ingest ones unless told) differ from what the models describe."""
     with engine.connect() as connection:
         diffs = compare_metadata(
             MigrationContext.configure(connection, opts={"compare_type": True}), Base.metadata
         )
-    return [diff for diff in diffs if any(table in repr(diff) for table in TABLES)]
+    return [diff for diff in diffs if any(table in repr(diff) for table in tables)]

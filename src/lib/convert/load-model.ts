@@ -42,7 +42,7 @@ function yieldToBrowser(): Promise<void> {
 
 async function finalizeModel(
   parsed: ParsedModel,
-  onStatus: (status: ModelLoadStatus) => void,
+  { onStatus, unit }: { onStatus: (status: ModelLoadStatus) => void; unit: ModelLoadOptions["unit"] },
 ): Promise<LoadedModel> {
   expandInstancedMeshes(parsed.root);
   if (parsed.slotSource === "shape") {
@@ -52,7 +52,7 @@ async function finalizeModel(
   } else if (collectRenderableMeshes(parsed.root).length === 0) {
     throw new Error("No meshes found in this file");
   }
-  const units = normalizeModelUnits(parsed.root, parsed.declaredMmPerUnit);
+  const units = normalizeModelUnits(parsed.root, parsed.declaredMmPerUnit, unit ?? null);
   const names = [...(parsed.extraSlotNames ?? []), ...collectNamesFromObject(parsed.root)];
   return { root: parsed.root, slotTokens: buildSlotTokensFromNames(names), units };
 }
@@ -65,7 +65,7 @@ export async function loadModelFromFile(file: File, options: ModelLoadOptions = 
   try {
     const load = await FORMAT_LOADERS[ext]();
     const parsed = await load(file, { companions, onStatus });
-    return await finalizeModel(parsed, onStatus);
+    return await finalizeModel(parsed, { onStatus, unit: options.unit });
   } finally {
     companions.dispose();
   }

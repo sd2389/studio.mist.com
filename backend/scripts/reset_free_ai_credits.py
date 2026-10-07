@@ -2,7 +2,9 @@
 
 Free accounts used to get 150 AI image credits. Each Free account above today's allowance
 keeps the allowance plus the AI credits it paid for (purchase ledger and Stripe Checkout)
-or an admin granted it. No balance goes up. Dry run unless --apply.
+or an admin granted it. No balance goes up, and bought credits are never lowered: the paid
+credits a balance still holds are kept as bought ones, which renewals and plan changes leave.
+Dry run unless --apply.
 
 Usage (from backend/, or in the backend container):
     python -m scripts.reset_free_ai_credits                        # dry run: change nothing
@@ -28,7 +30,7 @@ from app.features.billing.free_ai_credit_reset import (
     require_admin,
 )
 
-ROW = "{:>8}  {:<6}  {:>8}  {:>8}  {:>8}  {:>8}"
+ROW = "{:>8}  {:<6}  {:>8}  {:>8}  {:>8}  {:>8}  {:>8}"
 
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
@@ -81,11 +83,17 @@ def describe_stripe_source(secret_key: str | None) -> str:
 
 
 def format_table(resets: list[AiCreditReset]) -> list[str]:
-    lines = [ROW.format("user_id", "plan", "current", "paid", "granted", "new")]
+    lines = [ROW.format("user_id", "plan", "current", "paid", "granted", "new", "bought")]
     for reset in resets:
         lines.append(
             ROW.format(
-                reset.user_id, reset.plan_tier, reset.current, reset.paid, reset.granted, reset.new
+                reset.user_id,
+                reset.plan_tier,
+                reset.current,
+                reset.paid,
+                reset.granted,
+                reset.new,
+                reset.bought,
             )
         )
     lines.append(
@@ -96,6 +104,7 @@ def format_table(resets: list[AiCreditReset]) -> list[str]:
             sum(reset.paid for reset in resets),
             sum(reset.granted for reset in resets),
             sum(reset.new for reset in resets),
+            sum(reset.bought for reset in resets),
         )
     )
     return lines
@@ -111,6 +120,7 @@ def print_plan(resets: list[AiCreditReset], stripe_source: str) -> None:
     print(f"Free AI image allowance: {allowance} credits (plans.py)")
     print(stripe_source)
     print("Admin grants: positive AI credit adjustments are kept.")
+    print("Bought: of the new balance, the bought credits, which renewals and plan changes keep.")
     print()
     print("\n".join(format_table(resets)))
     print()
@@ -152,9 +162,11 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         applied = apply_free_ai_reset(db, resets, admin_user_id=args.admin_id)
 
+    lowered = [reset for reset in applied if reset.new < reset.current]
     print(
-        f"Applied: lowered {len(applied)} balances by {credits_removed(applied)} credits and wrote "
-        f"{len(applied)} credit_adjustments rows (kind {AUDIT_KIND}, admin {args.admin_id})."
+        f"Applied: lowered {len(lowered)} balances by {credits_removed(applied)} credits, kept "
+        f"{sum(reset.bought for reset in applied)} as bought credits, and wrote {len(applied)} "
+        f"credit_adjustments rows (kind {AUDIT_KIND}, admin {args.admin_id})."
     )
     return 0
 

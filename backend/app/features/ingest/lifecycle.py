@@ -16,6 +16,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.features.billing.credit_pools import split_bought
 from app.features.billing.plans import get_batch_limits
 from app.features.billing.quota_service import hold_batch_credits, refund_render_job
 from app.features.ingest.conversions import queue_conversions
@@ -29,12 +30,19 @@ from app.schemas.ingest import IngestRefusal
 
 def _hold_credits(db: Session, user_id: int, batch: IngestBatch, items: list[IngestItem], now: datetime) -> None:
     """A model credit and the render plan's credits for each design, held together (402 when
-    short) and kept on each design. Not committed."""
-    period_start = hold_batch_credits(db, user_id, len(items), len(items) * batch.render_credits_per_design)
-    for item in items:
+    short) and kept on each design, with its share of the bought credits the hold took. Not
+    committed."""
+    per_design = batch.render_credits_per_design
+    hold = hold_batch_credits(db, user_id, len(items), len(items) * per_design)
+    bought_model = split_bought([1] * len(items), hold.bought_model_credits)
+    bought_render = split_bought([per_design] * len(items), hold.bought_render_credits)
+    for item, model_bought, render_bought in zip(items, bought_model, bought_render, strict=True):
         item.model_credit_held = 1
-        item.render_credits_held = batch.render_credits_per_design
-        item.credits_period_start = period_start
+        item.bought_model_credit_held = model_bought
+        item.render_credits_held = per_design
+        item.bought_render_credits_held = render_bought
+        item.credits_period_start = hold.period_start
+        item.credits_allowance_generation = hold.allowance_generation
         item.updated_at = now
 
 

@@ -58,6 +58,7 @@ Reuse these instead of rebuilding them per page:
 | The look an export renders | `lookSnapshot` (`@/features/viewer`), the same look the studio autosaves |
 | A scene's thumbnail from the live view ("Set as thumbnail") | `setThumbnailFromView` (`@/features/render`): a capture of at most 1024 px, free and unmarked, to `PUT /scenes/{id}/thumbnail` |
 | An upgrade prompt for a locked option or feature | `UpgradePrompt`, `UpgradeButton` (`src/components/billing/UpgradePrompt.tsx`) |
+| How many of a credit balance were bought, which renewals keep ("Includes 5 bought credits, kept at renewal.") | `BoughtCreditsNote` (`src/components/billing/BoughtCreditsNote.tsx`), fed by the billing snapshot's `bought_balances`; `boughtCreditsLeft` (`src/lib/billing/format.ts`) after spends since the snapshot |
 | A drop area for files, and folders with their paths | `FileDropZone` (`src/components/ui/file-drop-zone.tsx`; the upload page's and the bulk upload's), on `DroppedFile` and the folder walking in `src/lib/upload/dropped-files.ts` |
 | Polling something until it settles (1 s, then half as long again, up to 5 s) | `pollUntil`, `pollDelay` (`src/lib/polling.ts`): `pollRenderJob` and the bulk batch page both poll with it |
 | Bulk upload batches: the client and its proxies | `src/lib/api/ingest.ts` (types from `backend/app/schemas/ingest.py`; `batchProblems` reads a 422's problems), `relayIngest` (`src/lib/api/ingest-relay.ts`) for the routes under `src/app/api/ingest/`; `relayUpstreamJson` passes an API's `problems` on |

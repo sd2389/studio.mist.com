@@ -1,36 +1,29 @@
-"""Quota balances, enforcement, and plan-gating helpers."""
+"""Quota balances, enforcement, and plan-gating helpers.
+
+Each balance holds plan credits and bought ones (credit_pools.py): spending takes plan credits
+first, a reset or plan change replaces only the plan credits, and a refund gives back what its
+hold took from each. Every spend, hold, refund and reset is one UPDATE that works the pools out
+in SQL, never a balance read here and written back.
+"""
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 
 from fastapi import HTTPException
-from sqlalchemy import case, select, update
+from sqlalchemy import ColumnElement, case, or_, select, update
 from sqlalchemy.orm import Session
 
-from app.features.billing.plans import (
-    PLAN_LABELS,
-    PLAN_QUOTAS,
-    PlanTier,
-    get_batch_limits,
-    get_quotas,
-    normalize_tier,
-)
+from app.features.billing import credit_pools as pools
+from app.features.billing.plans import PLAN_LABELS, PlanTier, get_batch_limits, get_quotas, normalize_tier
 from app.models.billing import UserBilling
 from app.models.render_job import RenderJob
 from app.models.user import User
-from app.schemas.billing import BulkUploadLimits, PlanFeatures, QuotaBalances, UserBillingSnapshot
+from app.schemas.billing import BoughtBalances, BulkUploadLimits, PlanFeatures, QuotaBalances, UserBillingSnapshot
 
-
-def _apply_allotment(billing: UserBilling, tier: PlanTier) -> None:
-    quotas = get_quotas(tier)
-    billing.plan_tier = tier
-    billing.model_credits_balance = quotas.model_credits
-    billing.ai_image_credits_balance = quotas.ai_image_credits
-    billing.render_credits_balance = quotas.render_credits
-    billing.custom_material_credits_balance = quotas.custom_material_credits
-    billing.custom_asset_credits_balance = quotas.custom_asset_credits
-    billing.updated_at = datetime.utcnow()
+# allowance_granted_for while Free's allowance is the last one the plan credits were set from.
+FREE_ALLOWANCE = "free"
 
 
 def get_or_create_billing(db: Session, user: User) -> UserBilling:
@@ -50,6 +43,7 @@ def get_or_create_billing(db: Session, user: User) -> UserBilling:
         render_credits_balance=quotas.render_credits,
         custom_material_credits_balance=quotas.custom_material_credits,
         custom_asset_credits_balance=quotas.custom_asset_credits,
+        allowance_granted_for=FREE_ALLOWANCE,
         storage_bytes_used=0,
         created_at=now,
         updated_at=now,
@@ -102,6 +96,11 @@ def snapshot(db: Session, user: User) -> UserBillingSnapshot:
             storage_bytes_used=billing.storage_bytes_used,
             storage_bytes_limit=quotas.storage_bytes,
         ),
+        bought_balances=BoughtBalances(
+            model_credits=pools.bought_credits(billing, "model"),
+            ai_image_credits=pools.bought_credits(billing, "ai"),
+            render_credits=pools.bought_credits(billing, "render"),
+        ),
         allotments=QuotaBalances(
             model_credits=quotas.model_credits,
             ai_image_credits=quotas.ai_image_credits,
@@ -117,8 +116,41 @@ def snapshot(db: Session, user: User) -> UserBillingSnapshot:
     )
 
 
+def subscription_allowance_key(subscription_id: str | None, period_start: datetime | None, tier: PlanTier) -> str:
+    """What a subscription's allowance is granted for: the subscription, the period's start and
+    the plan (allowance_granted_for)."""
+    start = period_start.isoformat() if period_start else "-"
+    return f"{subscription_id or '-'}|{start}|{tier}"
+
+
+def _grant_allowance(db: Session, billing_id: int, tier: PlanTier, key: str, *conditions: ColumnElement[bool]) -> bool:
+    """Make `tier`'s allowance the plan credits and record it as granted for `key`, in one UPDATE,
+    where `conditions` hold; bought credits stay, and the allowance generation counts one more
+    only when it does. Whether it did. Not committed."""
+    values = {
+        **pools.allowance_values(tier),
+        UserBilling.allowance_granted_for: key,
+        UserBilling.updated_at: datetime.utcnow(),
+    }
+    granted = db.execute(
+        update(UserBilling)
+        .where(UserBilling.id == billing_id, *conditions)
+        .values(values)
+        .execution_options(synchronize_session=False)
+    )
+    return granted.rowcount == 1
+
+
 def reset_allotments(db: Session, billing: UserBilling, tier: PlanTier) -> None:
-    _apply_allotment(billing, tier)
+    """Make `tier`'s allowance the plan credits now, whatever was granted before: an admin's
+    reset, and Free's monthly one. Bought credits stay; the allowance generation counts one more,
+    so holds made before refund no plan credits on top of it."""
+    values = {**pools.allowance_values(tier), UserBilling.plan_tier: tier, UserBilling.updated_at: datetime.utcnow()}
+    if tier == "free":
+        values[UserBilling.allowance_granted_for] = FREE_ALLOWANCE
+    db.execute(
+        update(UserBilling).where(UserBilling.id == billing.id).values(values).execution_options(synchronize_session=False)
+    )
     db.commit()
 
 
@@ -130,12 +162,23 @@ def set_subscription_period(
     period_start: datetime | None,
     period_end: datetime | None,
     stripe_subscription_id: str | None,
-) -> None:
-    billing.period_start = period_start
-    billing.period_end = period_end
-    billing.stripe_subscription_id = stripe_subscription_id
-    _apply_allotment(billing, tier)
-    db.commit()
+) -> bool:
+    """Move the account to a paid subscription's plan and billing period, granting the period's
+    allowance once. A paid checkout and each invoice.paid both come here, and Stripe may send
+    either again under a new event id, so the allowance is granted only when the subscription,
+    the period's start or the plan differs from the last grant; the conditional UPDATE also
+    keeps two deliveries at once from both granting it. Bought credits stay. Whether it granted."""
+    key = subscription_allowance_key(stripe_subscription_id, period_start, tier)
+    granted = _grant_allowance(db, billing.id, tier, key, UserBilling.allowance_granted_for.is_distinct_from(key))
+    change_plan(
+        db,
+        billing,
+        tier=tier,
+        period_start=period_start,
+        period_end=period_end,
+        stripe_subscription_id=stripe_subscription_id,
+    )
+    return granted
 
 
 def change_plan(
@@ -157,11 +200,14 @@ def change_plan(
 
 
 def downgrade_to_free(db: Session, billing: UserBilling) -> None:
-    billing.stripe_subscription_id = None
-    billing.period_start = None
-    billing.period_end = None
-    _apply_allotment(billing, "free")
-    db.commit()
+    """End the paid plan: Free, with no subscription or period. The plan credits drop to Free's
+    allowance as the account leaves its paid plan, once: ending a plan already ended leaves
+    them. Bought credits stay."""
+    on_a_paid_plan = or_(
+        UserBilling.allowance_granted_for.is_distinct_from(FREE_ALLOWANCE), UserBilling.plan_tier != "free"
+    )
+    _grant_allowance(db, billing.id, "free", FREE_ALLOWANCE, on_a_paid_plan)
+    change_plan(db, billing, tier="free", period_start=None, period_end=None, stripe_subscription_id=None)
 
 
 def assert_polygon_limit(db: Session, user: User, polygon_count: int) -> UserBilling:
@@ -258,20 +304,42 @@ def assert_ai_image_credit(db: Session, user: User) -> UserBilling:
 
 
 def consume_ai_image_credit(db: Session, billing: UserBilling) -> None:
-    if billing.ai_image_credits_balance <= 0:
+    """Spend one AI image credit, plan credits first, in one conditional UPDATE, so two images
+    made at once can't both have the last credit. Committed."""
+    spent = db.execute(
+        update(UserBilling)
+        .where(UserBilling.id == billing.id, UserBilling.ai_image_credits_balance > 0)
+        .values(
+            ai_image_credits_balance=UserBilling.ai_image_credits_balance - 1,
+            updated_at=datetime.utcnow(),
+        )
+        .execution_options(synchronize_session=False)
+    )
+    if spent.rowcount != 1:
         raise HTTPException(status_code=402, detail="No AI image credits remaining.")
-    billing.ai_image_credits_balance -= 1
-    billing.updated_at = datetime.utcnow()
     db.commit()
 
 
-def hold_render_credits(db: Session, user_id: int, credits: int) -> datetime | None:
-    """Take `credits` out of the render balance for jobs about to queue, or 402 when it is short.
+@dataclass(frozen=True)
+class CreditHold:
+    """What a hold took: the billing period it was held in (for the record), the allowance
+    generation then, which a refund checks, and how many of the credits held were bought ones,
+    which a refund gives back as bought."""
+
+    period_start: datetime | None
+    allowance_generation: int
+    bought_model_credits: int = 0
+    bought_render_credits: int = 0
+
+
+def hold_render_credits(db: Session, user_id: int, credits: int) -> CreditHold:
+    """Take `credits` out of the render balance for jobs about to queue, plan credits first, or
+    402 when it is short.
 
     One conditional UPDATE, so two requests at once can't both spend the same credits; it also
-    locks the billing row until the caller commits. Returns the billing period the credits were
-    held in, which a refund checks. Not committed: the caller commits the hold with the jobs it
-    pays for, or rolls both back.
+    locks the billing row until the caller commits. Returns the billing period and allowance
+    generation the credits were held in and how many were bought. Not committed: the caller
+    commits the hold with the jobs it pays for, or rolls both back.
     """
     held = db.execute(
         update(UserBilling)
@@ -280,7 +348,12 @@ def hold_render_credits(db: Session, user_id: int, credits: int) -> datetime | N
             render_credits_balance=UserBilling.render_credits_balance - credits,
             updated_at=datetime.utcnow(),
         )
-        .returning(UserBilling.period_start)
+        .returning(
+            UserBilling.period_start,
+            UserBilling.allowance_generation,
+            UserBilling.render_credits_balance,
+            UserBilling.bought_render_credits,
+        )
         .execution_options(synchronize_session=False)
     ).first()
     if held is None:
@@ -288,7 +361,11 @@ def hold_render_credits(db: Session, user_id: int, credits: int) -> datetime | N
             status_code=402,
             detail=f"Not enough render credits ({credits} needed). Upgrade your plan or buy a top-up.",
         )
-    return held.period_start
+    return CreditHold(
+        held.period_start,
+        held.allowance_generation,
+        bought_render_credits=pools.taken_from_bought(held.bought_render_credits, held.render_credits_balance, credits),
+    )
 
 
 def charge_render_job(db: Session, job: RenderJob) -> None:
@@ -305,12 +382,11 @@ def charge_render_job(db: Session, job: RenderJob) -> None:
 
 
 def refund_render_job(db: Session, job: RenderJob) -> None:
-    """Give a failed or canceled job's held credits back, once.
+    """Give a failed or canceled job's held credits back, once, to the pools they came from.
 
     One conditional UPDATE moves the job from held to refunded, so only one caller refunds it;
-    another adds the credits back to the balance, unless the billing period has rolled over
-    since the hold: the new period's allotment has replaced the balance they came out of, and
-    adding them would give it extra. Not committed.
+    another adds the credits back (return_held_credits): the bought ones always, the plan ones
+    unless an allowance has replaced the plan credits since the hold. Not committed.
     """
     released = db.execute(
         update(RenderJob)
@@ -319,17 +395,23 @@ def refund_render_job(db: Session, job: RenderJob) -> None:
         .execution_options(synchronize_session=False)
     ).rowcount
     if released:
-        return_held_credits(db, job.user_id, job.billing_period_start, render_credits=job.credits)
+        return_held_credits(
+            db,
+            job.user_id,
+            job.billing_allowance_generation,
+            render_credits=job.credits,
+            bought_render_credits=job.bought_credits,
+        )
 
 
-def hold_batch_credits(db: Session, user_id: int, model_credits: int, render_credits: int) -> datetime | None:
-    """Take a batch's model and render credits out of the balances together, or 402 naming the
-    shortfall.
+def hold_batch_credits(db: Session, user_id: int, model_credits: int, render_credits: int) -> CreditHold:
+    """Take a batch's model and render credits out of the balances together, plan credits first,
+    or 402 naming the shortfall.
 
     One conditional UPDATE, so two requests at once can't both spend the same credits; it also
-    locks the billing row until the caller commits. Returns the billing period the credits were
-    held in, which a refund checks. Not committed: the caller commits the hold with the designs
-    it pays for, or rolls both back.
+    locks the billing row until the caller commits. Returns the billing period and allowance
+    generation the credits were held in and how many of each were bought. Not committed: the
+    caller commits the hold with the designs it pays for, or rolls both back.
     """
     held = db.execute(
         update(UserBilling)
@@ -343,11 +425,25 @@ def hold_batch_credits(db: Session, user_id: int, model_credits: int, render_cre
             render_credits_balance=UserBilling.render_credits_balance - render_credits,
             updated_at=datetime.utcnow(),
         )
-        .returning(UserBilling.period_start)
+        .returning(
+            UserBilling.period_start,
+            UserBilling.allowance_generation,
+            UserBilling.model_credits_balance,
+            UserBilling.bought_model_credits,
+            UserBilling.render_credits_balance,
+            UserBilling.bought_render_credits,
+        )
         .execution_options(synchronize_session=False)
     ).first()
     if held is not None:
-        return held.period_start
+        return CreditHold(
+            held.period_start,
+            held.allowance_generation,
+            bought_model_credits=pools.taken_from_bought(held.bought_model_credits, held.model_credits_balance, model_credits),
+            bought_render_credits=pools.taken_from_bought(
+                held.bought_render_credits, held.render_credits_balance, render_credits
+            ),
+        )
     billing = db.execute(select(UserBilling).where(UserBilling.user_id == user_id)).scalars().first()
     model_left = billing.model_credits_balance if billing else 0
     render_left = billing.render_credits_balance if billing else 0
@@ -362,21 +458,33 @@ def hold_batch_credits(db: Session, user_id: int, model_credits: int, render_cre
 
 
 def return_held_credits(
-    db: Session, user_id: int, period_start: datetime | None, *, model_credits: int = 0, render_credits: int = 0
+    db: Session,
+    user_id: int,
+    allowance_generation: int,
+    *,
+    model_credits: int = 0,
+    render_credits: int = 0,
+    bought_model_credits: int = 0,
+    bought_render_credits: int = 0,
 ) -> None:
-    """Add held credits back to the balances, unless the billing period has rolled over since
-    they were held: the new period's allotment has replaced the balances they came out of, and
-    adding them would give it extra. The caller makes sure it returns them once. Not committed."""
+    """Give held credits back to the pools they came from, in one UPDATE. Of `model_credits` and
+    `render_credits`, the bought ones always go back, as bought credits; the rest are plan credits
+    and go back only while the account's allowance generation is still `allowance_generation`,
+    the one they were held in. A grant or reset since has replaced the plan credits they came
+    out of, and adding them would give the new allowance extra; a billing period that moved with
+    no grant has not, so they go back. The caller makes sure it returns them once. Not committed."""
     if not model_credits and not render_credits:
         return
+    same_allowance = UserBilling.allowance_generation == allowance_generation
+    values = {UserBilling.updated_at: datetime.utcnow()}
+    for kind, held, bought in (("model", model_credits, bought_model_credits), ("render", render_credits, bought_render_credits)):
+        if held:
+            plan = case((same_allowance, held - bought), else_=0)
+            values.update(pools.credit_values(kind, plan=plan, bought=bought))
     db.execute(
         update(UserBilling)
-        .where(UserBilling.user_id == user_id, UserBilling.period_start.is_not_distinct_from(period_start))
-        .values(
-            model_credits_balance=UserBilling.model_credits_balance + model_credits,
-            render_credits_balance=UserBilling.render_credits_balance + render_credits,
-            updated_at=datetime.utcnow(),
-        )
+        .where(UserBilling.user_id == user_id)
+        .values(values)
         .execution_options(synchronize_session=False)
     )
 
@@ -500,48 +608,49 @@ def release_storage_bytes(db: Session, billing: UserBilling, byte_size: int) -> 
     )
 
 
-CreditKind = str  # model | ai | render | custom_material | custom_asset | storage
+# What an admin adjustment of each kind changes.
+_ADJUSTABLE = {
+    "model": UserBilling.model_credits_balance,
+    "ai": UserBilling.ai_image_credits_balance,
+    "render": UserBilling.render_credits_balance,
+    "custom_material": UserBilling.custom_material_credits_balance,
+    "custom_asset": UserBilling.custom_asset_credits_balance,
+    "storage": UserBilling.storage_bytes_used,
+}
 
 
-def _apply_credit_delta(billing: UserBilling, kind: CreditKind, delta: int) -> None:
-    if kind == "model":
-        billing.model_credits_balance = max(0, billing.model_credits_balance + delta)
-    elif kind == "ai":
-        billing.ai_image_credits_balance = max(0, billing.ai_image_credits_balance + delta)
-    elif kind == "render":
-        billing.render_credits_balance = max(0, billing.render_credits_balance + delta)
-    elif kind == "custom_material":
-        billing.custom_material_credits_balance = max(
-            0, billing.custom_material_credits_balance + delta
-        )
-    elif kind == "custom_asset":
-        billing.custom_asset_credits_balance = max(
-            0, billing.custom_asset_credits_balance + delta
-        )
-    elif kind == "storage":
-        billing.storage_bytes_used = max(0, billing.storage_bytes_used + delta)
-    else:
-        raise ValueError(f"Unknown credit kind: {kind}")
+def _adjustment_values(kind: str, delta: int) -> dict:
+    """SET values for an admin's adjustment. A grant adds plan credits, which the next reset
+    replaces, as it always has; a deduction takes plan credits first and stops at zero."""
+    if delta > 0 and kind in pools.BOUGHT_KINDS:
+        return pools.credit_values(kind, plan=delta)
+    column = _ADJUSTABLE[kind]
+    return {column: case((column + delta > 0, column + delta), else_=0)}
 
 
 def adjust_credits(
     db: Session,
     billing: UserBilling,
     *,
-    kind: CreditKind,
+    kind: str,
     delta: int,
     admin_user_id: int,
     target_user_id: int,
     reason: str,
 ) -> None:
-    """Apply a signed credit delta and persist an audit row."""
+    """Apply a signed credit delta (model, ai, render, custom_material, custom_asset or storage)
+    in one UPDATE, so a spend or top-up committing meanwhile is kept, and persist an audit row."""
     if delta == 0:
         raise HTTPException(status_code=400, detail="Adjustment delta cannot be zero")
-    if kind not in {"model", "ai", "render", "custom_material", "custom_asset", "storage"}:
+    if kind not in _ADJUSTABLE:
         raise HTTPException(status_code=400, detail=f"Unknown credit kind: {kind}")
 
-    _apply_credit_delta(billing, kind, delta)
-    billing.updated_at = datetime.utcnow()
+    db.execute(
+        update(UserBilling)
+        .where(UserBilling.id == billing.id)
+        .values({**_adjustment_values(kind, delta), UserBilling.updated_at: datetime.utcnow()})
+        .execution_options(synchronize_session=False)
+    )
     record_admin_action(
         db,
         admin_user_id=admin_user_id,

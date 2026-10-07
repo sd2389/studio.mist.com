@@ -24,6 +24,8 @@ export type SinkClient = {
   /** Closes the open turntable once all its frames are in; resolves with the size of the MP4 the worker made of them. */
   endVideo(name: string): Promise<number>;
   postProgress(progress: number, stage: RenderStage): Promise<void>;
+  /** One of a convert job's files, as the worker fetched it (`/inputs/source`, `/inputs/companions/<n>`). */
+  fetchInput(path: string): Promise<Blob>;
 };
 
 type SinkRequest = { method?: "GET" | "POST"; body?: BodyInit; headers?: Record<string, string> };
@@ -56,6 +58,7 @@ export function createSinkClient({ url, token }: SinkAddress): SinkClient {
   };
   return {
     fetchModel: async () => (await send("/inputs/model.glb")).blob(),
+    fetchInput: async (path) => (await send(path)).blob(),
     async postFile(name, file) {
       await send(`/files/${encodeURIComponent(name)}`, {
         method: "POST",

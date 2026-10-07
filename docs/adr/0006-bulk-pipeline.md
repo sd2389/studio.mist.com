@@ -191,6 +191,15 @@ Conversion needs no GPU beyond a 512 px thumbnail, so `convert` jobs go to a CPU
 
 On `complete`, the API creates the scene with one function shared with the upload flow, `create_scene_from_glb` (taken out of `register_after_presign` and `save_direct_multipart` in `backend/app/features/upload/service.py`). It counts the GLB's triangles against the cap (`count_glb_triangles`), applies the strict GLB checks from `fix/strict-model-uploads`, checks storage, takes the SKU (`assert_sku_available`), consumes the item's held model credit, stores `model_config` with `units` and each slot's `role`, applies the batch's look template, publishes the scene, and queues the render plan's jobs.
 
+As built in E2:
+
+- **One Save.** `src/lib/upload/` holds every step between a dropped file and a stored one, and the upload page and the convert mode (`src/features/render/harness/convert-design.ts`) both call them: `buildParsedUpload`, `decimateParsedUpload` (the Decimate button), `layerRowsOf`, `convertParsedUpload` (Save's conversion, returning the GLB, thumbnail, merged model config, selections and count) and `slotRoles`. For both, a thumbnail that fails is now a warning, and selections name only slots the model config has (an empty Rhino layer got one before). The smoke checks the upload page stores the GLB the worker makes of the same file, byte for byte.
+- **Compression worked nowhere in the browser.** It was confirmed failing: draco3dgltf's Emscripten builds looked for their WASM beside the chunk that loaded them, which 404s, so every upload went out uncompressed. Both now get their WASM from webpack's emitted assets (`locateFile`), and the upload page and the convert mode compress (meshopt and Draco). The worker does no compression of its own, and `INGEST_COMPRESS_GLB` isn't needed.
+- **Units.** `model.glb` is the upload page's GLB, fitted to the viewer's 1.4 units; its size in millimetres is `conversion.json`'s `units.size_mm` and the root's `devjewelsUnits` extras. `units` applies only to files that declare none (OBJ, STL, PLY), as the API already insists, recorded as source `override`.
+- **Inputs.** The sink serves the design's files at `/inputs/source` and `/inputs/companions/<n>`; each `File` takes its name from the spec. The worker checks each is the size it was uploaded with and sniffs the source.
+- **The converters' files are vendored** in the image (`scripts/render-worker/vendor.mjs` pins each by SHA-256, the image build fetches and checks them) and answered from there; a convert job's page may reach no asset origin at all. A worker that converts claims nothing without all of them.
+- **The CPU pool** is the `worker-convert` service: the same image, the `swiftshader` profile, `WORKER_KINDS=convert` (`batch_archive` waits for F3). `npm run worker:smoke-convert` runs a batch of fixtures (`tests/convert/`) through it end to end.
+
 ### Look templates by slot role
 
 A template names materials by role, not by slot, so one template fits every design whatever its slots are called:

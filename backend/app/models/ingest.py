@@ -98,10 +98,16 @@ class IngestItem(Base):
         Integer, ForeignKey("render_jobs.id", ondelete="SET NULL"), nullable=True
     )
     # Credits held for the design and not yet spent: the model credit its scene takes, the
-    # render credits its render plan's jobs take. The period they were held in, for refunds.
+    # render credits its render plan's jobs take; the period they were held in, and the owner's
+    # allowance generation then, which a refund checks.
     model_credit_held: Mapped[int] = mapped_column(SmallInteger, default=0)
     render_credits_held: Mapped[int] = mapped_column(Integer, default=0)
+    # Of those held, the ones the hold took from bought credits, given back as bought; a job the
+    # design's render credits move to takes its share of them.
+    bought_model_credit_held: Mapped[int] = mapped_column(SmallInteger, default=0, server_default="0")
+    bought_render_credits_held: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     credits_period_start: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    credits_allowance_generation: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     polygon_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # counted from its GLB
     size_mm: Mapped[float | None] = mapped_column(Float, nullable=True)  # its longest side
     warnings: Mapped[list] = mapped_column(JSON, default=list)  # unit guesses, decimation, skipped layers

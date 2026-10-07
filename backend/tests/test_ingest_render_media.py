@@ -6,7 +6,7 @@ from io import BytesIO
 
 from ingest_samples import THUMBNAIL, batch_body, client, cloud, design, owner, submitted_batch  # noqa: F401 - fixtures
 from PIL import Image
-from render_samples import ANGLES, DEFAULT_PLAN, STILL, batch_outputs, convert_all, gpu, planned_batch, scene_of  # noqa: F401
+from render_samples import ANGLES, DEFAULT_PLAN, STILL, api_session, batch_outputs, convert_all, gpu, planned_batch, scene_of  # noqa: F401
 
 from app.config import get_settings
 from app.features.billing.quota_service import get_or_create_billing

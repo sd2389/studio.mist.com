@@ -104,6 +104,7 @@ def settle_batch(db: Session, batch_id: int | None) -> None:
     other. Not committed."""
     if batch_id is None:
         return
+    db.flush()  # the jobs' and designs' own ends, which it is judged by (the API's sessions don't autoflush)
     if uses_row_locks(db):
         db.execute(select(IngestBatch.id).where(IngestBatch.id == batch_id).with_for_update())
     unfinished = exists().where(IngestItem.batch_id == IngestBatch.id, IngestItem.status.in_(UNFINISHED_ITEM_STATUSES))

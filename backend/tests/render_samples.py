@@ -84,6 +84,14 @@ def gpu(db, cloud) -> FakeGpuWorker:
     return FakeGpuWorker(db, cloud)
 
 
+@pytest.fixture(autouse=True)
+def api_session(db):
+    """The session as the API makes them (app/database.py): no autoflush, so every step that
+    judges by what changed before it must flush those changes itself."""
+    db.autoflush = False
+    return db
+
+
 def convert_all(db, cloud) -> None:
     """A CPU worker converts every design waiting, each into its scene."""
     while (job := claim(db)) is not None:

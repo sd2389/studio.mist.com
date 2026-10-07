@@ -32,6 +32,7 @@ from render_samples import (  # noqa: F401 - fixtures
     DEFAULT_PLAN,
     PER_DESIGN,
     STUDIO,
+    api_session,
     batch_outputs,
     batch_view,
     bought,

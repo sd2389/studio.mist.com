@@ -24,6 +24,7 @@ ITEM_STATUSES = (
 FINISHED_ITEM_STATUSES = ("done", "failed", "skipped", "canceled")
 UNFINISHED_ITEM_STATUSES = tuple(status for status in ITEM_STATUSES if status not in FINISHED_ITEM_STATUSES)
 _IN_PROGRESS = text("status NOT IN ('done', 'failed', 'skipped', 'canceled')")
+_CONVERTED = text("status = 'converted'")
 
 
 class IngestBatch(Base):
@@ -74,6 +75,8 @@ class IngestItem(Base):
             sqlite_where=_IN_PROGRESS,
         ),
         Index("ix_ingest_items_scene_id", "scene_id"),
+        # Designs left converted, which each claim's sweep looks for (ingest/renders.py): few or none.
+        Index("ix_ingest_items_converted", "id", postgresql_where=_CONVERTED, sqlite_where=_CONVERTED),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)

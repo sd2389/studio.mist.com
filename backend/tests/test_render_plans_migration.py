@@ -6,7 +6,7 @@ from datetime import datetime
 import pytest
 from alembic import command
 from migration_steps import alembic_config, columns, model_diffs, point_alembic_at, previous_revision, schema_at_head
-from sqlalchemy import text
+from sqlalchemy import inspect, text
 
 from app.models import Scene, User
 
@@ -66,6 +66,7 @@ def test_the_render_plans_migration_round_trip(sqlite_url):
     command.upgrade(config, "head")
 
     assert model_diffs(engine, tuple(COLUMNS)) == []
+    assert "ix_ingest_items_converted" in {index["name"] for index in inspect(engine).get_indexes("ingest_items")}
     with engine.connect() as connection:
         item = connection.execute(text("SELECT model_credits_refunded, render_credits_refunded, embed_url FROM ingest_items")).one()
         assert tuple(item) == (0, 0, None)
@@ -74,4 +75,5 @@ def test_the_render_plans_migration_round_trip(sqlite_url):
     command.downgrade(config, previous_revision(REVISION))
     for table, names in COLUMNS.items():
         assert not set(names) & columns(engine, table), table
+    assert "ix_ingest_items_converted" not in {index["name"] for index in inspect(engine).get_indexes("ingest_items")}
     engine.dispose()

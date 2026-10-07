@@ -6,8 +6,10 @@ saved look, so whatever look the scene was made with (a look template's, F1) is 
 render: an angle set, a turntable and a spin, as the plan asks, for the scene, the batch and the
 design, behind the studio's jobs. The render credits the design holds move onto them, each with
 its share of the bought ones and the allowance generation they were held in, so they charge or
-refund as every job does, and the design costs what its jobs charge. A retry makes new jobs for
-the parts that didn't complete, from credits held again.
+refund as every job does, and the design costs what its jobs charge. A retry makes new jobs only
+for the parts whose job ended failed or canceled, from credits held again for them alone; parts
+still rendering are left to finish. A design a conversion left converted before render plans
+ran is started by the sweep each claim makes (resume_converted_designs).
 """
 
 from __future__ import annotations
@@ -16,12 +18,20 @@ from collections.abc import Sequence
 from datetime import datetime
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import exists, select
 from sqlalchemy.orm import Session
 
+from app.core.observability import get_logger, log_event
 from app.features.billing.credit_pools import split_bought
 from app.features.billing.plans import PlanQuotas, get_quotas, normalize_tier
-from app.features.ingest.items import current_render_jobs, locked_items, release_held_credits
+from app.features.ingest.items import (
+    current_render_jobs,
+    locked_items,
+    release_held_credits,
+    render_outcome,
+    settle_batch,
+    uses_row_locks,
+)
 from app.features.ingest.render_plans import PlannedRender, planned_renders
 from app.features.render_jobs.job_files import normalised_spec, output_names, output_stem
 from app.features.scene.look import saved_look, validate_look
@@ -31,6 +41,12 @@ from app.models import IngestBatch, IngestItem, RenderJob, Scene, UserBilling
 BATCH_PRIORITY = 10
 MAX_ATTEMPTS = 3
 MAX_ERROR_LENGTH = 1024
+# A part of the plan is queued when it has no job yet, or its newest one ended without completing.
+_TO_RUN_AGAIN = (None, "failed", "canceled")
+# Designs left converted that one sweep starts rendering at most; the next sweep takes the rest.
+_RESUMED_PER_SWEEP = 20
+
+_logger = get_logger("studio.ingest")
 
 
 def share_held(total: int, costs: Sequence[int]) -> list[int]:
@@ -50,10 +66,17 @@ def share_held(total: int, costs: Sequence[int]) -> list[int]:
 
 
 def renders_to_run(db: Session, batch: IngestBatch, item_id: int) -> list[PlannedRender]:
-    """The jobs of the batch's plan a design hasn't completed: all of them at first, then those a
-    retry renders again."""
-    completed = {job.kind for job in current_render_jobs(db, item_id) if job.status == "completed"}
-    return [planned for planned in planned_renders(batch.render_plan or {}) if planned.kind not in completed]
+    """The jobs of the batch's plan to queue for a design: all of them at first; on a retry only
+    the parts whose newest job ended failed or canceled. A part whose job is still queued or
+    running, or has completed, is left as it is, so no part ever has two jobs that count or is
+    paid for twice. The caller has locked the design, which a job's end waits for (items.py), so
+    what it reads can't change under it."""
+    newest = {job.kind: job.status for job in current_render_jobs(db, item_id)}
+    return [
+        planned
+        for planned in planned_renders(batch.render_plan or {})
+        if newest.get(planned.kind) in _TO_RUN_AGAIN
+    ]
 
 
 def _owner_quotas(db: Session, user_id: int) -> PlanQuotas:
@@ -97,10 +120,10 @@ def _job(item: IngestItem, scene: Scene, planned: PlannedRender, look: dict, quo
 
 
 def queue_design_renders(db: Session, batch: IngestBatch, item: IngestItem, scene: Scene, now: datetime) -> None:
-    """Queue the jobs of the plan `item` hasn't completed, on its scene's saved look, and move the
-    render credits it holds onto them: the design renders, holding nothing itself. A look or a
-    plan that can't be rendered fails the design instead, its credits given back. The caller has
-    locked the design. Not committed."""
+    """Queue the plan's parts `item` has to run (renders_to_run), on its scene's saved look, and
+    move the render credits it holds onto them: the design renders, holding nothing itself. A
+    look or a plan that can't be rendered fails the design instead, its credits given back. The
+    caller has locked the design. Not committed."""
     try:
         renders = renders_to_run(db, batch, item.id)
         look = validate_look(db, saved_look(scene), item.user_id)
@@ -110,8 +133,8 @@ def queue_design_renders(db: Session, batch: IngestBatch, item: IngestItem, scen
     item.error = None
     item.error_code = None
     item.updated_at = now
-    if not renders:  # every part has completed already: nothing to hold credits for
-        item.status = "done"
+    if not renders:  # every part is rendering or done already: nothing to hold credits for
+        item.status = render_outcome(current_render_jobs(db, item.id))
         db.flush()
         release_held_credits(db, [item.id])
         return
@@ -137,3 +160,45 @@ def render_converted_design(db: Session, item_id: int, scene: Scene) -> None:
     if item.status != "converted":
         return
     queue_design_renders(db, db.get(IngestBatch, item.batch_id), item, scene, datetime.utcnow())
+
+
+def _stranded_designs(db: Session) -> list[tuple[int, int, int]]:
+    """Designs converted, their scene made, with no render job: those whose conversion completed
+    before render plans ran (F2). (id, scene id, batch id), oldest first."""
+    has_renders = exists().where(RenderJob.ingest_item_id == IngestItem.id, RenderJob.kind != "convert")
+    rows = db.execute(
+        select(IngestItem.id, IngestItem.scene_id, IngestItem.batch_id)
+        .where(IngestItem.status == "converted", IngestItem.scene_id.is_not(None), ~has_renders)
+        .order_by(IngestItem.id)
+        .limit(_RESUMED_PER_SWEEP)
+    ).all()
+    return [tuple(row) for row in rows]
+
+
+def _free_to_resume(db: Session, item_id: int) -> bool:
+    """Lock the design if nobody holds it and it is still converted (Postgres: SKIP LOCKED)."""
+    stmt = select(IngestItem.id).where(IngestItem.id == item_id, IngestItem.status == "converted")
+    if uses_row_locks(db):
+        stmt = stmt.with_for_update(skip_locked=True)
+    return db.execute(stmt).first() is not None
+
+
+def resume_converted_designs(db: Session) -> None:
+    """Start rendering the designs left converted with no render job, which only a conversion
+    completed before render plans ran leaves: each in a transaction of its own, a few a sweep.
+    Each goes through render_converted_design, the conversion's own fan-out, so it is queued once
+    whoever sweeps (it must still be converted under its lock) and its held credits move onto its
+    jobs as they would have, with their bought share and allowance generation. One that fails is
+    logged and left for the next sweep. Commits."""
+    for item_id, scene_id, batch_id in _stranded_designs(db):
+        try:
+            scene = db.get(Scene, scene_id)
+            if scene is None or not _free_to_resume(db, item_id):
+                db.rollback()
+                continue
+            render_converted_design(db, item_id, scene)
+            settle_batch(db, batch_id)
+            db.commit()
+        except Exception as exc:  # noqa: BLE001 - a sweep runs inside every claim; one design mustn't stop it
+            db.rollback()
+            log_event(_logger, "ingest.resume_failed", item_id=item_id, error=str(exc))

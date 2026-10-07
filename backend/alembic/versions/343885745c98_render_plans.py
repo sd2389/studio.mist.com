@@ -1,4 +1,4 @@
-"""render plans: a design's embed link, what it was refunded, and its outputs' public copies
+"""render plans: a design's embed link, what it was refunded, its outputs' public copies, and the designs left converted
 
 Revision ID: 343885745c98
 Revises: 7c70876cdcf2
@@ -13,9 +13,16 @@ ADR 0006 F2 renders a batch's plan for each design once its scene is made.
   credits.
 - renders.public_key: an output's copy in the public bucket
   (published/<user>/<sku>/media/<job>/<file>) when its batch publishes media.
+- ix_ingest_items_converted, partial on status = 'converted': a design whose conversion completed
+  before this ran stayed converted, its render credits held and no render job queued, since only
+  a conversion's completion queued them. The sweep every worker claim makes
+  (app/features/ingest/renders.py, resume_converted_designs) finds such designs by this index and
+  queues their jobs once, moving their held credits onto them as a conversion would have. From
+  now on a design is converted only inside its conversion's commit, so the index stays empty.
 
-Every existing row gets nothing: no link, nothing refunded, no public copy. Downgrading drops the
-columns.
+Every existing row gets nothing: no link, nothing refunded, no public copy; the designs left
+converted are started by the sweep, not here, since queuing a job checks its look as the app
+does. Downgrading drops the index and the columns.
 """
 from typing import Sequence, Union
 
@@ -27,6 +34,8 @@ revision: str = '343885745c98'
 down_revision: Union[str, Sequence[str], None] = '7c70876cdcf2'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
+
+_CONVERTED = sa.text("status = 'converted'")
 
 
 def _columns() -> tuple[tuple[str, sa.Column], ...]:
@@ -44,10 +53,14 @@ def upgrade() -> None:
     for table, column in _columns():
         with op.batch_alter_table(table) as batch:
             batch.add_column(column)
+    op.create_index(
+        'ix_ingest_items_converted', 'ingest_items', ['id'], postgresql_where=_CONVERTED, sqlite_where=_CONVERTED
+    )
 
 
 def downgrade() -> None:
     """Downgrade schema."""
+    op.drop_index('ix_ingest_items_converted', table_name='ingest_items')
     for table, column in reversed(_columns()):
         with op.batch_alter_table(table) as batch:
             batch.drop_column(column.name)

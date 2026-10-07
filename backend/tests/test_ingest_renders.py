@@ -332,6 +332,80 @@ def test_a_retry_renders_again_only_the_job_that_failed_and_holds_its_credits_ag
     assert balances(db, user) == (STUDIO[0] - 1, STUDIO[1] - PER_DESIGN)
 
 
+def test_a_retry_while_a_sibling_still_renders_queues_only_the_failed_part_and_charges_the_quote_once(
+    client, db, owner, cloud, gpu
+):
+    """The turntable fails for good while the angle set renders: the design is failed and can be
+    retried, but the retry queues only a turntable, holds only its 3 credits, and leaves the angle
+    set to finish; once both have, the design has charged exactly its quote."""
+    user, headers = owner
+    batch = planned_batch(client, headers, cloud)
+    convert_all(db, cloud)
+    item_id = batch["items"][0]["id"]
+    rendering = gpu.claim_kind("angle_set")
+    gpu.fail(gpu.claim_kind("turntable"), code="invalid_spec", retryable=False)
+    assert item_row(db, item_id).status == "failed"
+    assert balances(db, user) == (STUDIO[0] - 1, STUDIO[1] - 4)  # the turntable's 3 back
+
+    retried = client.post(f"/ingest/batches/{batch['id']}/items/{item_id}/retry", headers=headers)
+
+    assert retried.status_code == 200, retried.text
+    assert balances(db, user) == (STUDIO[0] - 1, STUDIO[1] - PER_DESIGN)  # the turntable's 3 held again, nothing more
+    assert [(job.kind, job.status) for job in design_jobs(db, item_id)] == [
+        ("angle_set", "running"), ("turntable", "failed"), ("turntable", "queued"),
+    ]
+    assert [job["id"] for job in retried.json()["jobs"] if job["kind"] == "angle_set"] == [rendering.id]
+    gpu.complete(rendering)
+    gpu.run_all()
+
+    assert (item_row(db, item_id).status, batch_row(db, batch["id"]).status) == ("done", "completed")
+    assert sorted(output.label or "mp4" for output in batch_outputs(db, batch["id"])) == sorted([*ANGLES, "mp4"])
+    view = batch_view(client, headers, batch)
+    assert view["charged"] == view["quote"] == {"model_credits": 1, "render_credits": PER_DESIGN}
+    assert balances(db, user) == (STUDIO[0] - 1, STUDIO[1] - PER_DESIGN)
+
+
+def test_a_design_converted_before_render_plans_ran_is_rendered_once_and_its_batch_settles(
+    client, db, owner, cloud, gpu, monkeypatch
+):
+    """Before F2 a conversion left a design converted, its render credits held, no job queued.
+    The sweep each claim makes queues its jobs once, from the credits it holds (bought ones
+    included), and the batch then settles having charged its quote."""
+    from app.features.ingest import conversions
+
+    user, headers = owner
+    set_balances(db, user, model=10, render=4)
+    buy(db, user, "render", 20)
+    batch = planned_batch(client, headers, cloud, count=2)
+    with monkeypatch.context() as before_f2:  # neither the fan-out nor the sweep existed yet
+        before_f2.setattr(conversions, "render_converted_design", lambda *args: None)
+        before_f2.setattr(worker, "resume_converted_designs", lambda *args: None)
+        convert_all(db, cloud)
+    stranded = [item_row(db, item["id"]) for item in batch["items"]]
+    assert [(item.status, item.render_credits_held, item.bought_render_credits_held) for item in stranded] == [
+        ("converted", 7, 3), ("converted", 7, 7),
+    ]
+    assert batch_row(db, batch["id"]).status == "processing"
+
+    first = gpu.claim()  # the sweep before the claim queues both designs' jobs
+    renders.resume_converted_designs(db)  # and again: nothing more
+    gpu.claim()  # nor on the next claim
+
+    jobs = [job for item in batch["items"] for job in design_jobs(db, item["id"])]
+    assert [(job.kind, job.credits, job.bought_credits) for job in jobs] == [
+        ("angle_set", 4, 0), ("turntable", 3, 3), ("angle_set", 4, 4), ("turntable", 3, 3),
+    ]
+    assert first.id == jobs[0].id
+    assert {item_row(db, item["id"]).status for item in batch["items"]} == {"rendering"}
+    assert {item_row(db, item["id"]).render_credits_held for item in batch["items"]} == {0}
+    for job in db.query(RenderJob).filter(RenderJob.status == "running").all():
+        gpu.complete(job)
+    gpu.run_all()
+    assert batch_row(db, batch["id"]).status == "completed"
+    assert batch_view(client, headers, batch)["charged"] == {"model_credits": 2, "render_credits": 2 * PER_DESIGN}
+    assert (balances(db, user), bought(db, user)) == ((8, 24 - 2 * PER_DESIGN), (0, 10))
+
+
 def test_a_render_its_owner_cancels_fails_its_design_which_can_render_it_again(client, db, owner, cloud, gpu):
     user, headers = owner
     batch = planned_batch(client, headers, cloud)

@@ -23,6 +23,7 @@ from app.core import storage
 from app.core import storage_keys as keys
 from app.features.billing.quota_service import refund_render_job
 from app.features.ingest.items import end_item_of_job, lock_design_of
+from app.features.ingest.renders import resume_converted_designs
 from app.models.render_job import RenderJob
 from app.schemas.render_job import RenderJobHeartbeatOut
 
@@ -276,14 +277,16 @@ def claim_job(
 ) -> RenderJob | None:
     """Claim the next job for a worker that renders `kinds`, or None (204) when there is none.
 
-    Lapsed leases are taken back first. The claim issues a fresh per-job token and a lease of
-    RENDER_JOB_LEASE_SECONDS, which heartbeats extend. Queued jobs are claimed with SELECT ...
+    Lapsed leases are taken back first, and designs a conversion left converted before render
+    plans ran start rendering (ingest/renders.py). The claim issues a fresh per-job token and a
+    lease of RENDER_JOB_LEASE_SECONDS, which heartbeats extend. Queued jobs are claimed with SELECT ...
     FOR UPDATE SKIP LOCKED, so workers claiming at once take different jobs.
     """
     if settings is None:
         settings = get_settings()
     now = datetime.utcnow()
     take_back_lapsed_leases(db, now)
+    resume_converted_designs(db)
     locks = _uses_row_locks(db)
     full_owners: set[int] = set()
     while True:

@@ -1,7 +1,7 @@
 """api keys: keys for the customer API, stored as a peppered hash
 
 Revision ID: d9858f4349a2
-Revises: 7c70876cdcf2
+Revises: 343885745c98
 Create Date: 2026-10-07 11:00:00.000000
 
 Each key belongs to a user and acts as them on /v1 only (docs/adr/0006-bulk-pipeline.md, "The
@@ -15,7 +15,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = 'd9858f4349a2'
-down_revision: Union[str, Sequence[str], None] = '7c70876cdcf2'
+down_revision: Union[str, Sequence[str], None] = '343885745c98'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

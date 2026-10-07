@@ -4,28 +4,18 @@ import { Fragment, useMemo } from "react";
 import { motion } from "framer-motion";
 import { MaterialSwatch } from "@/components/ui/material-swatch";
 import { cn } from "@/lib/utils";
-import { isGemPresetId } from "@/lib/gem-gpu/gem-configs";
 import type { PersistedModelConfig } from "@/lib/slot-materials/model-config";
 import { buildModelConfigFromSlots } from "@/lib/slot-materials/model-config";
 import type { MaterialPresetId } from "@/stores/material-preset-store";
 import { useMaterialPresetStore } from "@/stores/material-preset-store";
 import {
+  filterGroupsByKind,
   MATERIAL_GROUPS,
-  type MaterialGroup,
   type SlotId,
 } from "@/features/viewer/ui/studio-material-groups";
 import { useStudioSlotContext } from "@/features/viewer/ui/useStudioSlotContext";
 import { SlotTargetGrid } from "@/features/viewer/ui/SlotTargetGrid";
 import { FancyDiamondPicker } from "@/features/viewer/ui/FancyDiamondPicker";
-
-function filterGroupsByKind(kind: "metal" | "gem"): MaterialGroup[] {
-  return MATERIAL_GROUPS.map((group) => ({
-    ...group,
-    items: group.items.filter((item) =>
-      kind === "gem" ? isGemPresetId(item.id) : !isGemPresetId(item.id),
-    ),
-  })).filter((group) => group.items.length > 0);
-}
 
 type MaterialKindPickerProps = {
   kind: "metal" | "gem";
@@ -45,7 +35,7 @@ export function MaterialKindPicker({
   const setPreset = useMaterialPresetStore((s) => s.setPreset);
   const setSlotPreset = useMaterialPresetStore((s) => s.setSlotPreset);
 
-  const groups = useMemo(() => filterGroupsByKind(kind), [kind]);
+  const groups = useMemo(() => filterGroupsByKind(MATERIAL_GROUPS, kind), [kind]);
   const {
     preset,
     slotAliasMap,

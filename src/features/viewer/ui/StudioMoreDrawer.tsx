@@ -16,6 +16,7 @@ import {
 } from "@/lib/source-catalog";
 import { useMaterialPresetStore } from "@/stores/material-preset-store";
 import {
+  filterGroupsByKind,
   MATERIAL_GROUPS,
   SCENE_BUCKET_ORDER,
   type SlotId,
@@ -85,13 +86,15 @@ export function StudioMoreDrawer({
   }, []);
 
   const trimmedQuery = query.trim().toLowerCase();
+  // Before or without the catalogue: the built-in presets of the active slot's kind.
   const filteredGroups = useMemo(() => {
-    if (!trimmedQuery) return MATERIAL_GROUPS;
-    return MATERIAL_GROUPS.map((g) => ({
+    const groups = filterGroupsByKind(MATERIAL_GROUPS, activeSlotKind);
+    if (!trimmedQuery) return groups;
+    return groups.map((g) => ({
       ...g,
       items: g.items.filter((it) => it.label.toLowerCase().includes(trimmedQuery)),
     })).filter((g) => g.items.length > 0);
-  }, [trimmedQuery]);
+  }, [trimmedQuery, activeSlotKind]);
 
   const slotCatalogItems = useMemo(() => {
     if (!catalog) return [] as SourceCatalogItem[];

@@ -1,5 +1,6 @@
 import { Camera, Moon, Sparkles, Sun, SunDim, type LucideIcon } from "lucide-react";
 import { fancyDiamondLabel, parseFancyDiamondId } from "@/lib/gem-gpu/fancy-diamonds";
+import { isGemPresetId } from "@/lib/gem-gpu/gem-configs";
 import type { SlotMaterialRef } from "@/lib/library/custom-material-ref";
 import { isGemPickerSlot, type SlotSelectionMap } from "@/lib/slot-materials/material-rules";
 import type { PersistedModelConfig, SceneSettingBucketKey } from "@/lib/slot-materials/model-config";
@@ -154,6 +155,13 @@ export function slotKind(
   selections: SlotSelectionMap,
 ): "metal" | "gem" {
   return isGemPickerSlot(slot, modelConfig, selections) ? "gem" : "metal";
+}
+
+/** The groups' presets of one kind, gems or metals; a group with none of them is left out. */
+export function filterGroupsByKind(groups: MaterialGroup[], kind: "metal" | "gem"): MaterialGroup[] {
+  return groups
+    .map((group) => ({ ...group, items: group.items.filter((item) => isGemPresetId(item.id) === (kind === "gem")) }))
+    .filter((group) => group.items.length > 0);
 }
 
 export function isGenericGemToken(token: string): boolean {

@@ -46,6 +46,14 @@ export function MoreCatalogGrid({
   onApplyPreset,
   onSetGlobalPreset,
 }: MoreCatalogGridProps) {
+  const isSlotTargeted = activePhysicalSlots.length > 0;
+  /** Whether every targeted slot has the material. */
+  const isOnActiveSlots = (id: MaterialPresetId) =>
+    isSlotTargeted &&
+    activePhysicalSlots.every(
+      (slot) => resolvePresetForSlot(slot, safeSlotSelections, preset, modelConfig.slotTokens) === id,
+    );
+
   if (slotOptionOverrides.length > 0) {
     return (
       <section>
@@ -67,13 +75,7 @@ export function MoreCatalogGrid({
           <div className="grid grid-cols-2 gap-1.5">
             {slotOptionOverrides.map((option) => {
               const swatchColor = getPresetSwatchColor(option.id);
-              const selected =
-                activePhysicalSlots.length > 0 &&
-                activePhysicalSlots.every(
-                  (slot) =>
-                    resolvePresetForSlot(slot, safeSlotSelections, preset, modelConfig.slotTokens) ===
-                    option.id,
-                );
+              const selected = isOnActiveSlots(option.id);
               const diamond = activeSlotKind === "gem";
               return (
                 <button
@@ -138,13 +140,7 @@ export function MoreCatalogGrid({
             {slotCatalogItems.map((item) => {
               const mappedPreset = mapCatalogItemToPreset(item, activeSlotKind);
               const swatchColor = getPresetSwatchColor(mappedPreset);
-              const selected =
-                activePhysicalSlots.length > 0 &&
-                activePhysicalSlots.every(
-                  (slot) =>
-                    resolvePresetForSlot(slot, safeSlotSelections, preset, modelConfig.slotTokens) ===
-                    mappedPreset,
-                );
+              const selected = isOnActiveSlots(mappedPreset);
               const diamond = activeSlotKind === "gem";
               return (
                 <button
@@ -215,8 +211,8 @@ export function MoreCatalogGrid({
                   key={item.id}
                   id={item.id}
                   label={item.label}
-                  selected={preset === item.id}
-                  onClick={() => onSetGlobalPreset(item.id)}
+                  selected={isSlotTargeted ? isOnActiveSlots(item.id) : preset === item.id}
+                  onClick={() => (isSlotTargeted ? onApplyPreset(item.id) : onSetGlobalPreset(item.id))}
                 />
               ))}
             </div>

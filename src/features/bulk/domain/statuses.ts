@@ -74,20 +74,17 @@ export function itemErrorText(item: Pick<IngestItem, "error" | "error_code">): s
 }
 
 /**
- * Said over a batch with designs converting or converted while the pipeline's later stages
- * aren't running: conversion on our workers (ADR 0006 E2) and render plans (F2).
+ * Said over a batch while its designs convert and render: on our servers, a few at a time, its
+ * credits held until each part is made (ADR 0006, "Credits for a batch").
  */
 export const PIPELINE_NOTE =
-  "Conversion runs on our servers and isn't switched on yet, so designs wait at Converting. Nothing is spent " +
-  "while they wait: their credits are held, and canceling gives them back. Renders come after conversion, in a later release.";
+  "Designs convert, then render, on our servers, a few at a time. Their credits are held until each part is made: " +
+  "a render is charged once it is ready, and canceling gives back everything that hasn't finished.";
 
-/**
- * What a design waiting at a stage the pipeline doesn't run yet is waiting for: converting on
- * our workers (ADR 0006 E2) and rendering its plan (F2) aren't switched on, so designs stay put.
- */
+/** What a design at a stage it moves on from by itself is waiting for; its renders show their own progress. */
 export function stageWaitNote(status: IngestItemStatus): string | null {
-  if (status === "converting") return "Queued for conversion. Conversion on our servers isn't running yet, so it waits here.";
-  if (status === "converted") return "Converted. Renders come in a later release, so it waits here.";
+  if (status === "converting") return "Queued for conversion on our servers.";
+  if (status === "converted") return "Converted. Its renders are being queued.";
   if (status === "uploaded") return "Uploaded. It converts once the batch is submitted.";
   return null;
 }

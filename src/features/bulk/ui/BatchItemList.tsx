@@ -1,7 +1,9 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, RotateCcw } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Link2, RotateCcw } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
+import { useCopyFeedback } from "@/components/embed/embed-code";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { ChipField } from "@/components/ui/chip";
 import type { IngestBatch, IngestItem, IngestItemStatus, IngestPage, IngestRefusal } from "@/lib/api/ingest";
@@ -9,6 +11,7 @@ import { formatBytesShort } from "@/lib/admin/format";
 import { cn } from "@/lib/utils";
 import { ITEM_STATUS_LABELS, itemErrorText, stageWaitNote, statusesPresent } from "../domain/statuses";
 import { ItemStatusBadge } from "./BatchBadges";
+import { DesignRenders } from "./DesignRenders";
 import type { BatchAction, ItemsQuery } from "./useBatchView";
 
 type StatusFilter = IngestItemStatus | "all";
@@ -34,6 +37,38 @@ function itemMeta(item: IngestItem): string {
   return parts.join(" · ");
 }
 
+/** The piece's embed link, copied, as the studio's embed panel copies it. */
+function CopyEmbedLink({ url }: { url: string }) {
+  const { copied, copy } = useCopyFeedback<"link">();
+  return (
+    <Button type="button" variant="outline" size="sm" title={url} onClick={() => void copy(url, "link")}>
+      {copied === "link" ? <Check aria-hidden /> : <Link2 aria-hidden />}
+      {copied === "link" ? "Copied" : "Copy embed link"}
+    </Button>
+  );
+}
+
+function ItemActions({ item, onRetry, retrying }: { item: IngestItem; onRetry?: (itemId: number) => void; retrying: boolean }) {
+  const retry = onRetry && item.status === "failed";
+  if (!retry && item.scene_id === null && !item.embed_url) return null;
+  return (
+    <div className="mt-2 flex flex-wrap gap-2">
+      {retry ? (
+        <Button type="button" variant="outline" size="sm" disabled={retrying} onClick={() => onRetry(item.id)}>
+          <RotateCcw aria-hidden />
+          {retrying ? "Retrying…" : "Retry"}
+        </Button>
+      ) : null}
+      {item.scene_id !== null ? (
+        <Link href={`/model/${item.scene_id}`} className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>
+          Open in studio
+        </Link>
+      ) : null}
+      {item.embed_url ? <CopyEmbedLink url={item.embed_url} /> : null}
+    </div>
+  );
+}
+
 function ItemRow({ item, onRetry, retrying, refusal }: {
   item: IngestItem;
   onRetry?: (itemId: number) => void;
@@ -45,12 +80,24 @@ function ItemRow({ item, onRetry, retrying, refusal }: {
   return (
     <li className="rounded-xl border border-border/60 bg-card/60 px-3 py-2.5">
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="truncate text-sm text-foreground" title={item.filename}>
-            <span className="mr-1.5 font-mono text-[10px] text-muted-foreground">{item.position + 1}</span>
-            {item.filename}
-          </p>
-          <p className="mt-0.5 truncate text-xs text-muted-foreground">{itemMeta(item)}</p>
+        <div className="flex min-w-0 items-start gap-3">
+          {item.thumbnail_url ? (
+            <Image
+              src={item.thumbnail_url}
+              alt=""
+              width={48}
+              height={48}
+              className="size-12 shrink-0 rounded-lg border border-border/50 bg-background object-cover"
+              unoptimized
+            />
+          ) : null}
+          <div className="min-w-0">
+            <p className="truncate text-sm text-foreground" title={item.filename}>
+              <span className="mr-1.5 font-mono text-[10px] text-muted-foreground">{item.position + 1}</span>
+              {item.filename}
+            </p>
+            <p className="mt-0.5 truncate text-xs text-muted-foreground">{itemMeta(item)}</p>
+          </div>
         </div>
         <ItemStatusBadge status={item.status} className="shrink-0" />
       </div>
@@ -58,21 +105,8 @@ function ItemRow({ item, onRetry, retrying, refusal }: {
       {waiting ? <p className="mt-1.5 text-xs text-muted-foreground">{waiting}</p> : null}
       {item.warnings.length > 0 ? <p className="mt-1.5 text-xs text-muted-foreground">{item.warnings.join(" · ")}</p> : null}
       {refusal ? <p className="mt-1.5 text-xs text-destructive">{refusal.message}</p> : null}
-      {(onRetry && item.status === "failed") || item.scene_id !== null ? (
-        <div className="mt-2 flex flex-wrap gap-2">
-          {onRetry && item.status === "failed" ? (
-            <Button type="button" variant="outline" size="sm" disabled={retrying} onClick={() => onRetry(item.id)}>
-              <RotateCcw aria-hidden />
-              {retrying ? "Retrying…" : "Retry"}
-            </Button>
-          ) : null}
-          {item.scene_id !== null ? (
-            <Link href={`/model/${item.scene_id}`} className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>
-              Open in studio
-            </Link>
-          ) : null}
-        </div>
-      ) : null}
+      <DesignRenders jobs={item.jobs ?? []} />
+      <ItemActions item={item} onRetry={onRetry} retrying={retrying} />
     </li>
   );
 }

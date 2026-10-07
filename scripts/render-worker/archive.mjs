@@ -25,7 +25,7 @@ const ZIP_MAX_BYTES = 4 * 1024 ** 3 - 1;
 /** A batch archive's run time limit (MAX_RUNTIME_SECONDS in the API), for a payload that gives none. */
 const DEFAULT_RUNTIME_SECONDS = 1800;
 
-/** The most deflate makes of `bytes` of text: a part's room for its manifest. */
+/** The most deflate makes of `bytes` of text: a part's room for its manifest (deflated_at_most in the API's archive_spec.py). */
 const deflatedAtMost = (bytes) => Math.ceil(bytes * 1.01) + 1024;
 
 /** What a part is called: `<stem>-part-<n>.zip`, as the API plans it. */
@@ -35,7 +35,9 @@ export const archivePartName = (spec, number) => `${spec.stem}-part-${number}.zi
  * Writes the manifest, then every file, into ZIP parts in order (see above). Each file is fetched
  * into `dir` just before it goes into a part, and deleted once it is in; each part, once written,
  * is handed to `onPart` (which uploads it) and then deleted. More parts than `maxParts` stop it
- * as `over_limit`.
+ * as `over_limit`. The API counts the parts a job may make with this packing, mirrored
+ * (parts_needed in backend/app/features/render_jobs/archive_spec.py; both are checked against
+ * backend/tests/fixtures/archive_packing.json): keep the two the same.
  *
  * @param {object} options
  * @param {{ name: string, path: string, bytes: number }} options.manifest On disk already.

@@ -135,6 +135,37 @@ describe("writeArchiveParts", () => {
   });
 });
 
+/** Cases the API counts too (parts_needed in backend/app/features/render_jobs/archive_spec.py, test_archive_packing.py). */
+const PACKING = JSON.parse(readFileSync(new URL("../../backend/tests/fixtures/archive_packing.json", import.meta.url), "utf8"));
+
+describe("the parts the API counts", () => {
+  it.each(PACKING.cases)("are the parts the worker writes: $name", async ({ part_bytes: partBytes, manifest_bytes: manifestBytes, files, parts: expected }) => {
+    const manifest = path.join(dir, "manifest");
+    writeFileSync(manifest, "m".repeat(manifestBytes));
+    files.forEach(([, bytes], index) => writeFileSync(path.join(fixtures, `${index}`), Buffer.alloc(bytes, index + 1)));
+    const written = [];
+    await writeArchiveParts({
+      manifest: { name: PACKING.manifest_name, path: manifest, bytes: manifestBytes },
+      files: files.map(([name], index) => ({ path: name, source: { path: `/inputs/${index}` } })),
+      partBytes,
+      maxParts: 100,
+      partName: (number) => `case-part-${number}.zip`,
+      dir,
+      fetchFile: fetchFixture,
+      onPart: async (part) => {
+        const stored = path.join(store, part.name);
+        copyFileSync(part.path, stored);
+        written.push({ ...part, stored });
+      },
+    });
+
+    expect(written.length).toBe(expected);
+    const names = readParts(written).flatMap((entries) => Object.keys(entries));
+    expect(names).toEqual([PACKING.manifest_name, ...files.map(([name]) => name)]);
+    for (const part of written) if (part.files > 1) expect(part.bytes).toBeLessThanOrEqual(partBytes);
+  });
+});
+
 describe("runArchiveJob", () => {
   const SPEC = { batch_id: 31, stem: "Rings", part_bytes: PART_BYTES, max_parts: 10 };
 

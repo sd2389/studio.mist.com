@@ -6,7 +6,7 @@ from datetime import datetime
 import pytest
 from alembic import command
 from migration_steps import alembic_config, columns, model_diffs, point_alembic_at, previous_revision, schema_at_head
-from sqlalchemy import inspect, text
+from sqlalchemy import MetaData, Table, inspect, select, text
 
 from app.models import Scene, User
 
@@ -77,3 +77,44 @@ def test_the_render_plans_migration_round_trip(sqlite_url):
         assert not set(names) & columns(engine, table), table
     assert "ix_ingest_items_converted" not in {index["name"] for index in inspect(engine).get_indexes("ingest_items")}
     engine.dispose()
+
+
+# A plan as main kept it before F2: publish_media true by default, though no page offered it.
+PRE_F2_PLAN = {
+    "stills": {"angles": ["front", "side"], "size": 2000, "format": "jpeg", "jpeg_quality": 0.92, "transparent": False, "margin_pct": 8.0},
+    "turntable": None,
+    "spin": None,
+    "publish_media": True,
+    "thumbnail_from": "front",
+}
+
+
+def test_upgrading_makes_every_stored_plan_keep_its_media_private_and_leaves_the_rest(sqlite_url):
+    config = alembic_config()
+    engine = schema_at_head(sqlite_url)
+    command.downgrade(config, previous_revision(REVISION))
+    batches = sa_table(engine)
+    with engine.begin() as connection:
+        connection.execute(User.__table__.insert().values(id=7, email="g@example.com", password_hash="h", role="user"))
+        for batch_id, plan in ((1, PRE_F2_PLAN), (2, None), (3, {**PRE_F2_PLAN, "publish_media": False})):
+            connection.execute(
+                batches.insert().values(
+                    id=batch_id, user_id=7, name="Rings", status="processing", source="studio", options={}, item_count=1,
+                    total_bytes=10, render_credits_per_design=2, render_plan=plan, created_at=NOW, updated_at=NOW,
+                )
+            )
+
+    command.upgrade(config, "head")
+
+    with engine.connect() as connection:
+        plans = dict(connection.execute(select(batches.c.id, batches.c.render_plan).order_by(batches.c.id)).all())
+    assert plans == {1: {**PRE_F2_PLAN, "publish_media": False}, 2: None, 3: {**PRE_F2_PLAN, "publish_media": False}}
+    command.downgrade(config, previous_revision(REVISION))  # leaves the plans as they are
+    with engine.connect() as connection:
+        assert connection.execute(select(batches.c.render_plan).where(batches.c.id == 1)).scalar_one()["publish_media"] is False
+    engine.dispose()
+
+
+def sa_table(engine):
+    """ingest_batches as the database has it now."""
+    return Table("ingest_batches", MetaData(), autoload_with=engine, extend_existing=True)

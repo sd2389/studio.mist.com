@@ -97,6 +97,48 @@ def test_publish_media_copies_each_output_beside_the_published_model(client, db,
     assert [key for key in cloud.objects if "/media/" in key] == []
 
 
+def _render_plans_migration():
+    """alembic/versions/343885745c98_render_plans.py, loaded by its path."""
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parent.parent / "alembic" / "versions" / "343885745c98_render_plans.py"
+    spec = importlib.util.spec_from_file_location("render_plans_migration", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_a_pre_f2_batch_the_migration_made_private_publishes_nothing_when_its_designs_resume(
+    client, db, owner, cloud, gpu, monkeypatch
+):
+    """Before F2 every plan was kept with publish_media true, its default, though nobody chose it,
+    and conversions left designs converted with no job. The migration turns it off; the designs
+    the sweep then renders keep their outputs private."""
+    from app.features.ingest import conversions
+    from app.features.ingest.renders import resume_converted_designs
+    from app.features.render_jobs import worker
+    from app.models import IngestBatch
+
+    batch = planned_batch(client, owner[1], cloud, plan={**DEFAULT_PLAN, "publish_media": True})
+    with monkeypatch.context() as before_f2:
+        before_f2.setattr(conversions, "render_converted_design", lambda *args: None)
+        before_f2.setattr(worker, "resume_converted_designs", lambda *args: None)
+        convert_all(db, cloud)
+
+    _render_plans_migration().keep_media_private(db.connection())
+    db.commit()
+    db.expire_all()
+    assert db.get(IngestBatch, batch["id"]).render_plan == {**batch["render_plan"], "publish_media": False}
+    resume_converted_designs(db)
+    gpu.run_all()
+
+    outputs = batch_outputs(db, batch["id"])
+    assert len(outputs) == len(ANGLES) + 1
+    assert {output.public_key for output in outputs} == {None}
+    assert [key for key in cloud.objects if "/media/" in key] == []
+
+
 def test_a_design_keeps_its_embed_link_from_the_moment_its_scene_is_made(client, db, owner, cloud):
     batch = submitted_batch(client, owner[1], cloud, batch_body(design("rings/R-1001.stl", 900, sku="R-1001"), render_plan=DEFAULT_PLAN))
     convert_all(db, cloud)

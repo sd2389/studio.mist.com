@@ -13,6 +13,14 @@ class QuotaBalances(BaseModel):
     storage_bytes_limit: int
 
 
+class BoughtBalances(BaseModel):
+    """Of each balance, the credits the customer bought: spent last, kept at renewal."""
+
+    model_credits: int = 0
+    ai_image_credits: int = 0
+    render_credits: int = 0
+
+
 class PlanFeatures(BaseModel):
     max_variants_per_model: int
     max_image_resolution: int
@@ -34,7 +42,8 @@ class UserBillingSnapshot(BaseModel):
     plan_label: str
     period_start: datetime | None
     period_end: datetime | None
-    balances: QuotaBalances
+    balances: QuotaBalances  # what can be spent: plan and bought credits together
+    bought_balances: BoughtBalances = Field(default_factory=BoughtBalances)
     allotments: QuotaBalances
     features: PlanFeatures
     stripe_customer_id: str | None = None

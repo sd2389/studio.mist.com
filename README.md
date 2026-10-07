@@ -145,6 +145,8 @@ Templates: [`.env.example`](.env.example) (web, Compose) and [`backend/.env.exam
 
 The Stripe webhook records each paid top-up in `credit_purchases` (one row per Checkout Session) in the same commit that adds the credits. The admin user detail API lists a user's latest purchases as `recent_purchases`.
 
+Model, AI image and render balances keep bought credits apart from the plan's (`backend/app/features/billing/credit_pools.py`). Spending takes the plan's credits first; a renewal, upgrade, downgrade, cancellation or the Free reset sets the plan's credits to the new allowance and keeps the bought ones; a refund gives a hold's credits back to the pool each came from, bought ones even after the period rolled over. The billing snapshot's `balances` are the totals, and `bought_balances` says how many of each were bought. Admin grants are plan credits, as before.
+
 Top-up credits, and a plan bought at checkout, are granted only once the Checkout Session is paid. A delayed payment method completes the checkout unpaid and is granted on `checkout.session.async_payment_succeeded`; `checkout.session.async_payment_failed` grants nothing. The Stripe webhook endpoint must send both of those events as well as `checkout.session.completed`.
 
 `python -m scripts.reset_free_ai_credits` (from `backend/`) lowers Free accounts that hold more AI image credits than the Free allowance in `plans.py` (Free used to get 150). Each account keeps the allowance plus the AI credits it paid for, from the purchase ledger and from paid Stripe Checkout Sessions, plus positive admin AI adjustments. No balance goes up, and Grow and Studio accounts are left alone.

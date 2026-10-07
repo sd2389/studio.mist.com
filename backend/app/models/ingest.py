@@ -101,6 +101,10 @@ class IngestItem(Base):
     # render credits its render plan's jobs take. The period they were held in, for refunds.
     model_credit_held: Mapped[int] = mapped_column(SmallInteger, default=0)
     render_credits_held: Mapped[int] = mapped_column(Integer, default=0)
+    # Of those held, the ones the hold took from bought credits, given back as bought; a job the
+    # design's render credits move to takes its share of them.
+    bought_model_credit_held: Mapped[int] = mapped_column(SmallInteger, default=0, server_default="0")
+    bought_render_credits_held: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     credits_period_start: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     polygon_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # counted from its GLB
     size_mm: Mapped[float | None] = mapped_column(Float, nullable=True)  # its longest side

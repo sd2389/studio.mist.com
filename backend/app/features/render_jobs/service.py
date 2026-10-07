@@ -19,6 +19,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core import storage
+from app.features.billing.credit_pools import split_bought
 from app.features.billing.plans import MAX_BULK_RENDER_JOBS, PLAN_LABELS, PlanTier, get_quotas, normalize_tier
 from app.features.billing.quota_service import get_or_create_billing, hold_render_credits, refund_render_job
 from app.features.render_jobs import idempotency
@@ -114,7 +115,8 @@ def _queue_jobs(
     idempotency_keys: list[str] | None = None,
     request_hash: str | None = None,
 ) -> list[RenderJob]:
-    """Hold the planned jobs' credits in one statement and queue them, all or none.
+    """Hold the planned jobs' credits in one statement and queue them, all or none. Each job
+    keeps its share of the bought credits the hold took, which its refund gives back.
 
     The hold locks the owner's billing row until the commit, so the queue count after it
     sees every job another request queued meanwhile.
@@ -124,7 +126,8 @@ def _queue_jobs(
     now = datetime.utcnow()
     keys = idempotency_keys or [None] * len(planned)
     try:
-        period_start = hold_render_credits(db, user.id, sum(job.credits for job in planned))
+        hold = hold_render_credits(db, user.id, sum(job.credits for job in planned))
+        bought = split_bought([job.credits for job in planned], hold.bought_render_credits)
         _assert_queue_room(db, user.id, len(planned), tier)
         jobs = [
             RenderJob(
@@ -140,8 +143,9 @@ def _queue_jobs(
                 max_running=quotas.max_running_jobs,
                 max_attempts=MAX_ATTEMPTS,
                 credits=job.credits,
+                bought_credits=job_bought,
                 credit_state="held",
-                billing_period_start=period_start,
+                billing_period_start=hold.period_start,
                 idempotency_key=key,
                 request_hash=request_hash,
                 status="queued",
@@ -149,7 +153,7 @@ def _queue_jobs(
                 created_at=now,
                 updated_at=now,
             )
-            for job, key in zip(planned, keys, strict=True)
+            for job, key, job_bought in zip(planned, keys, bought, strict=True)
         ]
         db.add_all(jobs)
         db.commit()

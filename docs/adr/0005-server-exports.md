@@ -349,6 +349,8 @@ Credits move in three steps, in `backend/app/features/billing/quota_service.py`:
 2. **Charge** on `complete`: `credit_state = 'charged'`; the balance doesn't move again.
 3. **Refund** when the job ends failed or canceled: the held credits go back, unless the billing period has rolled over since the hold (`_apply_allotment` has already reset the balance; adding them back would give a new period extra credits).
 
+As built with bought credits kept apart (`backend/app/features/billing/credit_pools.py`): the hold takes the plan's credits first and the job records how many bought ones it took (`bought_credits`); the refund always gives those back as bought credits, and only the plan's part depends on the period. A reset sets the plan's credits to the allowance and keeps the bought ones.
+
 A job is all or nothing: an angle set with one failed angle retries the whole set, and a final failure refunds it all. The browser no longer reads the plan to enforce anything; `useExportPlan` stays only to lock pickers and show `ExportPlanNote`.
 
 ### The watermark

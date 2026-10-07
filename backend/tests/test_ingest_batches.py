@@ -457,7 +457,7 @@ def test_a_render_plan_is_kept_normalised(client, owner):
         "stills": {**STILLS, "format": "jpeg", "jpeg_quality": 0.92, "transparent": False, "margin_pct": 8.0},
         "turntable": TURNTABLE,
         "spin": None,
-        "publish_media": True,
+        "publish_media": False,  # private unless asked
         "thumbnail_from": "front",
     }
 

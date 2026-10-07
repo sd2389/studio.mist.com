@@ -62,8 +62,12 @@ def delete_scene(db: Session, scene: Scene) -> int:
     is logged and left rather than leaving a scene whose files are gone. Files another scene
     still uses are kept.
     """
-    renders = db.execute(select(Render.key, Render.bytes, Render.job_id).where(Render.scene_id == scene.id)).all()
+    renders = db.execute(
+        select(Render.key, Render.bytes, Render.job_id, Render.public_key).where(Render.scene_id == scene.id)
+    ).all()
     render_keys = [render.key for render in renders]
+    # Outputs a batch published as media: their copies beside the published model go too.
+    public_media = [render.public_key for render in renders if render.public_key]
     counted = counted_keys(scene, render_keys)
     # A job's outputs counted their bytes when it completed; saved stills never did.
     outputs = sum(render.bytes for render in renders if render.job_id is not None)
@@ -84,4 +88,6 @@ def delete_scene(db: Session, scene: Scene) -> int:
             storage.delete_quietly(key)
     if unpublish:
         publish_service.delete_published_copies(user_id, sku)
+    if public_media:
+        publish_service.delete_public_files(user_id, sku, public_media)
     return freed

@@ -267,7 +267,7 @@ describe("with bulk_pipeline on", () => {
     expect(text(renderToStaticMarkup(await BulkUploadPage()))).toContain("Uploads paused");
   });
 
-  it("shows a batch's counts, each design's status and why it failed, and what the pipeline doesn't do yet", async () => {
+  it("shows a batch's counts, each design's status and why it failed, and how its designs move on", async () => {
     flags.value = { bulk_pipeline: true };
     const page = text(await drawBatchPage(PROCESSING));
 
@@ -277,7 +277,7 @@ describe("with bulk_pipeline on", () => {
     expect(page).toContain("2 of 4 designs finished");
     expect(page).toContain("Price 4 model credits and 0 render credits · held now 1 model credit and 0 render credits");
     expect(page).toContain(PIPELINE_NOTE);
-    expect(page).toContain("Queued for conversion.");
+    expect(page).toContain("Queued for conversion on our servers.");
     expect(page).toContain("R-9002: stones alone are 2.4M triangles");
     expect(page).toContain("Its file couldn't be read as a model.");
   });

@@ -9,6 +9,7 @@ import {
   type IngestBatchCreated,
   type IngestProblem,
   type IngestSkuCheck,
+  type RenderPlan,
 } from "@/lib/api/ingest";
 import { AuthRequestError } from "@/lib/auth/is-auth-required-error";
 import { batchCreateBody, designUploads, type DesignUpload } from "../domain/batch-request";
@@ -36,13 +37,21 @@ function refusalOf(failure: unknown): Refusal | null {
   return null;
 }
 
+/** What the page picked for the batch besides its files: the look its scenes take, what they render. */
+export type BatchPicks = { lookTemplateId: number | null; renderPlan: RenderPlan | null };
+
 /**
- * The bulk upload page's steps once its files are dropped: make the batch with the look picked
- * (one Idempotency-Key per request body, so trying again after a lost answer finds the same
- * batch), upload every design straight to storage, and submit once all of them are up. The API's
- * problems replace the checks made before it while the request is the one they are about.
+ * The bulk upload page's steps once its files are dropped: make the batch with the look and the
+ * render plan picked (one Idempotency-Key per request body, so trying again after a lost answer
+ * finds the same batch), upload every design straight to storage, and submit once all of them
+ * are up. The API's problems replace the checks made before it while the request is the one they
+ * are about.
  */
-export function useBulkUploadFlow(drop: BulkDrop, held: IngestSkuCheck | null, lookTemplateId: number | null) {
+export function useBulkUploadFlow(
+  drop: BulkDrop,
+  held: IngestSkuCheck | null,
+  { lookTemplateId, renderPlan }: BatchPicks = { lookTemplateId: null, renderPlan: null },
+) {
   const router = useRouter();
   const uploads = useBatchUploads();
   const [name, setName] = useState("");
@@ -62,8 +71,9 @@ export function useBulkUploadFlow(drop: BulkDrop, held: IngestSkuCheck | null, l
         manifest: drop.manifest?.text ?? null,
         defaultCategory: drop.defaultCategory,
         lookTemplateId,
+        renderPlan,
       }),
-    [plan.designs, batchName, drop.manifest, drop.defaultCategory, lookTemplateId],
+    [plan.designs, batchName, drop.manifest, drop.defaultCategory, lookTemplateId, renderPlan],
   );
   const bodyKey = useMemo(() => JSON.stringify(body), [body]);
   // What the checks here find: they keep the batch from being made.

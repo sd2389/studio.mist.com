@@ -24,6 +24,7 @@ ITEM_STATUSES = (
 FINISHED_ITEM_STATUSES = ("done", "failed", "skipped", "canceled")
 UNFINISHED_ITEM_STATUSES = tuple(status for status in ITEM_STATUSES if status not in FINISHED_ITEM_STATUSES)
 _IN_PROGRESS = text("status NOT IN ('done', 'failed', 'skipped', 'canceled')")
+_CONVERTED = text("status = 'converted'")
 
 
 class IngestBatch(Base):
@@ -74,6 +75,8 @@ class IngestItem(Base):
             sqlite_where=_IN_PROGRESS,
         ),
         Index("ix_ingest_items_scene_id", "scene_id"),
+        # Designs left converted, which each claim's sweep looks for (ingest/renders.py): few or none.
+        Index("ix_ingest_items_converted", "id", postgresql_where=_CONVERTED, sqlite_where=_CONVERTED),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
@@ -108,6 +111,12 @@ class IngestItem(Base):
     bought_render_credits_held: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     credits_period_start: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     credits_allowance_generation: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # What the design was given back of what it held, every time it failed or was canceled: the
+    # batch's refunded credits, with those of its jobs.
+    model_credits_refunded: Mapped[int] = mapped_column(SmallInteger, default=0, server_default="0")
+    render_credits_refunded: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # The piece's embed link, APP_PUBLIC_URL/embed/<SKU>, once its scene holds the SKU (F3's manifest lists it).
+    embed_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     polygon_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # counted from its GLB
     size_mm: Mapped[float | None] = mapped_column(Float, nullable=True)  # its longest side
     warnings: Mapped[list] = mapped_column(JSON, default=list)  # unit guesses, decimation, skipped layers

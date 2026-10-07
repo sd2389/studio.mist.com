@@ -1,4 +1,4 @@
-import type { IngestBatchCreate, IngestItem, IngestProblem } from "@/lib/api/ingest";
+import type { IngestBatchCreate, IngestItem, IngestProblem, RenderPlan } from "@/lib/api/ingest";
 import type { DroppedFile } from "@/lib/upload/dropped-files";
 import { uploadedFilesOf } from "./design-files";
 import type { PlannedDesign } from "./design-checks";
@@ -12,17 +12,19 @@ type BatchChoices = {
   defaultCategory: string;
   /** The look template picked; none for the studio's default look. */
   lookTemplateId?: number | null;
+  /** The render plan picked; none renders nothing. */
+  renderPlan?: RenderPlan | null;
 };
 
 /**
  * The create request for planned designs, in their order: each design's files and sizes only.
  * The API settles SKUs, names and categories itself, from the manifest's rows when there is one
  * and from the file names otherwise, exactly as `planDesigns` previewed them; and it checks and
- * applies the look template, which the page only picks.
+ * applies the look template and checks and prices the render plan, which the page only picks.
  */
 export function batchCreateBody(
   designs: PlannedDesign[],
-  { name, manifest, defaultCategory, lookTemplateId }: BatchChoices,
+  { name, manifest, defaultCategory, lookTemplateId, renderPlan }: BatchChoices,
 ): IngestBatchCreate {
   return {
     name: name.trim(),
@@ -33,6 +35,7 @@ export function batchCreateBody(
     })),
     manifest,
     ...(lookTemplateId == null ? {} : { look_template_id: lookTemplateId }),
+    ...(renderPlan == null ? {} : { render_plan: renderPlan }),
     options: { default_category: defaultCategory },
   };
 }

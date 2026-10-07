@@ -347,7 +347,9 @@ def test_a_failed_design_gives_back_its_own_bought_credits(client, db, owner, cl
     assert (balances(db, user), _bought(db, user)) == ((1, 4), (1, 4))
 
 
-def test_a_converted_design_spends_its_bought_model_credit_and_keeps_its_render_credits_held(client, db, owner, cloud):
+def test_a_converted_design_spends_its_bought_model_credit_and_its_jobs_take_its_bought_render_credits(
+    client, db, owner, cloud
+):
     user, headers = owner
     _set_billing(db, user, model_credits_balance=0, render_credits_balance=0)
     _buy(db, user, "model", 1)
@@ -357,7 +359,9 @@ def test_a_converted_design_spends_its_bought_model_credit_and_keeps_its_render_
 
     complete(db, job, converted_files(cloud, job))
 
-    assert _held_bought(db, batch) == [(0, 4)]
+    assert _held_bought(db, batch) == [(0, 0)]
+    [angle_set] = [one for one in _jobs(db) if one.kind == "angle_set"]
+    assert (angle_set.credits, angle_set.bought_credits, angle_set.credit_state) == (4, 4, "held")
     client.post(f"/ingest/batches/{batch['id']}/cancel", headers=headers)
     assert (balances(db, user), _bought(db, user)) == ((0, 4), (0, 4))
 

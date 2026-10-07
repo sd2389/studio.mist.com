@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import type { BatchView } from "@/lib/api/ingest";
 import { formatBytesShort } from "@/lib/admin/format";
 import { formatRelativeTime } from "@/lib/relative-time";
+import { renderPlanSummary } from "../domain/render-plan";
 import { canRetryFailed, countOf, finishedCount, isBatchOpen, PIPELINE_NOTE } from "../domain/statuses";
 import { BatchStatusBadge } from "./BatchBadges";
 import { BatchCounts } from "./BatchCounts";
@@ -59,8 +60,8 @@ function BatchActions({ state, bulkEnabled }: { state: BatchViewState; bulkEnabl
       {actions.length > 0 ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
       {batch.status === "draft" ? (
         <p className="text-xs text-muted-foreground">
-          A draft holds no credits. Submitting holds a model credit a design and starts converting the uploaded ones;
-          the rest convert as their uploads finish.
+          A draft holds no credits. Submitting holds a model credit and the render plan&apos;s credits a design and
+          starts converting the uploaded ones; the rest convert as their uploads finish.
         </p>
       ) : null}
       {state.refused.length > 0 ? (
@@ -87,7 +88,7 @@ export function BatchShell({ initial, bulkEnabled, userEmail, isAdmin }: BatchSh
   const state = useBatchView(initial);
   const { batch, items } = state.view;
   const waiting = countOf(batch, "awaiting_upload");
-  const stalled = countOf(batch, "converting") + countOf(batch, "converted") > 0;
+  const working = countOf(batch, "converting") + countOf(batch, "converted") + countOf(batch, "rendering") > 0;
 
   return (
     <div className="min-h-dvh bg-background text-foreground">
@@ -112,6 +113,9 @@ export function BatchShell({ initial, bulkEnabled, userEmail, isAdmin }: BatchSh
                 {batch.item_count} design{batch.item_count === 1 ? "" : "s"} · {formatBytesShort(batch.total_bytes)} · made{" "}
                 {formatRelativeTime(batch.created_at)}
               </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {batch.render_plan ? `Renders: ${renderPlanSummary(batch.render_plan)}` : "No renders: each design is only converted."}
+              </p>
             </div>
             <BatchStatusBadge status={batch.status} className="self-start sm:self-auto" />
           </header>
@@ -123,7 +127,7 @@ export function BatchShell({ initial, bulkEnabled, userEmail, isAdmin }: BatchSh
               </p>
             ) : null}
             <BatchCounts batch={batch} />
-            {stalled ? (
+            {working ? (
               <p className="rounded-xl border border-border/60 bg-card/60 p-3 text-xs text-muted-foreground" role="status">
                 {PIPELINE_NOTE}
               </p>

@@ -11,6 +11,9 @@ export type RenderQualityMode = "standard" | "photometric";
 
 export type SlotKind = "metal" | "gem" | "accent" | "default";
 
+/** What a slot is, which bulk uploads' look templates go by (ADR 0006); the studio goes by `kind`. */
+export type SlotRole = "metal" | "gem" | "accent";
+
 export type SlotMaterialOption = {
   id: MaterialPresetId;
   label: string;
@@ -20,6 +23,8 @@ export type SlotMaterialConfig = {
   slotId: string;
   label: string;
   kind: SlotKind;
+  /** Set on a bulk upload's designs from what their conversion found (the API derives the rest). */
+  role?: SlotRole;
   defaultMaterial: MaterialPresetId;
   materialOptions: SlotMaterialOption[];
 };

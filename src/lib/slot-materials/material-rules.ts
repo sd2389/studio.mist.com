@@ -48,6 +48,12 @@ export function isGemSlot(slot: string): boolean {
   return normalized.startsWith("Gem") || normalized.startsWith("Accent");
 }
 
+/** A slot whose name says metal (Heads, Metal N), as `inferSlotKind` in model-config.ts tells. */
+function isMetalSlot(slot: string): boolean {
+  const normalized = normalizeSlotId(slot);
+  return normalized === "Heads" || normalized.startsWith("Metal");
+}
+
 function normalizedSelections(selections: SlotSelectionMap): SlotSelectionMap {
   const out: SlotSelectionMap = {};
   for (const [slot, preset] of Object.entries(selections)) {
@@ -101,12 +107,16 @@ function firstMetalByFamily(
   return null;
 }
 
+/**
+ * A stone slot takes a stone and a metal slot a metal. A slot whose name says neither (kind
+ * `default`, such as a CAD layer called "Pave") keeps either: a bulk upload's look template gives
+ * it a stone when its meshes are stones (ADR 0006).
+ */
 function coerceByRole(slot: string, preset: SlotMaterialRef): SlotMaterialRef {
   if (preset === "original") return preset;
-  const gemSlot = isGemSlot(slot);
   const kind = selectionKind(preset);
-  if (gemSlot && kind === "metal") return "diamond";
-  if (!gemSlot && kind === "gem") return "gold-14k-yellow";
+  if (isGemSlot(slot) && kind === "metal") return "diamond";
+  if (isMetalSlot(slot) && kind === "gem") return "gold-14k-yellow";
   return preset;
 }
 

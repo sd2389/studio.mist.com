@@ -9,6 +9,13 @@ export type QuotaBalances = {
   storage_bytes_limit: number;
 };
 
+/** Of each balance, the credits the customer bought: spent last, and kept when the plan's credits renew. */
+export type BoughtBalances = {
+  model_credits: number;
+  ai_image_credits: number;
+  render_credits: number;
+};
+
 /** What one bulk upload may hold on a plan (BATCH_LIMITS in backend/app/features/billing/plans.py). */
 export type BulkUploadLimits = {
   /** 0: the plan has no bulk upload. */
@@ -41,7 +48,10 @@ export type UserBillingSnapshot = {
   plan_label: string;
   period_start: string | null;
   period_end: string | null;
+  /** What can be spent: the plan's credits and bought ones together. */
   balances: QuotaBalances;
+  /** How many of `balances` were bought; absent from an API older than the field. */
+  bought_balances?: BoughtBalances;
   allotments: QuotaBalances;
   features: PlanFeatures;
   stripe_customer_id: string | null;

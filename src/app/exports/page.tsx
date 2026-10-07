@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { BoughtCreditsNote } from "@/components/billing/BoughtCreditsNote";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { ExportJobsPanel, ExportPlanNote, exportPlanFromSnapshot } from "@/features/render";
 import { requirePageUser } from "@/lib/auth/require-page-user";
@@ -41,6 +42,7 @@ export default async function ExportsPage() {
                   Render credits{" "}
                   {formatCredits(billing.balances.render_credits, billing.allotments.render_credits)}
                 </p>
+                <BoughtCreditsNote bought={billing.bought_balances?.render_credits ?? 0} />
                 <ExportPlanNote plan={exportPlanFromSnapshot(billing)} />
               </div>
             ) : null}

@@ -66,6 +66,8 @@ class RenderJob(Base):
     stage: Mapped[str | None] = mapped_column(String(16), nullable=True)
     cancel_requested_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     credits: Mapped[int] = mapped_column(Integer, default=0)  # held, then charged or refunded
+    # Of `credits`, those the hold took from bought credits: a refund gives them back as bought.
+    bought_credits: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     credit_state: Mapped[str] = mapped_column(String(12), default="none")  # held | charged | refunded | none
     billing_period_start: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # when it was held
     idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True)

@@ -14,8 +14,13 @@ import stripe
 from fastapi import HTTPException
 from sqlalchemy import func, select
 
+from app.features.billing.credit_pools import bought_credits
 from app.features.billing.plans import PLAN_LABELS, get_quotas
-from app.features.billing.quota_service import get_or_create_billing
+from app.features.billing.quota_service import (
+    consume_ai_image_credit,
+    get_or_create_billing,
+    subscription_allowance_key,
+)
 from app.features.billing.stripe_service import _record_event, handle_webhook
 from app.models.billing import BillingEvent, CreditPurchase
 
@@ -467,3 +472,188 @@ def test_the_current_subscription_ending_moves_the_customer_to_free(db, sample_u
     env.plan_email.assert_called_once_with(
         to=sample_user.email, plan_label=PLAN_LABELS["free"], action="cancelled"
     )
+
+
+# ---------------------------------------------------------------------------
+# Bought credits stay, and a period's allowance is granted once
+# ---------------------------------------------------------------------------
+
+# GROW_SUBSCRIPTION a month on, and the same customer on Studio.
+GROW_RENEWED = {
+    **GROW_SUBSCRIPTION,
+    "items": {
+        "object": "list",
+        "data": [
+            {
+                **GROW_SUBSCRIPTION["items"]["data"][0],
+                "current_period_start": 1792592000,
+                "current_period_end": 1795270400,
+            }
+        ],
+    },
+}
+STUDIO_SUBSCRIPTION = {
+    **GROW_SUBSCRIPTION,
+    "id": "sub_studio",
+    "items": {
+        "object": "list",
+        "data": [
+            {
+                **GROW_SUBSCRIPTION["items"]["data"][0],
+                "id": "si_studio",
+                "price": {"id": "price_studio", "object": "price"},
+            }
+        ],
+    },
+}
+
+
+def _invoice_paid_event(event_id: str, subscription: str | None = "sub_grow") -> dict:
+    return {
+        "id": event_id,
+        "object": "event",
+        "type": "invoice.paid",
+        "data": {
+            "object": {
+                "id": f"in_{event_id}",
+                "object": "invoice",
+                "customer": "cus_grow",
+                "subscription": subscription,
+                "amount_paid": 4900,
+                "hosted_invoice_url": "https://invoice.example.com",
+            }
+        },
+    }
+
+
+def _checkout_event(user_id: int, event_id: str, subscription: str = "sub_grow") -> dict:
+    event = _subscription_checkout_event(user_id, event_id=event_id)
+    event["data"]["object"]["subscription"] = subscription
+    return event
+
+
+def _ai_pools(db, billing) -> tuple[int, int]:
+    """(AI image credits, the bought ones among them)."""
+    db.refresh(billing)
+    return billing.ai_image_credits_balance, bought_credits(billing, "ai")
+
+
+def _spend_ai_credits(db, billing, count: int) -> None:
+    for _ in range(count):
+        consume_ai_image_credit(db, billing)
+
+
+def _grow_buyer(db, user):
+    """A customer of cus_grow, still on Free, who bought 50 AI credits at a paid top-up checkout."""
+    billing = _grow_customer_billing(db, user)
+    _deliver_signed(db, _topup_event(user.id, event_id="evt_topup", session_id="cs_topup"))
+    assert _ai_pools(db, billing) == (25 + 50, 50)
+    return billing
+
+
+def test_a_checkout_and_its_first_invoice_grant_the_period_once(db, sample_user):
+    """Both arrive for the first payment. Credits spent between them stay spent."""
+    billing = _grow_buyer(db, sample_user)
+    grow = get_quotas("grow").ai_image_credits
+
+    with _stripe_test_env(subscription=GROW_SUBSCRIPTION):
+        _send_signed(db, _checkout_event(sample_user.id, "evt_checkout"))
+        assert _ai_pools(db, billing) == (grow + 50, 50)
+        _spend_ai_credits(db, billing, 10)
+        _send_signed(db, _invoice_paid_event("evt_first_invoice"))
+
+    assert _ai_pools(db, billing) == (grow + 40, 50)
+    assert billing.allowance_granted_for == subscription_allowance_key("sub_grow", GROW_PERIOD[0], "grow")
+
+
+def test_an_invoice_sent_again_under_a_new_event_id_grants_nothing(db, sample_user):
+    billing = _grow_customer_billing(db, sample_user)
+    grow = get_quotas("grow").ai_image_credits
+
+    with _stripe_test_env(subscription=GROW_SUBSCRIPTION) as env:
+        _send_signed(db, _invoice_paid_event("evt_invoice"))
+        _spend_ai_credits(db, billing, 30)
+        for event_id in ("evt_invoice_again", "evt_invoice_once_more"):
+            assert _send_signed(db, _invoice_paid_event(event_id)) == {"status": "ok"}
+
+    assert _ai_pools(db, billing) == (grow - 30, 0)
+    assert env.receipt.call_count == 3  # each payment notice still gets its receipt
+
+
+def test_a_renewal_grants_the_new_periods_allowance_and_keeps_bought_credits(db, sample_user):
+    """customer.subscription.updated moves the period without credits (#49); the invoice.paid
+    that follows grants the new period's allowance, keeping what is left of the bought credits."""
+    billing = _grow_buyer(db, sample_user)
+    grow = get_quotas("grow").ai_image_credits
+    with _stripe_test_env(subscription=GROW_SUBSCRIPTION):
+        _send_signed(db, _checkout_event(sample_user.id, "evt_checkout"))
+    _spend_ai_credits(db, billing, grow + 20)  # the plan's credits, then 20 bought ones
+    assert _ai_pools(db, billing) == (30, 30)
+
+    with _stripe_test_env(subscription=GROW_RENEWED):
+        _send_signed(db, _subscription_event("evt_renewed", items=GROW_RENEWED["items"]))
+        assert _ai_pools(db, billing) == (30, 30)
+        _send_signed(db, _invoice_paid_event("evt_renewal_invoice"))
+
+    assert _ai_pools(db, billing) == (grow + 30, 30)
+    assert billing.period_start == datetime(2026, 10, 21, 14, 13, 20)
+
+
+def test_an_upgrade_keeps_bought_credits(db, sample_user):
+    billing = _grow_buyer(db, sample_user)
+    with _stripe_test_env(subscription=GROW_SUBSCRIPTION):
+        _send_signed(db, _checkout_event(sample_user.id, "evt_grow"))
+
+    with _stripe_test_env(subscription=STUDIO_SUBSCRIPTION):
+        _send_signed(db, _checkout_event(sample_user.id, "evt_studio", subscription="sub_studio"))
+
+    assert _ai_pools(db, billing) == (get_quotas("studio").ai_image_credits + 50, 50)
+    assert (billing.plan_tier, billing.stripe_subscription_id) == ("studio", "sub_studio")
+
+
+def test_a_cancellation_keeps_bought_credits_and_happens_once(db, sample_user):
+    billing = _grow_buyer(db, sample_user)
+    with _stripe_test_env(subscription=GROW_SUBSCRIPTION):
+        _send_signed(db, _checkout_event(sample_user.id, "evt_checkout"))
+
+    with _stripe_test_env(subscription={**GROW_SUBSCRIPTION, "status": "canceled"}):
+        _send_signed(db, _subscription_event("evt_deleted", "customer.subscription.deleted", status="canceled"))
+        assert _ai_pools(db, billing) == (25 + 50, 50)
+        _spend_ai_credits(db, billing, 5)
+        # The subscription's last invoice, paid late, finds it canceled: Free already, no refill.
+        _send_signed(db, _invoice_paid_event("evt_late_invoice"))
+
+    assert _ai_pools(db, billing) == (20 + 50, 50)
+    assert (billing.plan_tier, billing.stripe_subscription_id) == ("free", None)
+
+
+def test_an_invoice_of_an_older_subscription_leaves_the_plan_and_credits(db, sample_user):
+    """The customer moved from sub_grow to sub_studio; sub_grow's invoice, active or canceled,
+    must not move them back, end their plan, or give them Grow's allowance."""
+    billing = _grow_customer_billing(db, sample_user)
+    with _stripe_test_env(subscription=STUDIO_SUBSCRIPTION):
+        _send_signed(db, _checkout_event(sample_user.id, "evt_studio", subscription="sub_studio"))
+    _spend_ai_credits(db, billing, 100)
+    before = _credit_balances(billing)
+
+    for status in ("active", "canceled"):
+        with _stripe_test_env(subscription={**GROW_SUBSCRIPTION, "status": status}) as env:
+            _send_signed(db, _invoice_paid_event(f"evt_old_{status}"))
+        db.refresh(billing)
+        assert (billing.plan_tier, billing.stripe_subscription_id) == ("studio", "sub_studio")
+        assert _credit_balances(billing) == before
+        env.receipt.assert_called_once()
+
+
+def test_an_invoice_with_no_subscription_grants_nothing(db, sample_user):
+    billing = _grow_customer_billing(db, sample_user)
+    _spend_ai_credits(db, billing, 5)
+    before = _credit_balances(billing)
+
+    with _stripe_test_env() as env:
+        _send_signed(db, _invoice_paid_event("evt_one_off", subscription=None))
+
+    db.refresh(billing)
+    assert _credit_balances(billing) == before
+    env.stripe.subscriptions.retrieve.assert_not_called()
+    env.receipt.assert_called_once()

@@ -53,21 +53,34 @@ def locked_items(db: Session, *conditions) -> list[IngestItem]:
 
 def release_held_credits(db: Session, item_ids: Collection[int]) -> None:
     """Give back what these designs still hold, each credit once: their rows are locked, read and
-    zeroed, and the credits go back to the owner's balances unless the billing period has rolled
-    over since they were held. Not committed."""
+    zeroed, and the credits go back to the owner's balances (return_held_credits): the bought ones
+    as bought, the plan ones unless the billing period has rolled over since they were held. Not
+    committed."""
     held = [item for item in locked_items(db, IngestItem.id.in_(item_ids)) if item.model_credit_held or item.render_credits_held]
     if not held:
         return
-    totals: dict[tuple[int, datetime | None], list[int]] = defaultdict(lambda: [0, 0])
+    totals: dict[tuple[int, datetime | None], list[int]] = defaultdict(lambda: [0, 0, 0, 0])
     for item in held:
         total = totals[(item.user_id, item.credits_period_start)]
         total[0] += item.model_credit_held
         total[1] += item.render_credits_held
+        total[2] += item.bought_model_credit_held
+        total[3] += item.bought_render_credits_held
         item.model_credit_held = 0
         item.render_credits_held = 0
+        item.bought_model_credit_held = 0
+        item.bought_render_credits_held = 0
     db.flush()
-    for (user_id, period_start), (model_credits, render_credits) in totals.items():
-        return_held_credits(db, user_id, period_start, model_credits=model_credits, render_credits=render_credits)
+    for (user_id, period_start), (model_credits, render_credits, bought_model, bought_render) in totals.items():
+        return_held_credits(
+            db,
+            user_id,
+            period_start,
+            model_credits=model_credits,
+            render_credits=render_credits,
+            bought_model_credits=bought_model,
+            bought_render_credits=bought_render,
+        )
 
 
 def settle_batch(db: Session, batch_id: int | None) -> None:

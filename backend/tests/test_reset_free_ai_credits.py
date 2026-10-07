@@ -11,13 +11,14 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.features.billing import plans
+from app.features.billing.credit_pools import bought_credits
 from app.features.billing.free_ai_credit_reset import (
     AUDIT_KIND,
     apply_free_ai_reset,
     plan_free_ai_reset,
 )
 from app.features.billing.purchases import record_topup_purchase
-from app.features.billing.quota_service import adjust_credits, get_or_create_billing
+from app.features.billing.quota_service import adjust_credits, get_or_create_billing, reset_allotments
 from app.models.billing import CreditAdjustment, UserBilling
 from app.models.user import User
 from scripts import reset_free_ai_credits as script
@@ -50,6 +51,13 @@ def _ai_credits(db, user_id: int) -> int:
     return db.scalar(
         select(UserBilling.ai_image_credits_balance).where(UserBilling.user_id == user_id)
     )
+
+
+def _bought_ai_credits(db, user_id: int) -> int:
+    """The account's bought AI credits as the snapshot counts them."""
+    billing = _billing(db, user_id)
+    db.refresh(billing)
+    return bought_credits(billing, "ai")
 
 
 def _buy(db, user_id: int, session_id: str, *, credits: int = 50, kind: str = "ai") -> None:
@@ -178,6 +186,36 @@ def test_balance_never_goes_up(db):
     assert _plan(db, stripe_client) == {user_id: (60, 150, 0, 60)}
 
 
+def test_only_plan_credits_are_lowered_and_paid_ones_are_kept_as_bought(db, admin_user):
+    """150 old Free credits, 50 bought in the ledger and 40 only Stripe knows of: the plan's credits
+    drop to the allowance, and all 90 paid ones stay, bought, so the next reset keeps them too."""
+    user_id = _account(db, "buyer", customer="cus_buyer")
+    _buy(db, user_id, "cs_ledger")  # 200, 50 of them bought
+    _billing(db, user_id).ai_image_credits_balance += 40  # a top-up from before the ledger
+    db.commit()
+    stripe_client = _stripe_client({"cus_buyer": [_checkout_session("cs_before_the_ledger", credits=40)]})
+
+    resets = plan_free_ai_reset(db, stripe_client)
+    assert [(reset.current, reset.paid, reset.new, reset.bought) for reset in resets] == [(240, 90, ALLOWANCE + 90, 90)]
+    apply_free_ai_reset(db, resets, admin_user_id=admin_user.id)
+
+    assert (_ai_credits(db, user_id), _bought_ai_credits(db, user_id)) == (ALLOWANCE + 90, 90)
+    reset_allotments(db, _billing(db, user_id), "grow")
+    assert (_ai_credits(db, user_id), _bought_ai_credits(db, user_id)) == (150 + 90, 90)
+
+
+def test_bought_credits_are_never_lowered(db, admin_user):
+    """Even bought credits the ledger and Stripe can't account for (a backfill counted them) stay."""
+    user_id = _account(db, "kept", ai_credits=150)
+    _billing(db, user_id).bought_ai_image_credits = 100
+    db.commit()
+
+    assert _plan(db) == {user_id: (150, 0, 0, 100)}
+    apply_free_ai_reset(db, plan_free_ai_reset(db, None), admin_user_id=admin_user.id)
+
+    assert (_ai_credits(db, user_id), _bought_ai_credits(db, user_id)) == (100, 100)
+
+
 def test_accounts_within_the_allowance_and_paid_plans_are_left_alone(db, admin_user):
     at_allowance = _account(db, "at", ai_credits=ALLOWANCE)
     below = _account(db, "below", ai_credits=3)
@@ -257,7 +295,7 @@ def test_dry_run_prints_the_plan_and_changes_nothing(db, run_script, capsys):
     assert run_script() == 0
 
     out = capsys.readouterr().out
-    assert f"{plain:>8}  free         150         0         0  {ALLOWANCE:>8}" in out
+    assert f"{plain:>8}  free         150         0         0  {ALLOWANCE:>8}         0" in out
     assert "test mode" in out
     assert "Dry run: nothing was changed" in out
     assert "@" not in out  # user ids only, no emails
@@ -280,16 +318,19 @@ def test_apply_lowers_balances_with_one_audit_row_each(db, run_script, admin_use
         ALLOWANCE + 50,
         60,
     ]
+    # The early buyer's 50 paid credits, only in Stripe, are kept as bought: a reset leaves them.
+    assert [_bought_ai_credits(db, user_id) for user_id in (plain, buyer, early)] == [0, 50, 50]
     rows = _audit_rows(db)
     assert [(row.target_user_id, row.delta) for row in rows] == [
         (plain, ALLOWANCE - 150),
         (buyer, ALLOWANCE + 50 - 200),
+        (early, 0),
     ]
     assert {(row.admin_user_id, row.reason) for row in rows} == {(admin_id, REASON)}
-    assert "Applied: lowered 2 balances" in capsys.readouterr().out
+    assert "Applied: lowered 2 balances by 250 credits, kept 100 as bought credits" in capsys.readouterr().out
 
     assert run_script("--apply", "--admin-id", str(admin_id), stripe_client=stripe_client) == 0
-    assert len(_audit_rows(db)) == 2  # a second run finds nothing left to lower
+    assert len(_audit_rows(db)) == 3  # a second run finds nothing left to lower or keep
 
 
 def test_apply_without_admin_id_is_refused(db, run_script):
@@ -328,4 +369,4 @@ def test_without_stripe_configured_it_refuses_unless_told_to_skip_stripe(db, run
     assert run_script("--no-stripe", stripe_key=None) == 0
     out = capsys.readouterr().out
     assert "Stripe: not checked (--no-stripe)" in out
-    assert f"{buyer:>8}  free         200        50         0  {ALLOWANCE + 50:>8}" in out
+    assert f"{buyer:>8}  free         200        50         0  {ALLOWANCE + 50:>8}        50" in out

@@ -18,7 +18,6 @@ from app.features.billing.quota_service import (
     change_plan,
     downgrade_to_free,
     get_or_create_billing,
-    reset_allotments,
     set_subscription_period,
     tier_for_stripe_price,
 )
@@ -349,6 +348,30 @@ def _handle_subscription_deleted(db: Session, subscription: object) -> None:
     )
 
 
+def _handle_invoice_paid(db: Session, invoice: object) -> None:
+    """A paid invoice of the account's subscription brings its period's allowance, which
+    set_subscription_period grants once per period. An invoice of an older subscription, or of
+    none, leaves the plan and the credits alone; either way the customer gets a receipt."""
+    pair = _user_from_customer(db, _read_field(invoice, "customer"))
+    if pair is None:
+        return
+    user, billing = pair
+    tier = normalize_tier(billing.plan_tier)
+    sub_id = _read_field(invoice, "subscription")
+    if sub_id:
+        subscription = _stripe_client().subscriptions.retrieve(str(sub_id))
+        if not billing.stripe_subscription_id or _is_current_subscription(billing, subscription):
+            tier = _apply_subscription(db, billing, subscription)
+    amount = int(_read_field(invoice, "amount_paid", 0) or 0)
+    amount_label = f"${amount / 100:.2f}" if amount else "your plan"
+    billing_email.send_payment_receipt_email(
+        to=user.email,
+        plan_label=PLAN_LABELS[tier],
+        amount_label=amount_label,
+        invoice_url=_read_field(invoice, "hosted_invoice_url"),
+    )
+
+
 def handle_webhook(db: Session, payload: bytes, signature: str | None) -> dict[str, str]:
     settings = get_settings()
     if not settings.stripe_webhook_secret:
@@ -379,25 +402,7 @@ def handle_webhook(db: Session, payload: bytes, signature: str | None) -> dict[s
     elif event_type == "customer.subscription.deleted":
         _handle_subscription_deleted(db, data_obj)
     elif event_type == "invoice.paid":
-        pair = _user_from_customer(db, _read_field(data_obj, "customer"))
-        if pair:
-            user, billing = pair
-            sub_id = _read_field(data_obj, "subscription")
-            if sub_id:
-                client = _stripe_client()
-                subscription = client.subscriptions.retrieve(str(sub_id))
-                tier = _apply_subscription(db, billing, subscription)
-            else:
-                tier = normalize_tier(billing.plan_tier)
-                reset_allotments(db, billing, tier)
-            amount = int(_read_field(data_obj, "amount_paid", 0) or 0)
-            amount_label = f"${amount / 100:.2f}" if amount else "your plan"
-            billing_email.send_payment_receipt_email(
-                to=user.email,
-                plan_label=PLAN_LABELS[tier],
-                amount_label=amount_label,
-                invoice_url=_read_field(data_obj, "hosted_invoice_url"),
-            )
+        _handle_invoice_paid(db, data_obj)
 
     _record_event(db, event_id, event_type)
     logger.info("Processed Stripe event %s (%s)", event_id, event_type)

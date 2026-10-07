@@ -1,5 +1,5 @@
 import { WebIO } from "@gltf-transform/core";
-import { EXTMeshoptCompression, KHRDracoMeshCompression } from "@gltf-transform/extensions";
+import { EXTMeshoptCompression, KHRDracoMeshCompression, KHRMeshQuantization } from "@gltf-transform/extensions";
 import draco3d from "draco3dgltf";
 import { MeshoptDecoder } from "meshoptimizer";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -17,11 +17,22 @@ import { installNodeFileReader } from "./fixtures/node-file-reader";
  * those checks themselves.
  */
 
+type GltfAccessor = { count: number; componentType: number; normalized?: boolean; bufferView?: number };
+
+type GltfPrimitive = {
+  indices?: number;
+  mode?: number;
+  attributes: { POSITION: number } & Record<string, number>;
+  extensions?: Record<string, unknown>;
+};
+
 type GltfJson = {
   asset?: { version?: string };
+  extensionsUsed?: string[];
   extensionsRequired?: string[];
-  accessors?: { count: number }[];
-  meshes?: { primitives: { indices?: number; mode?: number; attributes: { POSITION: number } }[] }[];
+  accessors?: GltfAccessor[];
+  buffers?: { uri?: string; extensions?: { EXT_meshopt_compression?: { fallback?: boolean } } }[];
+  meshes?: { primitives: GltfPrimitive[] }[];
   nodes?: { mesh?: number }[];
 };
 
@@ -68,7 +79,7 @@ function countDeclaredTriangles(json: GltfJson): number {
 async function countDecodedTriangles(glb: ArrayBuffer): Promise<number> {
   await MeshoptDecoder.ready;
   const io = new WebIO()
-    .registerExtensions([KHRDracoMeshCompression, EXTMeshoptCompression])
+    .registerExtensions([KHRDracoMeshCompression, EXTMeshoptCompression, KHRMeshQuantization])
     .registerDependencies({
       "draco3d.decoder": await draco3d.createDecoderModule(),
       "meshopt.decoder": MeshoptDecoder,
@@ -90,6 +101,75 @@ async function exportedRingGlb(): Promise<ArrayBuffer> {
   return converted.glb.arrayBuffer();
 }
 
+const UNSIGNED_BYTE = 5121;
+const UNSIGNED_SHORT = 5123;
+const FLOAT = 5126;
+
+/** Whether core glTF 2.0 allows the attribute's type, or it takes KHR_mesh_quantization. */
+function isCoreAttributeType(semantic: string, { componentType, normalized = false }: GltfAccessor): boolean {
+  const isSmallUnsigned = componentType === UNSIGNED_BYTE || componentType === UNSIGNED_SHORT;
+  if (semantic.startsWith("_")) return true; // application-specific: any type
+  if (/^JOINTS_\d+$/.test(semantic)) return isSmallUnsigned && !normalized;
+  if (componentType === FLOAT) return true;
+  return /^(TEXCOORD|COLOR|WEIGHTS)_\d+$/.test(semantic) && isSmallUnsigned && normalized;
+}
+
+function listPrimitives(json: GltfJson): GltfPrimitive[] {
+  return (json.meshes ?? []).flatMap((mesh) => mesh.primitives);
+}
+
+function hasQuantizedAttributes(json: GltfJson): boolean {
+  const accessors = json.accessors ?? [];
+  return listPrimitives(json).some((primitive) =>
+    Object.entries(primitive.attributes).some(([semantic, index]) => !isCoreAttributeType(semantic, accessors[index])),
+  );
+}
+
+/** The name of every extension object in the file (extras are application data, not glTF). */
+function listExtensionObjects(value: unknown): string[] {
+  if (Array.isArray(value)) return value.flatMap(listExtensionObjects);
+  if (!value || typeof value !== "object") return [];
+  return Object.entries(value).flatMap(([key, child]) => {
+    if (key === "extras") return [];
+    if (key === "extensions" && child && typeof child === "object") {
+      return [...Object.keys(child), ...listExtensionObjects(child)];
+    }
+    return listExtensionObjects(child);
+  });
+}
+
+/** The extensions the file's contents use; KHR_mesh_quantization has no object of its own. */
+function listExtensionsInUse(json: GltfJson): string[] {
+  const used = new Set(listExtensionObjects(json));
+  if (hasQuantizedAttributes(json)) used.add("KHR_mesh_quantization");
+  return [...used].sort();
+}
+
+/** The extensions a loader can't do without, by each extension's rule for being required. */
+function listExtensionsNeeded(json: GltfJson): string[] {
+  const accessors = json.accessors ?? [];
+  const needed: string[] = [];
+  // KHR_mesh_quantization is never optional.
+  if (hasQuantizedAttributes(json)) needed.push("KHR_mesh_quantization");
+  // Draco with no uncompressed fallback: its primitives' accessors have no buffer view.
+  const isDracoOnly = listPrimitives(json).some(
+    (primitive) =>
+      primitive.extensions?.KHR_draco_mesh_compression &&
+      Object.values(primitive.attributes).some((index) => accessors[index].bufferView === undefined),
+  );
+  if (isDracoOnly) needed.push("KHR_draco_mesh_compression");
+  // meshopt with no uncompressed fallback: the fallback buffer has no data.
+  if (json.buffers?.some((buffer) => buffer.extensions?.EXT_meshopt_compression?.fallback && !buffer.uri)) {
+    needed.push("EXT_meshopt_compression");
+  }
+  return needed.sort();
+}
+
+function expectDeclaredExtensionsMatchContents(json: GltfJson): void {
+  expect([...(json.extensionsUsed ?? [])].sort()).toEqual(listExtensionsInUse(json));
+  expect([...(json.extensionsRequired ?? [])].sort()).toEqual(listExtensionsNeeded(json));
+}
+
 beforeAll(installNodeFileReader);
 
 describe("compressGlbBuffer", () => {
@@ -107,5 +187,20 @@ describe("compressGlbBuffer", () => {
     expect(triangles).toBeGreaterThan(0);
     expect(countDeclaredTriangles(json)).toBe(triangles);
     expect(await countDecodedTriangles(compressed)).toBe(triangles);
+  });
+
+  it("declares exactly the extensions the GLB's contents use", { timeout: 60_000 }, async () => {
+    const glb = await exportedRingGlb();
+    const exported = readGlbJson(glb);
+    expect(hasQuantizedAttributes(exported)).toBe(false);
+    expectDeclaredExtensionsMatchContents(exported);
+
+    const compressed = readGlbJson(await compressGlbBuffer(glb));
+
+    expect(hasQuantizedAttributes(compressed)).toBe(true);
+    expect(listExtensionsInUse(compressed)).toEqual(
+      ["EXT_meshopt_compression", "KHR_draco_mesh_compression", "KHR_mesh_quantization"],
+    );
+    expectDeclaredExtensionsMatchContents(compressed);
   });
 });

@@ -1,3 +1,5 @@
+> **Mist workspace brain:** [`../mist-vault/SESSION.md`](../mist-vault/SESSION.md) (read first), then [`../mist-vault/BRAIN.md`](../mist-vault/BRAIN.md). Read before work.
+
 <!-- BEGIN:nextjs-agent-rules -->
 # This is NOT the Next.js you know
 

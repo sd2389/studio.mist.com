@@ -1,0 +1,8 @@
+---
+description: Point alone-opened studio.mist.com to workspace coding SoT + vault
+alwaysApply: true
+---
+
+# Mist pointer (studio)
+
+Follow **`../AGENTS.md`**, then this repo’s **`AGENTS.md`**. Read Next shipped docs under `node_modules/next/dist/docs/` before Next code. Handoff: `../mist-vault/SESSION.md`.
